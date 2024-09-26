@@ -229,6 +229,11 @@ impl Ack {
         bytes
     }
 
+    /// Create an `Ack` message from a byte array.
+    /// - The byte array must be a multiple of 28 or 32 bytes.
+    /// - Each 28 bytes chunk is a `Digest`.
+    /// - Each 32 bytes chunk is a `Digest` followed by an `ApplicationState`.
+    /// - The first 4 bytes of each chunk is the `InfoType`.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, MessageError> {
         let mut stale_digests = Vec::new();
         let mut updated_info = HashMap::new();
