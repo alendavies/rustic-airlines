@@ -73,6 +73,7 @@ impl Digest {
     }
 }
 
+#[derive(PartialEq, Debug)]
 struct Syn {
     digests: Vec<Digest>,
 }
@@ -86,6 +87,26 @@ impl Syn {
         }
 
         bytes
+    }
+
+    /// Create a `Syn` message from a byte array.
+    /// - The byte array must be a multiple of 24 bytes.
+    /// - Each 24 bytes chunk is a `Digest`.
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, MessageError> {
+        if bytes.len() % 24 != 0 {
+            return Err(MessageError::InvalidLength(format!(
+                "Syn must be a multiple of 24 bytes, got {}",
+                bytes.len()
+            )));
+        }
+
+        let mut digests = Vec::new();
+
+        for chunk in bytes.chunks(24) {
+            digests.push(Digest::from_bytes(chunk.to_vec())?);
+        }
+
+        Ok(Syn { digests })
     }
 }
 
@@ -373,14 +394,63 @@ mod tests {
         ]
         .to_vec();
 
-        let digest = Digest::from_bytes(bytes).unwrap();
-
         let expected_digest = Digest {
             address: Ipv4Addr::from_str("255.0.0.1").unwrap(),
             generation: 0x0123456789abcdef0123456789abcdef as u128,
             version: 0xfedcba98 as u32,
         };
 
+        let digest = Digest::from_bytes(bytes).unwrap();
+
         assert_eq!(digest, expected_digest);
+    }
+
+    #[test]
+    fn syn_from_bytes_ok() {
+        let node1 = Digest {
+            address: Ipv4Addr::from_str("255.0.0.1").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0x12345678 as u32,
+        };
+
+        let node2 = Digest {
+            address: Ipv4Addr::from_str("255.0.0.2").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0xfedcba98 as u32,
+        };
+
+        let node3 = Digest {
+            address: Ipv4Addr::from_str("255.0.0.3").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0x98765432 as u32,
+        };
+
+        let expected_syn = Syn {
+            digests: vec![node1.clone(), node2.clone(), node3.clone()],
+        };
+
+        let node1_bytes = [
+            0xff, 0x00, 0x00, 0x01, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23,
+            0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78,
+        ]
+        .to_vec();
+
+        let node2_bytes = [
+            0xff, 0x00, 0x00, 0x02, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23,
+            0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98,
+        ]
+        .to_vec();
+
+        let node3_bytes = [
+            0xff, 0x00, 0x00, 0x03, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23,
+            0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x98, 0x76, 0x54, 0x32,
+        ]
+        .to_vec();
+
+        let syn_bytes = [node1_bytes, node2_bytes, node3_bytes];
+
+        let syn = Syn::from_bytes(syn_bytes.concat()).unwrap();
+
+        assert_eq!(syn, expected_syn);
     }
 }
