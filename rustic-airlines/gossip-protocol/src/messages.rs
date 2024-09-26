@@ -1,6 +1,13 @@
 use std::{collections::HashMap, net::Ipv4Addr};
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug)]
+enum MessageError {
+    InvalidLength(String),
+    InvalidValue(String),
+    ConversionError(String),
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct Digest {
     address: Ipv4Addr,
     generation: u128,
@@ -33,6 +40,36 @@ impl Digest {
         bytes[20..].copy_from_slice(&ver_bytes);
 
         bytes
+    }
+
+    /// Create a `Digest` messsage from a byte array.
+    /// - The byte array must be 24 bytes long.
+    /// - The first 4 bytes are the IP address.
+    /// - The next 16 bytes are the generation.
+    /// - The last 4 bytes are the version.
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, MessageError> {
+        if bytes.len() != 24 {
+            return Err(MessageError::InvalidLength(format!(
+                "Digest must be 24 bytes, got {}",
+                bytes.len()
+            )));
+        }
+
+        let address = Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]);
+
+        let generation = u128::from_be_bytes(bytes[4..20].try_into().map_err(|_| {
+            MessageError::ConversionError("Failed to convert generation bytes".to_string())
+        })?);
+
+        let version = u32::from_be_bytes(bytes[20..24].try_into().map_err(|_| {
+            MessageError::ConversionError("Failed to convert version bytes".to_string())
+        })?);
+
+        Ok(Digest {
+            address,
+            generation,
+            version,
+        })
     }
 }
 
@@ -326,5 +363,24 @@ mod tests {
             ]
             .concat()
         )
+    }
+
+    #[test]
+    fn digest_from_bytes_ok() {
+        let bytes = [
+            0xff, 0x00, 0x00, 0x01, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23,
+            0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98,
+        ]
+        .to_vec();
+
+        let digest = Digest::from_bytes(bytes).unwrap();
+
+        let expected_digest = Digest {
+            address: Ipv4Addr::from_str("255.0.0.1").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0xfedcba98 as u32,
+        };
+
+        assert_eq!(digest, expected_digest);
     }
 }
