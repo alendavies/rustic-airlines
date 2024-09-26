@@ -283,4 +283,48 @@ mod tests {
             .concat()
         )
     }
+
+    #[test]
+    fn ack2_as_bytes_ok() {
+        let node1 = Digest {
+            address: Ipv4Addr::from_str("255.0.0.1").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0x12345678 as u32,
+        };
+
+        let node1_state = ApplicationState {
+            status: NodeStatus::Normal,
+        };
+
+        let node2 = Digest {
+            address: Ipv4Addr::from_str("255.0.0.2").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0x98765432 as u32,
+        };
+
+        let node2_state = ApplicationState {
+            status: NodeStatus::Normal,
+        };
+
+        let mut updated_info = HashMap::new();
+        updated_info.insert(node1.clone(), node1_state.clone());
+        updated_info.insert(node2.clone(), node2_state.clone());
+
+        let ack2 = Ack2 { updated_info };
+
+        let ack2_bytes = ack2.as_bytes();
+
+        assert_eq!(
+            ack2_bytes,
+            [
+                [0x00, 0x00, 0x00, 0x01].to_vec(),
+                node1.as_bytes().to_vec(),
+                node1_state.as_bytes().to_vec(),
+                [0x00, 0x00, 0x00, 0x01].to_vec(),
+                node2.as_bytes().to_vec(),
+                node2_state.as_bytes().to_vec(),
+            ]
+            .concat()
+        )
+    }
 }
