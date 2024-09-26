@@ -110,7 +110,7 @@ impl Syn {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum NodeStatus {
     Bootstrap = 0x0,
     Normal = 0x1,
@@ -118,7 +118,7 @@ enum NodeStatus {
     Removing = 0x3,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 struct ApplicationState {
     status: NodeStatus,
 }
@@ -132,6 +132,34 @@ impl ApplicationState {
         let status_bytes: [u8; 4] = (self.status as u32).to_be_bytes();
 
         status_bytes
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, MessageError> {
+        if bytes.len() != 4 {
+            return Err(MessageError::InvalidLength(format!(
+                "ApplicationState must be 4 bytes, got {}",
+                bytes.len()
+            )));
+        }
+
+        let status_value = u32::from_be_bytes(bytes.try_into().map_err(|_| {
+            MessageError::ConversionError("Failed to convert ApplicationState bytes".to_string())
+        })?);
+
+        let status = match status_value {
+            0 => NodeStatus::Bootstrap,
+            1 => NodeStatus::Normal,
+            2 => NodeStatus::Leaving,
+            3 => NodeStatus::Removing,
+            _ => {
+                return Err(MessageError::InvalidValue(format!(
+                    "Invalid NodeStatus value: {}",
+                    status_value
+                )))
+            }
+        };
+
+        Ok(ApplicationState { status })
     }
 }
 
@@ -259,6 +287,17 @@ mod tests {
                 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98,
             ]
         )
+    }
+
+    #[test]
+    fn application_state_as_bytes_ok() {
+        let state = ApplicationState {
+            status: NodeStatus::Normal,
+        };
+
+        let state_bytes = state.as_bytes();
+
+        assert_eq!(state_bytes, [0x00, 0x00, 0x00, 0x01]);
     }
 
     #[test]
@@ -452,5 +491,18 @@ mod tests {
         let syn = Syn::from_bytes(syn_bytes.concat()).unwrap();
 
         assert_eq!(syn, expected_syn);
+    }
+
+    #[test]
+    fn application_state_from_bytes_ok() {
+        let bytes = [0x00, 0x00, 0x00, 0x03].to_vec();
+
+        let expected_app_state = ApplicationState {
+            status: NodeStatus::Removing,
+        };
+
+        let state = ApplicationState::from_bytes(bytes).unwrap();
+
+        assert_eq!(state, expected_app_state);
     }
 }
