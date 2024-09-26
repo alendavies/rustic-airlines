@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 use std::{thread, time::Duration};
+mod messages;
 
 #[derive(Debug, Clone)]
 struct Cluster {
@@ -13,10 +14,10 @@ impl Cluster {
     fn new(nodes: Vec<Node>) -> Cluster {
         let mut cluster = Cluster {
             nodes: HashMap::new(),
-        }; 
-        
+        };
+
         for node in nodes {
-           cluster.add_node(node);
+            cluster.add_node(node);
         }
 
         cluster
@@ -24,12 +25,10 @@ impl Cluster {
 
     fn add_node(&mut self, node: Node) {
         self.nodes.insert(node.ip.clone(), node);
-        
     }
 
-    fn remove_node(&mut self, ip: String ) {
+    fn remove_node(&mut self, ip: String) {
         self.nodes.remove(&ip);
-        
     }
 }
 
@@ -40,9 +39,7 @@ struct Gossip {
 
 impl Gossip {
     fn new(cluster: Cluster) -> Arc<Mutex<Gossip>> {
-        let gossip = Gossip {
-            cluster: cluster,
-        };
+        let gossip = Gossip { cluster: cluster };
 
         // Usa Arc<Mutex<Gossip>> para que sea mutable y compartido entre hilos
         let gossip_arc = Arc::new(Mutex::new(gossip));
@@ -63,37 +60,49 @@ impl Gossip {
         gossip_arc
     }
 
-    fn start_protocol(&mut self){
+    fn start_protocol(&mut self) {
         let mut rng = rand::thread_rng(); // Get a random number generator
         let len = self.cluster.nodes.len() as i32;
-        let nodes_to_gossip: Vec<Node> = self.cluster.nodes.iter().map(|(_, node)| node.clone()).collect();
+        let nodes_to_gossip: Vec<Node> = self
+            .cluster
+            .nodes
+            .iter()
+            .map(|(_, node)| node.clone())
+            .collect();
 
         let amount_to_gossip: usize = rng.gen_range(1..4); // Random number between 1 and 3
 
         println!("NEW GOSSIP\n");
         for (_, node) in &self.cluster.nodes {
-            
             let mut nodes_gossiped: Vec<&Node> = vec![];
-            
+
             while nodes_gossiped.len() < amount_to_gossip {
                 let node_to_connect: usize = rng.gen_range(0..len) as usize;
 
-                if *node == nodes_to_gossip[node_to_connect]{
+                if *node == nodes_to_gossip[node_to_connect] {
                     continue;
                 }
-                if nodes_gossiped.contains(&&nodes_to_gossip[node_to_connect]){
+                if nodes_gossiped.contains(&&nodes_to_gossip[node_to_connect]) {
                     continue;
                 }
                 nodes_gossiped.push(&nodes_to_gossip[node_to_connect]);
-
-            
             }
 
             for node_to_gossip in nodes_gossiped {
                 //self.connecct_nodes(node, node_to_gossip);
-                println!("{:?} ({:?}) se conecto con {:?} ({:?})", node.ip, node.endpoint_state.heartbeat_state.lock().unwrap().version , node_to_gossip.ip, node_to_gossip.endpoint_state.heartbeat_state.lock().unwrap().version)
+                println!(
+                    "{:?} ({:?}) se conecto con {:?} ({:?})",
+                    node.ip,
+                    node.endpoint_state.heartbeat_state.lock().unwrap().version,
+                    node_to_gossip.ip,
+                    node_to_gossip
+                        .endpoint_state
+                        .heartbeat_state
+                        .lock()
+                        .unwrap()
+                        .version
+                )
             }
-            
         }
         println!("\n");
     }
@@ -129,12 +138,8 @@ impl Node {
     fn new(ip: String) -> Node {
         // let nodes = rand(Gossip.nodes);
         let endpoint_state = EndpointState::new();
-        Node {
-            ip,
-            endpoint_state,
-        }
+        Node { ip, endpoint_state }
     }
-
 }
 
 impl PartialEq for Node {
@@ -234,7 +239,7 @@ pub enum ApplicationState {
 
 #[derive(Debug, Clone)]
 struct VersionedValue {
-    value: f64,  // For example, node load or other metric
+    value: f64,   // For example, node load or other metric
     version: u64, // The version of the information
 }
 
@@ -245,8 +250,9 @@ struct AppState {
 
 impl AppState {
     fn new() -> Self {
-        
-        Self { state_map: HashMap::new() }
+        Self {
+            state_map: HashMap::new(),
+        }
     }
 }
 
@@ -263,16 +269,28 @@ fn main() {
     let node_7 = Node::new(String::from("127.0.0.7"));
 
     let mut cluster = Cluster::new(vec![node_1, node_2, node_3, node_4, node_5, node_6]);
-    
+
     let mut gossip = Gossip::new(cluster.clone());
 
     thread::sleep(Duration::from_secs(2));
     gossip.lock().unwrap().cluster.add_node(node_7);
     //println!("{:?}", gossip.lock().unwrap().cluster);
     thread::sleep(Duration::from_secs(2));
-    gossip.lock().unwrap().cluster.remove_node(String::from("127.0.0.1"));
-    gossip.lock().unwrap().cluster.remove_node(String::from("127.0.0.2"));
-    gossip.lock().unwrap().cluster.remove_node(String::from("127.0.0.3"));
+    gossip
+        .lock()
+        .unwrap()
+        .cluster
+        .remove_node(String::from("127.0.0.1"));
+    gossip
+        .lock()
+        .unwrap()
+        .cluster
+        .remove_node(String::from("127.0.0.2"));
+    gossip
+        .lock()
+        .unwrap()
+        .cluster
+        .remove_node(String::from("127.0.0.3"));
     thread::sleep(Duration::from_secs(2));
     thread::sleep(Duration::from_secs(2));
 }

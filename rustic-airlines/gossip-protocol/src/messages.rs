@@ -172,6 +172,7 @@ enum InfoType {
     DigestAndInfo = 0x01,
 }
 
+#[derive(Debug, PartialEq)]
 struct Ack {
     stale_digests: Vec<Digest>,
     updated_info: HashMap<Digest, ApplicationState>,
@@ -226,6 +227,75 @@ impl Ack {
         }
 
         bytes
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, MessageError> {
+        let mut stale_digests = Vec::new();
+        let mut updated_info = HashMap::new();
+        let mut i = 0;
+
+        while i < bytes.len() {
+            // Check if there are enough bytes to read the InfoType, which is 4 bytes
+            if i + 4 > bytes.len() {
+                return Err(MessageError::InvalidLength(
+                    "Incomplete InfoType in Ack".to_string(),
+                ));
+            }
+
+            // Read the 4 bytes of the InfoType
+            let info_type = u32::from_be_bytes(bytes[i..i + 4].try_into().map_err(|_| {
+                MessageError::ConversionError("Failed to convert InfoType bytes".to_string())
+            })?);
+
+            // If the InfoType was successfully read, move the index 4 bytes
+            i += 4;
+
+            match info_type {
+                0 => {
+                    // Digest
+                    // Check if there are enough bytes to read the Digest, which is 24 bytes
+                    if i + 24 > bytes.len() {
+                        return Err(MessageError::InvalidLength(
+                            "Incomplete Digest in Ack".to_string(),
+                        ));
+                    }
+
+                    let digest = Digest::from_bytes(bytes[i..i + 24].to_vec())?;
+                    stale_digests.push(digest);
+
+                    // If the Digest was successfully read, move the index 24 bytes
+                    i += 24;
+                }
+                1 => {
+                    // DigestAndInfo
+                    // Check if there are enough bytes to read the DigestAndInfo, which is 28 bytes
+                    // (24 bytes for the Digest and 4 bytes for the ApplicationState)
+                    if i + 28 > bytes.len() {
+                        return Err(MessageError::InvalidLength(
+                            "Incomplete DigestAndInfo in Ack".to_string(),
+                        ));
+                    }
+
+                    let digest = Digest::from_bytes(bytes[i..i + 24].to_vec())?;
+                    let app_state = ApplicationState::from_bytes(bytes[i + 24..i + 28].to_vec())?;
+                    updated_info.insert(digest, app_state);
+
+                    // If the DigestAndInfo was successfully read, move the index 28 bytes
+                    i += 28;
+                }
+                _ => {
+                    return Err(MessageError::InvalidValue(format!(
+                        "Invalid InfoType in Ack: {}",
+                        info_type
+                    )))
+                }
+            }
+        }
+
+        Ok(Ack {
+            stale_digests,
+            updated_info,
+        })
     }
 }
 
@@ -504,5 +574,72 @@ mod tests {
         let state = ApplicationState::from_bytes(bytes).unwrap();
 
         assert_eq!(state, expected_app_state);
+    }
+
+    #[test]
+    fn ack_from_bytes_ok() {
+        let node1 = Digest {
+            address: Ipv4Addr::from_str("255.0.0.1").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0x12345678 as u32,
+        };
+
+        let node2 = Digest {
+            address: Ipv4Addr::from_str("255.0.0.2").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0xfedcba98 as u32,
+        };
+
+        let node3 = Digest {
+            address: Ipv4Addr::from_str("255.0.0.3").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0x98765432 as u32,
+        };
+
+        let node3_state = ApplicationState {
+            status: NodeStatus::Normal,
+        };
+
+        let mut updated_info = HashMap::new();
+        updated_info.insert(node3.clone(), node3_state.clone());
+
+        let expected_ack = Ack {
+            stale_digests: vec![node1.clone(), node2.clone()],
+            updated_info,
+        };
+
+        let node1_bytes = [
+            0xff, 0x00, 0x00, 0x01, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23,
+            0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78,
+        ]
+        .to_vec();
+
+        let node2_bytes = [
+            0xff, 0x00, 0x00, 0x02, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23,
+            0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98,
+        ]
+        .to_vec();
+
+        let node3_bytes = [
+            0xff, 0x00, 0x00, 0x03, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23,
+            0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x98, 0x76, 0x54, 0x32,
+        ]
+        .to_vec();
+
+        let node3_state_bytes = [0x00, 0x00, 0x00, 0x01].to_vec();
+
+        let ack_bytes = [
+            [0x00; 4].to_vec(),
+            node1_bytes,
+            [0x00; 4].to_vec(),
+            node2_bytes,
+            [0x00, 0x00, 0x00, 0x01].to_vec(),
+            node3_bytes,
+            node3_state_bytes,
+        ];
+
+        let ack = Ack::from_bytes(ack_bytes.concat()).unwrap();
+
+        assert_eq!(ack, expected_ack);
     }
 }
