@@ -304,6 +304,7 @@ impl Ack {
     }
 }
 
+#[derive(Debug, PartialEq)]
 struct Ack2 {
     updated_info: HashMap<Digest, ApplicationState>,
 }
@@ -336,6 +337,56 @@ impl Ack2 {
         }
 
         bytes
+    }
+
+    /// Create an `Ack2` message from a byte array.
+    /// - The byte array must be a multiple of 32 bytes.
+    /// - Each 32 bytes chunk is a `Digest` followed by an `ApplicationState`.
+    /// - The first 4 bytes of each chunk is the `InfoType`.
+    /// - The InfoType must be 1, which is DigestAndInfo.
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, MessageError> {
+        let mut updated_info = HashMap::new();
+        let mut i = 0;
+
+        while i < bytes.len() {
+            // Check if there are enough bytes to read the InfoType, which is 4 bytes
+            if i + 4 > bytes.len() {
+                return Err(MessageError::InvalidLength(
+                    "Incomplete InfoType in Ack2".to_string(),
+                ));
+            }
+
+            let info_type = u32::from_be_bytes(bytes[i..i + 4].try_into().map_err(|_| {
+                MessageError::ConversionError("Failed to convert InfoType bytes".to_string())
+            })?);
+
+            // InfoType must be 1, which is DigestAndInfo
+            if info_type != 1 {
+                return Err(MessageError::InvalidValue(format!(
+                    "Invalid InfoType in Ack2: {}",
+                    info_type
+                )));
+            }
+
+            // If the InfoType was successfully read, move the index 4 bytes
+            i += 4;
+
+            // Check if there are enough bytes to read the DigestAndInfo, which is 28 bytes
+            if i + 28 > bytes.len() {
+                return Err(MessageError::InvalidLength(
+                    "Incomplete DigestAndInfo in Ack2".to_string(),
+                ));
+            }
+
+            let digest = Digest::from_bytes(bytes[i..i + 24].to_vec())?;
+            let app_state = ApplicationState::from_bytes(bytes[i + 24..i + 28].to_vec())?;
+            updated_info.insert(digest, app_state);
+
+            // If the DigestAndInfo was successfully read, move the index 28 bytes
+            i += 28;
+        }
+
+        Ok(Ack2 { updated_info })
     }
 }
 
@@ -646,5 +697,62 @@ mod tests {
         let ack = Ack::from_bytes(ack_bytes.concat()).unwrap();
 
         assert_eq!(ack, expected_ack);
+    }
+
+    #[test]
+    fn ack2_from_bytes_ok() {
+        let node1 = Digest {
+            address: Ipv4Addr::from_str("255.0.0.1").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0xfedcba98 as u32,
+        };
+
+        let node1_state = ApplicationState {
+            status: NodeStatus::Normal,
+        };
+
+        let node2 = Digest {
+            address: Ipv4Addr::from_str("255.0.0.2").unwrap(),
+            generation: 0x0123456789abcdef0123456789abcdef as u128,
+            version: 0x98765432 as u32,
+        };
+
+        let node2_state = ApplicationState {
+            status: NodeStatus::Normal,
+        };
+
+        let mut updated_info = HashMap::new();
+        updated_info.insert(node1.clone(), node1_state.clone());
+        updated_info.insert(node2.clone(), node2_state.clone());
+
+        let expected_ack2 = Ack2 { updated_info };
+
+        let node1_bytes = [
+            0xff, 0x00, 0x00, 0x01, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23,
+            0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98,
+        ]
+        .to_vec();
+
+        let node2_bytes = [
+            0xff, 0x00, 0x00, 0x02, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23,
+            0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x98, 0x76, 0x54, 0x32,
+        ]
+        .to_vec();
+
+        let node1_state_bytes = [0x00, 0x00, 0x00, 0x01].to_vec();
+        let node2_state_bytes = [0x00, 0x00, 0x00, 0x01].to_vec();
+
+        let ack_bytes = [
+            [0x00, 0x00, 0x00, 0x01].to_vec(),
+            node1_bytes,
+            node1_state_bytes,
+            [0x00, 0x00, 0x00, 0x01].to_vec(),
+            node2_bytes,
+            node2_state_bytes,
+        ];
+
+        let ack2 = Ack2::from_bytes(ack_bytes.concat()).unwrap();
+
+        assert_eq!(ack2, expected_ack2);
     }
 }
