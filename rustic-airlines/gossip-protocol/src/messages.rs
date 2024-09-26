@@ -99,7 +99,11 @@ impl Ack {
     // |                   |
     // +                   +
     // |                   |
+    // +                   +
+    // |                   |
     // +       digest      +
+    // |                   |
+    // +                   +
     // |                   |
     // +                   +
     // |                   |
@@ -109,7 +113,11 @@ impl Ack {
     // |                   |
     // +                   +
     // |                   |
+    // +                   +
+    // |                   |
     // +       digest      +
+    // |                   |
+    // +                   +
     // |                   |
     // +                   +
     // |                   |
@@ -124,6 +132,41 @@ impl Ack {
             bytes.extend_from_slice(&(InfoType::Digest as u32).to_be_bytes());
             bytes.extend_from_slice(&digest.as_bytes());
         }
+
+        for (digest, info) in &self.updated_info {
+            bytes.extend_from_slice(&(InfoType::DigestAndInfo as u32).to_be_bytes());
+            bytes.extend_from_slice(&digest.as_bytes());
+            bytes.extend_from_slice(&info.as_bytes());
+        }
+
+        bytes
+    }
+}
+
+struct Ack2 {
+    updated_info: HashMap<Digest, ApplicationState>,
+}
+
+impl Ack2 {
+    // 0    8    16   24   32
+    // +----+----+----+----+
+    // |                   |
+    // +                   +
+    // |                   |
+    // +                   +
+    // |                   |
+    // +       digest      +
+    // |                   |
+    // +                   +
+    // |                   |
+    // +                   +
+    // |                   |
+    // +----+----+----+----+
+    // | application state |
+    // +----+----+----+----+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let length = self.updated_info.len() * 32;
+        let mut bytes = Vec::with_capacity(length);
 
         for (digest, info) in &self.updated_info {
             bytes.extend_from_slice(&(InfoType::DigestAndInfo as u32).to_be_bytes());
