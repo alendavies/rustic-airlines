@@ -1,0 +1,8 @@
+[package]
+name = "graphical-interface"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+egui = "0.29.0"
+eframe = "0.29.0"
