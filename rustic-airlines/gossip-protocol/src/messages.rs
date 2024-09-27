@@ -1,7 +1,7 @@
 use std::{collections::HashMap, net::Ipv4Addr, time::SystemTime};
 
 #[derive(Debug)]
-enum MessageError {
+pub enum MessageError {
     InvalidLength(String),
     InvalidValue(String),
     ConversionError(String),
@@ -131,7 +131,7 @@ enum NodeStatus {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct ApplicationState {
+pub struct ApplicationState {
     status: NodeStatus,
     version: u32,
 }
@@ -199,7 +199,7 @@ enum InfoType {
 }
 
 #[derive(Debug, PartialEq)]
-struct Ack {
+pub struct Ack {
     stale_digests: Vec<Digest>,
     updated_info: HashMap<Digest, ApplicationState>,
 }
@@ -331,11 +331,14 @@ impl Ack {
 }
 
 #[derive(Debug, PartialEq)]
-struct Ack2 {
+pub struct Ack2 {
     updated_info: HashMap<Digest, ApplicationState>,
 }
 
 impl Ack2 {
+    pub fn new(updated_info: HashMap<Digest, ApplicationState>) -> Self {
+        Ack2 { updated_info }
+    }
     // 0    8    16   24   32
     // +----+----+----+----+
     // |                   |
