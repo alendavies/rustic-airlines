@@ -152,7 +152,7 @@ impl ApplicationState {
             )));
         }
 
-        let status_value = u32::from_be_bytes(bytes[..2].try_into().map_err(|_| {
+        let status_value = u16::from_be_bytes(bytes[..2].try_into().map_err(|_| {
             MessageError::ConversionError("Failed to convert status bytes".to_string())
         })?);
 
@@ -347,7 +347,6 @@ impl Ack2 {
         let mut bytes = Vec::with_capacity(length);
 
         for (digest, info) in &self.updated_info {
-            bytes.extend_from_slice(&(InfoType::DigestAndInfo as u32).to_be_bytes());
             bytes.extend_from_slice(&digest.as_bytes());
             bytes.extend_from_slice(&info.as_bytes());
         }
@@ -561,12 +560,10 @@ mod tests {
         let ack2_bytes = ack2.as_bytes();
 
         assert_eq!(
-            ack2_bytes,
+            ack2_bytes.to_vec(),
             [
-                [0x00, 0x00, 0x00, 0x01].to_vec(),
                 node1.as_bytes().to_vec(),
                 node1_state.as_bytes().to_vec(),
-                [0x00, 0x00, 0x00, 0x01].to_vec(),
                 node2.as_bytes().to_vec(),
                 node2_state.as_bytes().to_vec(),
             ]
@@ -644,7 +641,7 @@ mod tests {
 
     #[test]
     fn application_state_from_bytes_ok() {
-        let bytes = [0x00, 0x00, 0x00, 0x03].to_vec();
+        let bytes = [0x00, 0x03, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff].to_vec();
 
         let expected_app_state = ApplicationState {
             status: NodeStatus::Removing,
@@ -707,11 +704,7 @@ mod tests {
         ]
         .to_vec();
 
-        let node3_state_bytes = [
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
-            0xff, 0xff,
-        ]
-        .to_vec();
+        let node3_state_bytes = [0x00, 0x01, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff].to_vec();
 
         let ack_bytes = [
             [0x00; 4].to_vec(),
