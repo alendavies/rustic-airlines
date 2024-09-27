@@ -121,29 +121,43 @@ enum NodeStatus {
 #[derive(Clone, PartialEq, Debug)]
 struct ApplicationState {
     status: NodeStatus,
+    version: u32,
 }
 
 impl ApplicationState {
-    // 0    4    8   12   16
+    // 0    8    16   24   32
     // +----+----+----+----+
-    // | status  | ???
+    // |  status |   0x00  |
+    // +----+----+----+----+
+    // |       version     |
+    // +----+----+----+----+
     // por ahora pongo el status nomás
-    pub fn as_bytes(&self) -> [u8; 4] {
-        let status_bytes: [u8; 4] = (self.status as u32).to_be_bytes();
+    pub fn as_bytes(&self) -> [u8; 8] {
+        let mut bytes = [0x00; 8];
 
-        status_bytes
+        let status_bytes: [u8; 2] = (self.status as u16).to_be_bytes();
+        let version_bytes: [u8; 4] = (self.version as u32).to_be_bytes();
+
+        bytes[..2].copy_from_slice(&status_bytes);
+        bytes[4..].copy_from_slice(&version_bytes);
+
+        bytes
     }
 
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, MessageError> {
-        if bytes.len() != 4 {
+        if bytes.len() != 8 {
             return Err(MessageError::InvalidLength(format!(
-                "ApplicationState must be 4 bytes, got {}",
+                "ApplicationState must be 8 bytes, got {}",
                 bytes.len()
             )));
         }
 
-        let status_value = u32::from_be_bytes(bytes.try_into().map_err(|_| {
-            MessageError::ConversionError("Failed to convert ApplicationState bytes".to_string())
+        let status_value = u32::from_be_bytes(bytes[..2].try_into().map_err(|_| {
+            MessageError::ConversionError("Failed to convert status bytes".to_string())
+        })?);
+
+        let version = u32::from_be_bytes(bytes[4..].try_into().map_err(|_| {
+            MessageError::ConversionError("Failed to convert version bytes".to_string())
         })?);
 
         let status = match status_value {
@@ -159,7 +173,7 @@ impl ApplicationState {
             }
         };
 
-        Ok(ApplicationState { status })
+        Ok(ApplicationState { status, version })
     }
 }
 
@@ -230,9 +244,9 @@ impl Ack {
     }
 
     /// Create an `Ack` message from a byte array.
-    /// - The byte array must be a multiple of 28 or 32 bytes.
+    /// - The byte array must be a multiple of 28 or 36 bytes.
     /// - Each 28 bytes chunk is a `Digest`.
-    /// - Each 32 bytes chunk is a `Digest` followed by an `ApplicationState`.
+    /// - Each 36 bytes chunk is a `Digest` followed by an `ApplicationState`.
     /// - The first 4 bytes of each chunk is the `InfoType`.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, MessageError> {
         let mut stale_digests = Vec::new();
@@ -274,19 +288,19 @@ impl Ack {
                 1 => {
                     // DigestAndInfo
                     // Check if there are enough bytes to read the DigestAndInfo, which is 28 bytes
-                    // (24 bytes for the Digest and 4 bytes for the ApplicationState)
-                    if i + 28 > bytes.len() {
+                    // (24 bytes for the Digest and 8 bytes for the ApplicationState)
+                    if i + 32 > bytes.len() {
                         return Err(MessageError::InvalidLength(
                             "Incomplete DigestAndInfo in Ack".to_string(),
                         ));
                     }
 
                     let digest = Digest::from_bytes(bytes[i..i + 24].to_vec())?;
-                    let app_state = ApplicationState::from_bytes(bytes[i + 24..i + 28].to_vec())?;
+                    let app_state = ApplicationState::from_bytes(bytes[i + 24..i + 32].to_vec())?;
                     updated_info.insert(digest, app_state);
 
                     // If the DigestAndInfo was successfully read, move the index 28 bytes
-                    i += 28;
+                    i += 32;
                 }
                 _ => {
                     return Err(MessageError::InvalidValue(format!(
@@ -324,7 +338,9 @@ impl Ack2 {
     // +                   +
     // |                   |
     // +----+----+----+----+
-    // | application state |
+    // |                   |
+    // + application state +
+    // |                   |
     // +----+----+----+----+
     pub fn as_bytes(&self) -> Vec<u8> {
         let length = self.updated_info.len() * 32;
@@ -340,8 +356,8 @@ impl Ack2 {
     }
 
     /// Create an `Ack2` message from a byte array.
-    /// - The byte array must be a multiple of 32 bytes.
-    /// - Each 32 bytes chunk is a `Digest` followed by an `ApplicationState`.
+    /// - The byte array must be a multiple of 36 bytes.
+    /// - Each 36 bytes chunk is a `Digest` followed by an `ApplicationState`.
     /// - The first 4 bytes of each chunk is the `InfoType`.
     /// - The InfoType must be 1, which is DigestAndInfo.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, MessageError> {
@@ -372,18 +388,18 @@ impl Ack2 {
             i += 4;
 
             // Check if there are enough bytes to read the DigestAndInfo, which is 28 bytes
-            if i + 28 > bytes.len() {
+            if i + 32 > bytes.len() {
                 return Err(MessageError::InvalidLength(
                     "Incomplete DigestAndInfo in Ack2".to_string(),
                 ));
             }
 
             let digest = Digest::from_bytes(bytes[i..i + 24].to_vec())?;
-            let app_state = ApplicationState::from_bytes(bytes[i + 24..i + 28].to_vec())?;
+            let app_state = ApplicationState::from_bytes(bytes[i + 24..i + 32].to_vec())?;
             updated_info.insert(digest, app_state);
 
             // If the DigestAndInfo was successfully read, move the index 28 bytes
-            i += 28;
+            i += 32;
         }
 
         Ok(Ack2 { updated_info })
@@ -419,11 +435,15 @@ mod tests {
     fn application_state_as_bytes_ok() {
         let state = ApplicationState {
             status: NodeStatus::Normal,
+            version: 0xffffffff,
         };
 
         let state_bytes = state.as_bytes();
 
-        assert_eq!(state_bytes, [0x00, 0x00, 0x00, 0x01]);
+        assert_eq!(
+            state_bytes.to_vec(),
+            [0x00, 0x01, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,].to_vec()
+        );
     }
 
     #[test]
@@ -480,6 +500,7 @@ mod tests {
 
         let node3_state = ApplicationState {
             status: NodeStatus::Normal,
+            version: 0xffffffff,
         };
 
         let mut updated_info = HashMap::new();
@@ -517,6 +538,7 @@ mod tests {
 
         let node1_state = ApplicationState {
             status: NodeStatus::Normal,
+            version: 0xffffffff,
         };
 
         let node2 = Digest {
@@ -527,6 +549,7 @@ mod tests {
 
         let node2_state = ApplicationState {
             status: NodeStatus::Normal,
+            version: 0xffffffff,
         };
 
         let mut updated_info = HashMap::new();
@@ -625,6 +648,7 @@ mod tests {
 
         let expected_app_state = ApplicationState {
             status: NodeStatus::Removing,
+            version: 0xffffffff,
         };
 
         let state = ApplicationState::from_bytes(bytes).unwrap();
@@ -654,6 +678,7 @@ mod tests {
 
         let node3_state = ApplicationState {
             status: NodeStatus::Normal,
+            version: 0xffffffff,
         };
 
         let mut updated_info = HashMap::new();
@@ -682,7 +707,11 @@ mod tests {
         ]
         .to_vec();
 
-        let node3_state_bytes = [0x00, 0x00, 0x00, 0x01].to_vec();
+        let node3_state_bytes = [
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
+            0xff, 0xff,
+        ]
+        .to_vec();
 
         let ack_bytes = [
             [0x00; 4].to_vec(),
@@ -709,6 +738,7 @@ mod tests {
 
         let node1_state = ApplicationState {
             status: NodeStatus::Normal,
+            version: 0xffffffff,
         };
 
         let node2 = Digest {
@@ -719,6 +749,7 @@ mod tests {
 
         let node2_state = ApplicationState {
             status: NodeStatus::Normal,
+            version: 0xffffffff,
         };
 
         let mut updated_info = HashMap::new();
@@ -739,8 +770,8 @@ mod tests {
         ]
         .to_vec();
 
-        let node1_state_bytes = [0x00, 0x00, 0x00, 0x01].to_vec();
-        let node2_state_bytes = [0x00, 0x00, 0x00, 0x01].to_vec();
+        let node1_state_bytes = [0x00, 0x01, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff].to_vec();
+        let node2_state_bytes = [0x00, 0x01, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff].to_vec();
 
         let ack_bytes = [
             [0x00, 0x00, 0x00, 0x01].to_vec(),
