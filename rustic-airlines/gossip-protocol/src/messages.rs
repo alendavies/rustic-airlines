@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::Ipv4Addr};
+use std::{collections::HashMap, net::Ipv4Addr, time::SystemTime};
 
 #[derive(Debug)]
 enum MessageError {
@@ -8,13 +8,21 @@ enum MessageError {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-struct Digest {
+pub struct Digest {
     address: Ipv4Addr,
     generation: u128,
     version: u32,
 }
 
 impl Digest {
+    pub fn new(address: Ipv4Addr, generation: u128, version: u32) -> Self {
+        Digest {
+            address,
+            generation,
+            version,
+        }
+    }
+
     // 0    8    16   24   32
     // +----+----+----+----+
     // |    ip address     |
@@ -74,11 +82,15 @@ impl Digest {
 }
 
 #[derive(PartialEq, Debug)]
-struct Syn {
+pub struct Syn {
     digests: Vec<Digest>,
 }
 
 impl Syn {
+    pub fn new(digests: Vec<Digest>) -> Self {
+        Syn { digests }
+    }
+
     pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.digests.len() * 24);
 
