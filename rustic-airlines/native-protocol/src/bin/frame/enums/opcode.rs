@@ -1,4 +1,5 @@
-#[derive(Debug)]
+
+#[derive(Debug, Copy, Clone)]
 pub enum Opcode {
     Error = 0x00,
     Startup = 0x01,
