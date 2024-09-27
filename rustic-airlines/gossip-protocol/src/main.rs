@@ -1,7 +1,11 @@
+use messages::{Ack, Ack2, Digest, Syn};
 use rand::Rng;
 use std::collections::HashMap;
+use std::hash::Hash;
+use std::io::{Read, Write};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{thread, time::Duration};
 mod messages;
 
@@ -30,6 +34,48 @@ impl Cluster {
     fn remove_node(&mut self, ip: String) {
         self.nodes.remove(&ip);
     }
+}
+
+fn gossip(endpoint_states: HashMap<Ipv4Addr, EndpointState>, ip: Ipv4Addr) {
+    let mut socket = TcpStream::connect(SocketAddr::new(IpAddr::V4(ip), 8080)).unwrap();
+
+    let digests: Vec<Digest> = endpoint_states
+        .iter()
+        .map(|(ip, state)| {
+            Digest::new(
+                *ip,
+                state
+                    .heartbeat_state
+                    .lock()
+                    .unwrap()
+                    .generation
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+                state.heartbeat_state.lock().unwrap().version,
+            )
+        })
+        .collect();
+
+    let syn = Syn::new(digests);
+
+    socket.write(&syn.as_bytes()).unwrap();
+
+    let mut buff = [0; 2048];
+
+    socket.read(&mut buff).unwrap();
+
+    let ack = Ack::from_bytes(buff.to_vec()).unwrap();
+
+    // comparar lo que vino en el ack con lo que tengo
+    // actualizar lo que tengo con lo que vino en el ack
+
+    // crear ack2 con la info pedida
+    let updated_info = HashMap::new();
+
+    let ack2 = Ack2::new(updated_info);
+
+    socket.write(&ack2.as_bytes()).unwrap();
 }
 
 #[derive(Debug, Clone)]
@@ -191,7 +237,7 @@ impl EndpointState {
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HeartbeatState {
     generation: SystemTime,
-    version: u64,
+    version: u32,
 }
 
 impl HeartbeatState {
