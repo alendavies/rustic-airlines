@@ -1,0 +1,11 @@
+[package]
+name = "node"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Tus dependencias aquí
+
+[[bin]]
+name = "node"
+path = "src/bin/node.rs"
