@@ -260,40 +260,4 @@ impl ApplicationState {
     }
 }
 
-fn main() {
-    let endpoint = EndpointState::new();
-
-    let mut node_1 = Node::new(String::from("127.0.0.1"));
-    let mut node_2 = Node::new(String::from("127.0.0.2"));
-    let mut node_3 = Node::new(String::from("127.0.0.3"));
-    let mut node_4 = Node::new(String::from("127.0.0.4"));
-    let mut node_5 = Node::new(String::from("127.0.0.5"));
-    let mut node_6 = Node::new(String::from("127.0.0.6"));
-    let mut node_7 = Node::new(String::from("127.0.0.7"));
-
-    // let mut cluster = Cluster::new(vec![node_1, node_2, node_3, node_4, node_5, node_6]);
-
-    let mut gossip = Gossiper::new(HashMap::new());
-
-    thread::sleep(Duration::from_secs(2));
-    gossip.lock().unwrap().cluster.add_node(node_7);
-    //println!("{:?}", gossip.lock().unwrap().cluster);
-    thread::sleep(Duration::from_secs(2));
-    gossip
-        .lock()
-        .unwrap()
-        .cluster
-        .remove_node(String::from("127.0.0.1"));
-    gossip
-        .lock()
-        .unwrap()
-        .cluster
-        .remove_node(String::from("127.0.0.2"));
-    gossip
-        .lock()
-        .unwrap()
-        .cluster
-        .remove_node(String::from("127.0.0.3"));
-    thread::sleep(Duration::from_secs(2));
-    thread::sleep(Duration::from_secs(2));
-}
+fn main() {}
