@@ -1,9 +1,8 @@
-use std::io::{stdin, BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
-use std::thread;
-use std::collections::HashMap;
 mod frame;
 use crate::frame::frame::Frame;
+use crate::frame::frame_builder::{create_auth_response_frame, create_startup_frame};
 use crate::frame::header::FrameHeader;
 
 fn main() -> Result<(), ()> {
@@ -32,7 +31,7 @@ fn main() -> Result<(), ()> {
     Ok(())
 }
 
-/// Enviar Frame
+/// Send frame
 pub fn client_send(mut socket: TcpStream, frame: Frame) -> std::io::Result<()> {
 
     let serialized_frame = frame.to_bytes();
@@ -43,7 +42,7 @@ pub fn client_send(mut socket: TcpStream, frame: Frame) -> std::io::Result<()> {
 }
 
 
-/// Recibir frame
+/// Receive frame
 pub fn client_receive(socket: TcpStream) -> std::io::Result<Frame> {
     let mut reader = BufReader::new(socket);
 
@@ -61,4 +60,27 @@ pub fn client_receive(socket: TcpStream) -> std::io::Result<Frame> {
 
     let frame = Frame::new(header, body);
     Ok(frame)
+}
+
+fn send_startup(socket: TcpStream) -> std::io::Result<()> {
+
+    let startup_frame = create_startup_frame();
+
+    // Send STARTUP Frame
+    client_send(socket, startup_frame)?;
+    println!("Sent STARTUP message");
+
+    Ok(())
+}
+
+
+fn send_auth_response(socket: TcpStream) -> std::io::Result<()> {
+    let auth_body = String::from("my_auth_token"); // Example auth token
+
+    let auth_response_frame = create_auth_response_frame(auth_body);
+
+    client_send(socket, auth_response_frame)?;
+    println!("Sent AUTH_RESPONSE message");
+
+    Ok(())
 }

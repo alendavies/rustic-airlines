@@ -1,6 +1,8 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum ClientState {
     Startup,
     Authentication,
     Authenticated,
 }
+
+fn main() {}
