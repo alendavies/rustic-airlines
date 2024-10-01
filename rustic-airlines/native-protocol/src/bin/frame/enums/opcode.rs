@@ -41,4 +41,8 @@ impl Opcode {
             _ => None,  // Retorna None si no coincide con ningún opcode válido
         }
     }
+
+    pub fn to_byte(&self) -> u8 {
+        *self as u8
+    }
 }
