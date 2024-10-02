@@ -9,9 +9,9 @@ pub enum MessageError {
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Digest {
-    address: Ipv4Addr,
-    generation: u128,
-    version: u32,
+    pub address: Ipv4Addr,
+    pub generation: u128,
+    pub version: u32,
 }
 
 impl Digest {
@@ -83,7 +83,7 @@ impl Digest {
 
 #[derive(PartialEq, Debug)]
 pub struct Syn {
-    digests: Vec<Digest>,
+    pub digests: Vec<Digest>,
 }
 
 impl Syn {
@@ -132,8 +132,8 @@ enum NodeStatus {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct ApplicationState {
-    status: NodeStatus,
-    version: u32,
+    pub status: NodeStatus,
+    pub version: u32,
 }
 
 impl ApplicationState {
@@ -200,8 +200,8 @@ enum InfoType {
 
 #[derive(Debug, PartialEq)]
 pub struct Ack {
-    stale_digests: Vec<Digest>,
-    updated_info: HashMap<Digest, ApplicationState>,
+    pub stale_digests: Vec<Digest>,
+    pub updated_info: HashMap<Digest, ApplicationState>,
 }
 
 impl Ack {
@@ -237,6 +237,17 @@ impl Ack {
     // +----+----+----+----+
     // | application state |
     // +----+----+----+----+
+
+    pub fn new(
+        stale_digests: Vec<Digest>,
+        updated_info: HashMap<Digest, ApplicationState>,
+    ) -> Self {
+        Ack {
+            stale_digests,
+            updated_info,
+        }
+    }
+
     pub fn as_bytes(&self) -> Vec<u8> {
         let length = self.stale_digests.len() * 28 + self.updated_info.len() * 32;
         let mut bytes = Vec::with_capacity(length);
@@ -332,7 +343,7 @@ impl Ack {
 
 #[derive(Debug, PartialEq)]
 pub struct Ack2 {
-    updated_info: HashMap<Digest, ApplicationState>,
+    pub updated_info: HashMap<Digest, ApplicationState>,
 }
 
 impl Ack2 {
