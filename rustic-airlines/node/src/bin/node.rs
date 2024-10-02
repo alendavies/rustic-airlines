@@ -8,7 +8,6 @@ use partitioner::Partitioner;
 
 struct Node {
     ip: Ipv4Addr,
-    nodes_that_knows: Vec<Ipv4Addr>,
     seeds_node: Vec<Ipv4Addr>,
     port: u16,
     partitioner: Partitioner,
@@ -20,7 +19,6 @@ impl Node {
         partitioner.add_node(ip);
         Node {
             ip,
-            nodes_that_knows: vec![],
             seeds_node: vec![Ipv4Addr::from_str("127.0.0.1").expect("No se pudo crear la semilla")],
             port: 0,
             partitioner,
@@ -64,7 +62,6 @@ impl Node {
             if !is_seed {
                 println!("El nodo NO es semilla");
                 if let Ok(mut stream) = node_guard.connect(node_guard.seeds_node[0], Arc::clone(&connections)) {
-                    node_guard.nodes_that_knows.push(seed_ip);
                     node_guard.partitioner.add_node(seed_ip);
                     let message = node_guard.ip.to_string();
                     node_guard.send_message(&mut stream, &message)?;
@@ -136,8 +133,7 @@ impl Node {
             let client_ip = Ipv4Addr::from_str(&buffer.trim()).unwrap();
 
             if lock_node.get_ip() != client_ip {
-                if !lock_node.nodes_that_knows.contains(&client_ip) {
-                    lock_node.nodes_that_knows.push(client_ip);
+                if !lock_node.partitioner.contains_node(&client_ip) {
                     lock_node.partitioner.add_node(client_ip);
                 }
             }
@@ -165,6 +161,7 @@ impl Node {
         let mut reader = BufReader::new(stream.try_clone()?);
         let mut buffer = String::new();
 
+        
         loop {
             buffer.clear();
             let bytes_read = reader.read_line(&mut buffer)?;
@@ -174,20 +171,22 @@ impl Node {
             }
 
             let new_ip = Ipv4Addr::from_str(&buffer.trim()).unwrap();
+            let self_ip: Ipv4Addr = node.lock().unwrap().get_ip();
             let nodes_that_knows;
             {
+                
                 let mut lock_node = node.lock().unwrap();
-                if lock_node.get_ip() != new_ip {
-                    if !lock_node.nodes_that_knows.contains(&new_ip) {
-                        lock_node.nodes_that_knows.push(new_ip);
+                let self_ip = lock_node.get_ip();
+                if self_ip != new_ip {
+                    if !lock_node.partitioner.contains_node(&new_ip) {
                         lock_node.partitioner.add_node(new_ip);
                     }
                 }
-                nodes_that_knows = lock_node.nodes_that_knows.clone();
+                nodes_that_knows = lock_node.partitioner.get_nodes();
             }
 
             for ip in &nodes_that_knows {
-                if new_ip != *ip {
+                if new_ip.to_string() != ip.to_string() && self_ip.to_string() != ip.to_string(){
                     node.lock().unwrap().forward_message(Arc::clone(&connections), new_ip, *ip)?;
                     node.lock().unwrap().forward_message(Arc::clone(&connections), *ip, new_ip)?;
                 }

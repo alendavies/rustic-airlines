@@ -60,7 +60,7 @@ impl Partitioner {
 
 
     /// Verifica si una IP ya pertenece al Partitioner
-    pub fn contains_node(&self, ip: Ipv4Addr) -> bool {
+    pub fn contains_node(&self, ip: &Ipv4Addr) -> bool {
         let hash = Self::hash_value(ip.octets());
         self.nodes.contains_key(&hash)
     }
@@ -159,7 +159,7 @@ mod tests {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1));
 
-        assert!(partitioner.contains_node(Ipv4Addr::new(192, 168, 0, 1)));
-        assert!(!partitioner.contains_node(Ipv4Addr::new(192, 168, 0, 2)));
+        assert!(partitioner.contains_node(&Ipv4Addr::new(192, 168, 0, 1)));
+        assert!(!partitioner.contains_node(&Ipv4Addr::new(192, 168, 0, 2)));
     }
 }
