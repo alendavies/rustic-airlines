@@ -1,4 +1,4 @@
-use std::{env, vec};
+use std::{clone, env, vec};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, TcpListener, TcpStream, SocketAddrV4};
 use std::str::FromStr;
@@ -14,12 +14,12 @@ struct Node {
 }
 
 impl Node {
-    pub fn new(ip: Ipv4Addr) -> Node {
+    pub fn new(ip: Ipv4Addr, seeds_node: Vec<Ipv4Addr>) -> Node {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip);
         Node {
             ip,
-            seeds_node: vec![Ipv4Addr::from_str("127.0.0.1").expect("No se pudo crear la semilla")],
+            seeds_node,
             port: 0,
             partitioner,
         }
@@ -63,7 +63,7 @@ impl Node {
                 println!("El nodo NO es semilla");
                 if let Ok(mut stream) = node_guard.connect(node_guard.seeds_node[0], Arc::clone(&connections)) {
                     node_guard.partitioner.add_node(seed_ip);
-                    let message = node_guard.ip.to_string();
+                    let message = format!("IP {}", node_guard.ip.to_string());
                     node_guard.send_message(&mut stream, &message)?;
                 }
             } else {
@@ -84,13 +84,7 @@ impl Node {
                     let connections_clone = Arc::clone(&connections);
 
                     thread::spawn(move || {
-                        if is_seed {
-                            Node::handle_incoming_messages_like_seed(node_clone, stream_clone, Arc::clone(&connections_clone))
-                                .expect("Error al manejar mensajes entrantes");
-                        } else {
-                            Node::handle_incoming_messages(node_clone, stream_clone)
-                                .expect("Error al manejar mensajes entrantes");
-                        }
+                        Node::handle_incoming_messages(node_clone, stream_clone, connections_clone, is_seed).unwrap();
                     });
                 }
                 Err(e) => {
@@ -117,10 +111,15 @@ impl Node {
         Ok(())
     }
 
-    pub fn handle_incoming_messages(node: Arc<Mutex<Node>>, stream: TcpStream) -> std::io::Result<()> {
+    pub fn handle_incoming_messages(
+        node: Arc<Mutex<Node>>,
+        stream: TcpStream,
+        connections: Arc<Mutex<Vec<TcpStream>>>,
+        is_seed: bool,
+    ) -> std::io::Result<()> {
         let mut reader = BufReader::new(stream.try_clone()?);
         let mut buffer = String::new();
-
+    
         loop {
             buffer.clear();
             let bytes_read = reader.read_line(&mut buffer)?;
@@ -128,20 +127,65 @@ impl Node {
                 println!("Conexión cerrada por el peer.");
                 break;
             }
-
-            let mut lock_node = node.lock().unwrap();
-            let client_ip = Ipv4Addr::from_str(&buffer.trim()).unwrap();
-
-            if lock_node.get_ip() != client_ip {
-                if !lock_node.partitioner.contains_node(&client_ip) {
-                    lock_node.partitioner.add_node(client_ip);
+    
+            let tokens: Vec<&str> = buffer.trim().split_whitespace().collect();
+            if tokens.is_empty() {
+                continue;
+            }
+    
+            let command = tokens[0];
+            let self_ip: Ipv4Addr = node.lock().unwrap().get_ip();
+    
+            match command {
+                "IP" => {
+                    let new_ip = Ipv4Addr::from_str(tokens[1]).unwrap();
+                    let nodes_that_knows;
+    
+                    {
+                        let mut lock_node = node.lock().unwrap();
+                        if self_ip != new_ip {
+                            if !lock_node.partitioner.contains_node(&new_ip) {
+                                lock_node.partitioner.add_node(new_ip);
+                            }
+                        }
+                        nodes_that_knows = lock_node.partitioner.get_nodes();
+                    }
+    
+                    if is_seed {
+                        // Si es un nodo semilla, reenvía el mensaje a otros nodos
+                        for ip in &nodes_that_knows {
+                            if new_ip != *ip && self_ip != *ip {
+                                node.lock().unwrap().forward_message(Arc::clone(&connections), new_ip, *ip)?;
+                                node.lock().unwrap().forward_message(Arc::clone(&connections), *ip, new_ip)?;
+                            }
+                        }
+                    }
+                    println!("IP {} añadida al particionador", new_ip);
+                },
+                "PING" => {
+                    println!("Recibido PING de {}", stream.peer_addr()?);
+                    let response = format!("PONG desde {}", self_ip);
+                    node.lock().unwrap().send_message(&mut stream.try_clone()?, &response)?;
+                },
+                "DATA" => {
+                    if tokens.len() > 1 {
+                        let data = tokens[1..].join(" ");
+                        println!("Recibido DATA: {}", data);
+                        // Aquí puedes realizar otras acciones con los datos recibidos.
+                    } else {
+                        println!("Comando DATA recibido sin contenido.");
+                    }
+                },
+                _ => {
+                    println!("Comando desconocido: {}", command);
                 }
             }
         }
-
+    
         Ok(())
     }
-
+    
+    
     fn forward_message(
         &self,
         connections: Arc<Mutex<Vec<TcpStream>>>,
@@ -149,52 +193,12 @@ impl Node {
         target_ip: Ipv4Addr,
     ) -> std::io::Result<()> {
         let mut tcp = self.connect(target_ip, Arc::clone(&connections))?;
-        self.send_message(&mut tcp, &new_ip.to_string())?;
+        let message = format!("IP {}", new_ip.to_string());
+        self.send_message(&mut tcp, &message)?;
         Ok(())
     }
 
-    pub fn handle_incoming_messages_like_seed(
-        node: Arc<Mutex<Node>>,
-        stream: TcpStream,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-    ) -> std::io::Result<()> {
-        let mut reader = BufReader::new(stream.try_clone()?);
-        let mut buffer = String::new();
-
-        
-        loop {
-            buffer.clear();
-            let bytes_read = reader.read_line(&mut buffer)?;
-            if bytes_read == 0 {
-                println!("Conexión cerrada por el peer.");
-                break;
-            }
-
-            let new_ip = Ipv4Addr::from_str(&buffer.trim()).unwrap();
-            let self_ip: Ipv4Addr = node.lock().unwrap().get_ip();
-            let nodes_that_knows;
-            {
-                
-                let mut lock_node = node.lock().unwrap();
-                let self_ip = lock_node.get_ip();
-                if self_ip != new_ip {
-                    if !lock_node.partitioner.contains_node(&new_ip) {
-                        lock_node.partitioner.add_node(new_ip);
-                    }
-                }
-                nodes_that_knows = lock_node.partitioner.get_nodes();
-            }
-
-            for ip in &nodes_that_knows {
-                if new_ip.to_string() != ip.to_string() && self_ip.to_string() != ip.to_string(){
-                    node.lock().unwrap().forward_message(Arc::clone(&connections), new_ip, *ip)?;
-                    node.lock().unwrap().forward_message(Arc::clone(&connections), *ip, new_ip)?;
-                }
-            }
-        }
-
-        Ok(())
-    }
+    
 }
 
 fn main() -> Result<(), String> {
@@ -205,7 +209,7 @@ fn main() -> Result<(), String> {
     }
 
     let node_ip = Ipv4Addr::from_str(&args[1]).map_err(|_| "IP no válida".to_string())?;
-    let node = Arc::new(Mutex::new(Node::new(node_ip)));
+    let node = Arc::new(Mutex::new(Node::new(node_ip, vec![Ipv4Addr::from_str("127.0.0.1").expect("No se pudo crear la semilla")])));
     let connections = Arc::new(Mutex::new(Vec::new()));
     Node::start(Arc::clone(&node), 8080, Arc::clone(&connections)).map_err(|e| e.to_string())?;
     Ok(())
