@@ -1,9 +1,7 @@
-[package]
-name = "rustic-airlines"
-version = "0.1.0"
-edition = "2021"
-
 [workspace]
-members = ["gossip-protocol", "query-coordinator"]
+members = [
+    "gossip-protocol",
+    "node",
+    "partitioner"
+]
 
-[dependencies]
