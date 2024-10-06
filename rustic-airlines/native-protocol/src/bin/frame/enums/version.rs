@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Version {
     RequestV3 = 0x03,    // Request frame for this protocol version
     ResponseV3 = 0x83,   // Response frame for this protocol version

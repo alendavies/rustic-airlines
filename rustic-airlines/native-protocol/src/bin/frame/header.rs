@@ -1,3 +1,6 @@
+use crate::frame::enums::opcode::Opcode;
+use crate::frame::enums::version::Version;
+
 #[derive(Debug)]
 pub struct FrameHeader {
     version: Version,     // Usamos el enum Version
@@ -21,16 +24,16 @@ impl FrameHeader {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buffer = Vec::new();
 
-        buffer.push(self.version.clone() as u8);
+        buffer.push(self.version as u8);
         buffer.push(self.flags);
         buffer.extend_from_slice(&self.stream.to_be_bytes());
-        buffer.push(self.opcode.clone() as u8);
+        buffer.push(self.opcode as u8);
         buffer.extend_from_slice(&self.body_length.to_be_bytes());
 
         buffer
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, &str> {
         if bytes.len() < 8 {
             return Err("El buffer es demasiado pequeño para un FrameHeader");
         }
@@ -55,5 +58,13 @@ impl FrameHeader {
             opcode,
             body_length,
         })
+    }
+
+    pub fn opcode(&self) -> &Opcode {
+        &self.opcode
+    }
+
+    pub fn body_length(&self) -> &u32 {
+        &self.body_length
     }
 }

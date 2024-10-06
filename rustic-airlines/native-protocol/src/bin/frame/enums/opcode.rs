@@ -1,4 +1,5 @@
-#[derive(Debug)]
+
+#[derive(Debug, Copy, Clone)]
 pub enum Opcode {
     Error = 0x00,
     Startup = 0x01,
@@ -39,5 +40,9 @@ impl Opcode {
             0x10 => Some(Opcode::AuthSuccess),
             _ => None,  // Retorna None si no coincide con ningún opcode válido
         }
+    }
+
+    pub fn to_byte(&self) -> u8 {
+        *self as u8
     }
 }
