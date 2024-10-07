@@ -1,5 +1,5 @@
 use super::where_sql::Where;
-use crate::errors::SqlError;
+use crate::errors::CQLError;
 use crate::utils::{is_delete, is_from, is_where};
 
 /// Struct that represents the `DELETE` SQL clause.
@@ -46,9 +46,9 @@ impl Delete {
     /// );
     /// ```
     ///
-    pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, SqlError> {
+    pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 3 {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
         let mut where_tokens: Vec<&str> = Vec::new();
 
@@ -57,7 +57,7 @@ impl Delete {
 
         while i < tokens.len() {
             if i == 0 && !is_delete(&tokens[i]) || i == 1 && !is_from(&tokens[i]) {
-                return Err(SqlError::InvalidSyntax);
+                return Err(CQLError::InvalidSyntax);
             }
             if i == 1 && is_from(&tokens[i]) && i + 1 < tokens.len() {
                 table_name = tokens[i + 1].to_string();
@@ -73,7 +73,7 @@ impl Delete {
         }
 
         if table_name.is_empty() {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
 
         let mut where_clause = None;
@@ -95,7 +95,7 @@ mod tests {
     use super::Delete;
     use crate::{
         clauses::{condition::Condition, where_sql::Where},
-        errors::SqlError,
+        errors::CQLError,
         operator::Operator,
     };
 
@@ -103,14 +103,14 @@ mod tests {
     fn new_1_token() {
         let tokens = vec![String::from("DELETE")];
         let delete = Delete::new_from_tokens(tokens);
-        assert_eq!(delete, Err(SqlError::InvalidSyntax));
+        assert_eq!(delete, Err(CQLError::InvalidSyntax));
     }
 
     #[test]
     fn new_2_token() {
         let tokens = vec![String::from("DELETE"), String::from("FROM")];
         let delete = Delete::new_from_tokens(tokens);
-        assert_eq!(delete, Err(SqlError::InvalidSyntax));
+        assert_eq!(delete, Err(CQLError::InvalidSyntax));
     }
 
     #[test]
@@ -139,7 +139,7 @@ mod tests {
             String::from("WHERE"),
         ];
         let delete = Delete::new_from_tokens(tokens);
-        assert_eq!(delete, Err(SqlError::InvalidSyntax));
+        assert_eq!(delete, Err(CQLError::InvalidSyntax));
     }
 
     #[test]

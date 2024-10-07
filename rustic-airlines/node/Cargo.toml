@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 # Dependencias específicas para el crate `node`
 partitioner = { path = "../partitioner" }  # Ejemplo de cómo referenciar la librería `partitioner`
+query-coordinator = { path = "../query-coordinator" }  # Ejemplo de cómo referenciar la librería `partitioner`

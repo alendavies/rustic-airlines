@@ -1,5 +1,5 @@
-mod clauses;
-mod errors;
+pub mod clauses;
+pub mod errors;
 mod logical_operator;
 mod operator;
 mod utils;
@@ -8,7 +8,9 @@ use clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update
 use clauses::table::{create_table_cql::CreateTable, drop_table_cql::DropTable, alter_table_cql::AlterTable};
 use errors::SqlError;
 
-enum Query {
+
+#[derive(Debug)]  // Derivar Debug para Query
+pub enum Query {
     Select(Select),
     Insert(Insert),
     Update(Update),
@@ -18,10 +20,16 @@ enum Query {
     AlterTable(AlterTable)
 }
 
-struct QueryCoordinator;
+#[derive(Debug)]  // Agrega Debug también al QueryCoordinator si lo necesitas
+pub struct QueryCoordinator;
 
 impl QueryCoordinator {
-    pub fn handle_query(self, query: String) -> Result<Query, SqlError> {
+
+    pub fn new() -> QueryCoordinator {
+        QueryCoordinator {}
+    }
+
+    pub fn handle_query(self, query: String) -> Result<Query, CQLError> {
         let tokens = self.tokens_from_query(&query);
 
         match tokens[0].as_str() {

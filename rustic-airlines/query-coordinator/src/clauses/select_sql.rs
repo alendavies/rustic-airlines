@@ -1,6 +1,6 @@
 use super::{orderby_sql::OrderBy, where_sql::Where};
 use crate::{
-    errors::SqlError,
+    errors::CQLError,
     utils::{is_by, is_from, is_order, is_select, is_where},
 };
 
@@ -22,7 +22,7 @@ pub struct Select {
     pub orderby_clause: Option<OrderBy>,
 }
 
-fn parse_columns<'a>(tokens: &'a [String], i: &mut usize) -> Result<Vec<&'a String>, SqlError> {
+fn parse_columns<'a>(tokens: &'a [String], i: &mut usize) -> Result<Vec<&'a String>, CQLError> {
     let mut columns = Vec::new();
     if is_select(&tokens[*i]) {
         if *i < tokens.len() {
@@ -33,26 +33,26 @@ fn parse_columns<'a>(tokens: &'a [String], i: &mut usize) -> Result<Vec<&'a Stri
             }
         }
     } else {
-        return Err(SqlError::InvalidSyntax);
+        return Err(CQLError::InvalidSyntax);
     }
     Ok(columns)
 }
 
-fn parse_table_name(tokens: &[String], i: &mut usize) -> Result<String, SqlError> {
+fn parse_table_name(tokens: &[String], i: &mut usize) -> Result<String, CQLError> {
     if *i < tokens.len() && is_from(&tokens[*i]) {
         *i += 1;
         let table_name = tokens[*i].to_string();
         *i += 1;
         Ok(table_name)
     } else {
-        Err(SqlError::InvalidSyntax)
+        Err(CQLError::InvalidSyntax)
     }
 }
 
 fn parse_where_and_orderby<'a>(
     tokens: &'a [String],
     i: &mut usize,
-) -> Result<(Vec<&'a str>, Vec<&'a str>), SqlError> {
+) -> Result<(Vec<&'a str>, Vec<&'a str>), CQLError> {
     let mut where_tokens = Vec::new();
     let mut orderby_tokens = Vec::new();
 
@@ -88,9 +88,9 @@ impl Select {
     ///
     /// The `columns` should be comma-separated.
     ///
-    pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, SqlError> {
+    pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 4 {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
 
         let mut i = 0;
@@ -99,7 +99,7 @@ impl Select {
         let table_name = parse_table_name(&tokens, &mut i)?;
 
         if columns.is_empty() || table_name.is_empty() {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
 
         let (where_tokens, orderby_tokens) = parse_where_and_orderby(&tokens, &mut i)?;
@@ -131,7 +131,7 @@ mod tests {
     use super::Select;
     use crate::{
         clauses::{condition::Condition, orderby_sql::OrderBy},
-        errors::SqlError,
+        errors::CQLError,
         operator::Operator,
     };
 
@@ -139,14 +139,14 @@ mod tests {
     fn new_1_tokens() {
         let tokens = vec![String::from("SELECT")];
         let select = Select::new_from_tokens(tokens);
-        assert_eq!(select, Err(SqlError::InvalidSyntax));
+        assert_eq!(select, Err(CQLError::InvalidSyntax));
     }
 
     #[test]
     fn new_2_tokens() {
         let tokens = vec![String::from("SELECT"), String::from("col")];
         let select = Select::new_from_tokens(tokens);
-        assert_eq!(select, Err(SqlError::InvalidSyntax));
+        assert_eq!(select, Err(CQLError::InvalidSyntax));
     }
     #[test]
     fn new_3_tokens() {
@@ -156,7 +156,7 @@ mod tests {
             String::from("FROM"),
         ];
         let select = Select::new_from_tokens(tokens);
-        assert_eq!(select, Err(SqlError::InvalidSyntax));
+        assert_eq!(select, Err(CQLError::InvalidSyntax));
     }
 
     #[test]
