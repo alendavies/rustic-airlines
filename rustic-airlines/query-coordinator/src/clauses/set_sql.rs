@@ -1,4 +1,4 @@
-use crate::{errors::SqlError, utils::is_set};
+use crate::{errors::CQLError, utils::is_set};
 
 /// Struct representing the `SET` SQL clause.
 ///
@@ -30,12 +30,12 @@ impl Set {
     /// assert_eq!(set_from_tokens, set_clause);
     /// ```
     ///
-    pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, SqlError> {
+    pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, CQLError> {
         let mut set = Vec::new();
         let mut i = 0;
 
         if !is_set(tokens[i]) || !tokens.contains(&"=") {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
         i += 1;
 

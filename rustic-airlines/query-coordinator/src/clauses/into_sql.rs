@@ -1,4 +1,4 @@
-use crate::{errors::SqlError, utils::is_into};
+use crate::{errors::CQLError, utils::is_into};
 
 /// Struct that represents the `INTO` SQL clause.
 /// The `INTO` clause is used to specify the table name and columns in the `INSERT` clause.
@@ -24,9 +24,9 @@ impl Into {
     /// The tokens should be in the following order: `INTO`, `table_name`, `columns`.
     /// The `columns` should be comma-separated and between parentheses.
     ///
-    pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, SqlError> {
+    pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, CQLError> {
         if tokens.len() < 3 {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
         let mut i = 0;
         let table_name;
@@ -43,7 +43,7 @@ impl Into {
                 columns.push(col);
             }
         } else {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
 
         Ok(Self {

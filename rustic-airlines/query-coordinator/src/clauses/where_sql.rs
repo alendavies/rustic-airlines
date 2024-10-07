@@ -1,5 +1,5 @@
 use super::{condition::Condition, recursive_parser::parse_condition};
-use crate::errors::SqlError;
+use crate::errors::CQLError;
 
 /// Struct representing the `WHERE` SQL clause.
 ///
@@ -39,9 +39,9 @@ impl Where {
     /// assert_eq!(where_from_tokens, where_clause);
     /// ```
     ///
-    pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, SqlError> {
+    pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, CQLError> {
         if tokens.len() < 4 {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
         let mut pos = 1;
         let condition = parse_condition(&tokens, &mut pos)?;

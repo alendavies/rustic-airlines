@@ -1,6 +1,6 @@
 use super::condition::Condition;
 use crate::{
-    errors::SqlError,
+    errors::CQLError,
     logical_operator::LogicalOperator,
     utils::{is_and, is_left_paren, is_not, is_or, is_right_paren},
 };
@@ -50,7 +50,7 @@ use crate::{
 ///     });
 /// ```
 ///
-pub fn parse_condition(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition, SqlError> {
+pub fn parse_condition(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition, CQLError> {
     let mut left = parse_or(tokens, pos)?;
 
     while let Some(token) = tokens.get(*pos) {
@@ -65,7 +65,7 @@ pub fn parse_condition(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition,
     Ok(left)
 }
 
-fn parse_or(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition, SqlError> {
+fn parse_or(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition, CQLError> {
     let mut left = parse_and(tokens, pos)?;
 
     while let Some(token) = tokens.get(*pos) {
@@ -80,7 +80,7 @@ fn parse_or(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition, SqlError> 
     Ok(left)
 }
 
-fn parse_and(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition, SqlError> {
+fn parse_and(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition, CQLError> {
     if let Some(token) = tokens.get(*pos) {
         if is_not(token) {
             *pos += 1;
@@ -94,24 +94,24 @@ fn parse_and(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition, SqlError>
     }
 }
 
-fn parse_base(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition, SqlError> {
+fn parse_base(tokens: &Vec<&str>, pos: &mut usize) -> Result<Condition, CQLError> {
     if let Some(token) = tokens.get(*pos) {
         if is_left_paren(token) {
             *pos += 1;
             let expr = parse_condition(tokens, pos)?;
-            let next_token = tokens.get(*pos).ok_or(SqlError::Error)?;
+            let next_token = tokens.get(*pos).ok_or(CQLError::Error)?;
             if is_right_paren(next_token) {
                 *pos += 1;
                 Ok(expr)
             } else {
-                Err(SqlError::Error)
+                Err(CQLError::Error)
             }
         } else {
             let simple_condition = Condition::new_simple_from_tokens(tokens, pos)?;
             Ok(simple_condition)
         }
     } else {
-        Err(SqlError::Error)
+        Err(CQLError::Error)
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::{
-    errors::SqlError,
+    errors::CQLError,
     utils::{is_by, is_order},
 };
 
@@ -39,9 +39,9 @@ impl OrderBy {
     /// assert_eq!(order_by., OrderBy { columns: vec!["name".to_string()], order: "DESC".to_string() });
     /// ```
     ///
-    pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, SqlError> {
+    pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, CQLError> {
         if tokens.len() < 3 {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
 
         let mut columns = Vec::new();
@@ -49,7 +49,7 @@ impl OrderBy {
         let mut i = 0;
 
         if !is_order(tokens[i]) && !is_by(tokens[i + 1]) {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
 
         i += 2;
