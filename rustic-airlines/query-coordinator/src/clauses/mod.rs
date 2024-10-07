@@ -8,3 +8,15 @@ pub mod select_sql;
 pub mod set_sql;
 pub mod update_sql;
 pub mod where_sql;
+
+pub mod table {
+    pub mod create_table_cql;
+    pub mod drop_table_cql;
+    pub mod alter_table_cql;
+}
+
+pub mod types {
+    pub mod column;
+    pub mod datatype;
+    pub mod alter_table_op;
+}

@@ -5,6 +5,7 @@ mod operator;
 mod utils;
 
 use clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update};
+use clauses::table::{create_table_cql::CreateTable, drop_table_cql::DropTable, alter_table_cql::AlterTable};
 use errors::SqlError;
 
 enum Query {
@@ -12,6 +13,9 @@ enum Query {
     Insert(Insert),
     Update(Update),
     Delete(Delete),
+    CreateTable(CreateTable),
+    DropTable(DropTable),
+    AlterTable(AlterTable)
 }
 
 struct QueryCoordinator;
@@ -36,6 +40,36 @@ impl QueryCoordinator {
             "UPDATE" => {
                 let update = Update::new_from_tokens(tokens)?;
                 Ok(Query::Update(update))
+            }
+            "CREATE" => {
+                match tokens[1].as_str() {
+                    "TABLE" => {
+                        let create_table = CreateTable::new_from_tokens(tokens)?;
+                        Ok(Query::CreateTable(create_table))
+                    }
+                    //"KEYSPACE" => {
+                    //    
+                    //}
+                    _ => Err(SqlError::InvalidSyntax),
+                }                                        
+            }
+            "DROP" => {
+                match tokens[1].as_str() {
+                    "TABLE" => {
+                        let drop_table = DropTable::new_from_tokens(tokens)?;
+                        Ok(Query::DropTable(drop_table))
+                    }                   
+                    _ => Err(SqlError::InvalidSyntax),
+                }                                        
+            }
+            "ALTER" => {
+                match tokens[1].as_str() {
+                    "TABLE" => {
+                        let alter_table = AlterTable::new_from_tokens(tokens)?;
+                        Ok(Query::AlterTable(alter_table))
+                    }                   
+                    _ => Err(SqlError::InvalidSyntax),
+                }                                        
             }
             _ => Err(SqlError::InvalidSyntax),
         }
