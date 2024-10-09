@@ -14,6 +14,7 @@ enum ConsistencyCode {
     LocalOne = 0x000A,
 }
 
+#[derive(Debug, PartialEq)]
 enum Consistency {
     Any,
     One,
@@ -75,6 +76,7 @@ enum FlagCode {
     WithNamesForValues = 0x40,
 }
 
+#[derive(Debug, PartialEq)]
 enum Flag {
     /// If set, a [short] <n> followed by <n> [value]
     /// values are provided. Those values are used for bound variables in
@@ -105,6 +107,7 @@ enum Flag {
     WithNamesForValues,
 }
 
+#[derive(PartialEq, Debug)]
 struct QueryParams {
     /// Is the consistency level for the operation.
     consistency: Consistency,
@@ -160,6 +163,7 @@ impl QueryParams {
     }
 }
 
+#[derive(PartialEq, Debug)]
 struct Query {
     query: String,
     params: QueryParams,
@@ -239,5 +243,106 @@ impl Query {
         let params = QueryParams { consistency, flags };
 
         Query { query, params }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query_to_bytes_ok() {
+        let query = "SELECT * FROM users WHERE id = 2".to_string();
+        let params = QueryParams {
+            consistency: Consistency::Quorum,
+            flags: vec![Flag::Values, Flag::PageSize],
+        };
+
+        let query_message = Query {
+            query: query.to_string(),
+            params,
+        };
+
+        let actual_bytes = query_message.to_bytes();
+
+        let expected_bytes: Vec<u8> = vec![
+            // Longitud de la query string (4 bytes)
+            0x00, 0x00, 0x00, 0x20,
+            // Query string: "SELECT * FROM users WHERE id = 2" en UTF-8
+            0x53, 0x45, 0x4C, 0x45, 0x43, 0x54, 0x20, 0x2A, 0x20, 0x46, 0x52, 0x4F, 0x4D, 0x20,
+            0x75, 0x73, 0x65, 0x72, 0x73, 0x20, 0x57, 0x48, 0x45, 0x52, 0x45, 0x20, 0x69, 0x64,
+            0x20, 0x3D, 0x20, 0x32,
+            // Consistency (Quorum = 0x0004 en 2 bytes) -----------
+            0x00, 0x04,
+            // Flags (1 byte, con Values (0x01) y PageSize (0x04) = 0x05) ----------
+            0x05,
+        ];
+
+        assert_eq!(actual_bytes, expected_bytes);
+    }
+
+    #[test]
+    fn test_to_bytes() {
+        let query = "SELECT * FROM users WHERE id = 2".to_string();
+        let params = QueryParams {
+            consistency: Consistency::Quorum,
+            flags: vec![Flag::Values, Flag::PageSize],
+        };
+
+        let query_len = query.len();
+
+        let query_message = Query { query, params };
+
+        // Serialize to bytes
+        let query_bytes = query_message.to_bytes();
+
+        // Check the length of the serialized byte array
+        // Length of query length (4 bytes) + query string + consistency (2 bytes) + flags (1 byte)
+        assert_eq!(query_bytes.len(), 4 + query_len + 2 + 1);
+
+        // Check the query length (first 4 bytes)
+        let expected_query_len = query_len as u32;
+        assert_eq!(
+            u32::from_be_bytes(query_bytes[0..4].try_into().unwrap()),
+            expected_query_len
+        );
+
+        // Check the consistency code (next 2 bytes)
+        let expected_consistency_code = ConsistencyCode::Quorum as u16;
+        assert_eq!(
+            u16::from_be_bytes(
+                query_bytes[query_len + 4..query_len + 6]
+                    .try_into()
+                    .unwrap()
+            ),
+            expected_consistency_code
+        );
+
+        // Check the flags (next 1 byte)
+        let expected_flags = FlagCode::Values as u8 | FlagCode::PageSize as u8;
+        assert_eq!(query_bytes[query_len + 6], expected_flags);
+    }
+
+    #[test]
+    fn test_from_bytes() {
+        let original_query = "SELECT * FROM users WHERE id = ?".to_string();
+        let params = QueryParams {
+            consistency: Consistency::Quorum,
+            flags: vec![Flag::Values, Flag::PageSize],
+        };
+
+        let expected_query = Query {
+            query: original_query,
+            params,
+        };
+
+        // Serialize to bytes
+        let query_bytes = expected_query.to_bytes();
+
+        // Deserialize from bytes
+        let deserialized_query = Query::from_bytes(&query_bytes);
+
+        // Check that the original and deserialized queries are the same
+        assert_eq!(expected_query, deserialized_query);
     }
 }
