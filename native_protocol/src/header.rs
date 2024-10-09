@@ -1,13 +1,28 @@
-use crate::frame::enums::opcode::Opcode;
-use crate::frame::enums::version::Version;
+use crate::opcodes::Opcode;
+
+#[derive(Debug, Copy, Clone)]
+pub enum Version {
+    RequestV3 = 0x03,  // Request frame for this protocol version
+    ResponseV3 = 0x83, // Response frame for this protocol version
+}
+
+impl Version {
+    pub fn from_byte(byte: u8) -> Option<Self> {
+        match byte {
+            0x03 => Some(Version::RequestV3),
+            0x83 => Some(Version::ResponseV3),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct FrameHeader {
-    version: Version,     // Usamos el enum Version
-    flags: u8,            // 1 byte
-    stream: i16,          // 2 bytes
-    opcode: Opcode,       // Usamos el enum Opcode
-    body_length: u32,     // 4 bytes
+    version: Version, // Usamos el enum Version
+    flags: u8,        // 1 byte
+    stream: i16,      // 2 bytes
+    opcode: Opcode,   // Usamos el enum Opcode
+    body_length: u32, // 4 bytes
 }
 
 impl FrameHeader {
@@ -38,15 +53,13 @@ impl FrameHeader {
             return Err("El buffer es demasiado pequeño para un FrameHeader");
         }
 
-        let version = Version::from_byte(bytes[0])
-            .ok_or("Versión no válida en el FrameHeader")?;
+        let version = Version::from_byte(bytes[0]).ok_or("Versión no válida en el FrameHeader")?;
 
         let flags = bytes[1];
 
         let stream = i16::from_be_bytes([bytes[2], bytes[3]]);
 
-        let opcode = Opcode::from_byte(bytes[4])
-            .ok_or("Opcode no válido en el FrameHeader")?;
+        let opcode = Opcode::from_byte(bytes[4]).ok_or("Opcode no válido en el FrameHeader")?;
 
         // Deserializar la longitud del cuerpo (4 bytes, big-endian)
         let body_length = u32::from_be_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);

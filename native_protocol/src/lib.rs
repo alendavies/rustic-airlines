@@ -1,3 +1,9 @@
+mod error;
+mod frame;
+mod frame_builder;
+mod header;
+mod opcodes;
+
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }
