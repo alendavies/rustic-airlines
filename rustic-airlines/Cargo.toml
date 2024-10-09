@@ -3,6 +3,8 @@ members = [
     "gossip-protocol",
     "node",
     "partitioner",
-    "query-coordinator"
+    "query-coordinator",
+    "testing",
 ]
+
 

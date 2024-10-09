@@ -1,5 +1,5 @@
 use super::into_sql::Into;
-use crate::errors::SqlError;
+use crate::errors::CQLError;
 use crate::utils::{is_insert, is_values};
 
 /// Struct that represents the `INSERT` SQL clause.
@@ -55,9 +55,9 @@ impl Insert {
     /// );
     /// ```
     ///
-    pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, SqlError> {
+    pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 6 {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
         let mut into_tokens: Vec<&str> = Vec::new();
         let mut values: Vec<String> = Vec::new();
@@ -86,7 +86,7 @@ impl Insert {
         }
 
         if into_tokens.is_empty() || values.is_empty() {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
 
         let into_clause = Into::new_from_tokens(into_tokens)?;
@@ -96,17 +96,96 @@ impl Insert {
             into_clause,
         })
     }
+
+     /// Serializes the `Insert` struct into a JSON-like string representation.
+     pub fn serialize(&self) -> String {
+        let values = self
+            .values
+            .iter()
+            .map(|v| format!("\"{}\"", v))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        let columns = self
+            .into_clause
+            .columns
+            .iter()
+            .map(|c| format!("\"{}\"", c))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        format!(
+            "{{ \"into_clause\": {{ \"table_name\": \"{}\", \"columns\": [{}] }}, \"values\": [{}] }}",
+            self.into_clause.table_name, columns, values
+        )
+    }
+
+    /// Deserializes a JSON-like string into an `Insert` struct.
+    ///
+    /// The string should have the format:
+    ///
+    /// `{ "into_clause": { "table_name": "table", "columns": ["name", "age"] }, "values": ["Alen", "25"] }`
+    pub fn deserialize(s: &str) -> Result<Self, CQLError> {
+        // Remove outer curly braces and split into parts
+        let trimmed = s.trim().trim_start_matches('{').trim_end_matches('}');
+        let parts: Vec<&str> = trimmed.split(", \"values\": ").collect();
+
+        if parts.len() != 2 {
+            return Err(CQLError::InvalidSyntax);
+        }
+
+        // Deserialize the `into_clause`
+        let into_part = parts[0]
+            .trim()
+            .trim_start_matches("\"into_clause\": {")
+            .trim_end_matches('}');
+        let into_parts: Vec<&str> = into_part.split(", \"columns\": ").collect();
+
+        if into_parts.len() != 2 {
+            return Err(CQLError::InvalidSyntax);
+        }
+
+        let table_name = into_parts[0]
+            .trim()
+            .trim_start_matches("\"table_name\": \"")
+            .trim_end_matches('\"')
+            .to_string();
+
+        let columns_str = into_parts[1]
+            .trim()
+            .trim_start_matches('[')
+            .trim_end_matches(']');
+        let columns: Vec<String> = columns_str
+            .split(',')
+            .map(|c| c.trim().trim_matches('\"').to_string())
+            .collect();
+
+        // Deserialize the `values`
+        let values_str = parts[1].trim().trim_start_matches('[').trim_end_matches(']');
+        let values: Vec<String> = values_str
+            .split(',')
+            .map(|v| v.trim().trim_matches('\"').to_string())
+            .collect();
+
+        Ok(Insert {
+            values,
+            into_clause: Into {
+                table_name,
+                columns,
+            },
+        })
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::errors::SqlError;
+    use crate::errors::CQLError;
 
     #[test]
     fn new_1_token() {
         let tokens = vec![String::from("INSERT")];
         let result = super::Insert::new_from_tokens(tokens);
-        assert_eq!(result, Err(SqlError::InvalidSyntax));
+        assert_eq!(result, Err(CQLError::InvalidSyntax));
     }
 
     #[test]
@@ -118,7 +197,7 @@ mod test {
         ];
 
         let result = super::Insert::new_from_tokens(tokens);
-        assert_eq!(result, Err(SqlError::InvalidSyntax));
+        assert_eq!(result, Err(CQLError::InvalidSyntax));
     }
 
     #[test]

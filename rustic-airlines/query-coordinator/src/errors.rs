@@ -10,20 +10,20 @@ use std::fmt::Display;
 /// - `Error`: generic type for other possible errors detected.
 ///
 #[derive(Debug, PartialEq)]
-pub enum SqlError {
+pub enum CQLError {
     InvalidTable,
     InvalidColumn,
     InvalidSyntax,
     Error,
 }
 
-impl Display for SqlError {
+impl Display for CQLError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SqlError::InvalidTable => write!(f, "[InvalidTable]: [Error to process table]"),
-            SqlError::InvalidColumn => write!(f, "[InvalidColumn]: [Error to process column]"),
-            SqlError::InvalidSyntax => write!(f, "[InvalidSyntax]: [Error to process query]"),
-            SqlError::Error => write!(f, "[Error]: [An error occurred]"),
+            CQLError::InvalidTable => write!(f, "[InvalidTable]: [Error to process table]"),
+            CQLError::InvalidColumn => write!(f, "[InvalidColumn]: [Error to process column]"),
+            CQLError::InvalidSyntax => write!(f, "[InvalidSyntax]: [Error to process query]"),
+            CQLError::Error => write!(f, "[Error]: [An error occurred]"),
         }
     }
 }

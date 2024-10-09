@@ -1,6 +1,6 @@
 use super::set_sql::Set;
 use super::where_sql::Where;
-use crate::errors::SqlError;
+use crate::errors::CQLError;
 use crate::utils::{is_set, is_update, is_where};
 
 /// Struct representing the `UPDATE` SQL clause.
@@ -41,9 +41,9 @@ impl Update {
     ///
     /// assert_eq!(update_from_tokens, update);
     /// ```
-    pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, SqlError> {
+    pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 6 {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
         let mut where_tokens = Vec::new();
         let mut set_tokens = Vec::new();
@@ -53,7 +53,7 @@ impl Update {
 
         while i < tokens.len() {
             if i == 0 && !is_update(&tokens[i]) || i == 2 && !is_set(&tokens[i]) {
-                return Err(SqlError::InvalidSyntax);
+                return Err(CQLError::InvalidSyntax);
             }
 
             if i == 0 && is_update(&tokens[i]) && i + 1 < tokens.len() {
@@ -76,7 +76,7 @@ impl Update {
         }
 
         if table_name.is_empty() || set_tokens.is_empty() {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
 
         let mut where_clause = None;
@@ -100,7 +100,7 @@ mod tests {
 
     use crate::{
         clauses::{condition::Condition, set_sql::Set, update_sql::Update, where_sql::Where},
-        errors::SqlError,
+        errors::CQLError,
         operator::Operator,
     };
 
@@ -108,7 +108,7 @@ mod tests {
     fn new_1_token() {
         let tokens = vec![String::from("UPDATE")];
         let update = Update::new_from_tokens(tokens);
-        assert_eq!(update, Err(SqlError::InvalidSyntax));
+        assert_eq!(update, Err(CQLError::InvalidSyntax));
     }
 
     #[test]
@@ -119,7 +119,7 @@ mod tests {
             String::from("SET"),
         ];
         let update = Update::new_from_tokens(tokens);
-        assert_eq!(update, Err(SqlError::InvalidSyntax));
+        assert_eq!(update, Err(CQLError::InvalidSyntax));
     }
 
     #[test]

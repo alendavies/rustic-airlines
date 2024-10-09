@@ -1,5 +1,5 @@
-mod clauses;
-mod errors;
+pub mod clauses;
+pub mod errors;
 mod logical_operator;
 mod operator;
 mod utils;
@@ -9,7 +9,9 @@ use clauses::table::{create_table_cql::CreateTable, drop_table_cql::DropTable, a
 use clauses::keyspace::{create_keyspace_cql::CreateKeyspace, drop_keyspace_cql::DropKeyspace, alter_keyspace_cql::AlterKeyspace};
 use errors::SqlError;
 
-enum Query {
+
+#[derive(Debug)]  // Derivar Debug para Query
+pub enum Query {
     Select(Select),
     Insert(Insert),
     Update(Update),
@@ -22,10 +24,16 @@ enum Query {
     AlterKeyspace(AlterKeyspace)
 }
 
-struct QueryCoordinator;
+#[derive(Debug)]  // Agrega Debug también al QueryCoordinator si lo necesitas
+pub struct QueryCoordinator;
 
 impl QueryCoordinator {
-    pub fn handle_query(self, query: String) -> Result<Query, SqlError> {
+
+    pub fn new() -> QueryCoordinator {
+        QueryCoordinator {}
+    }
+
+    pub fn handle_query(self, query: String) -> Result<Query, CQLError> {
         let tokens = self.tokens_from_query(&query);
 
         match tokens[0].as_str() {

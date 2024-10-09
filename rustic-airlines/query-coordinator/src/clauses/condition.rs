@@ -1,5 +1,5 @@
 use crate::{
-    errors::SqlError, logical_operator::LogicalOperator, operator::Operator, utils::is_number,
+    errors::CQLError, logical_operator::LogicalOperator, operator::Operator, utils::is_number,
 };
 use std::collections::HashMap;
 
@@ -47,7 +47,7 @@ impl Condition {
     ///
     /// ```
     ///
-    pub fn new_simple_from_tokens(tokens: &[&str], pos: &mut usize) -> Result<Self, SqlError> {
+    pub fn new_simple_from_tokens(tokens: &[&str], pos: &mut usize) -> Result<Self, CQLError> {
         if let Some(field) = tokens.get(*pos) {
             *pos += 1;
 
@@ -58,22 +58,22 @@ impl Condition {
                     *pos += 1;
                     Ok(Condition::new_simple(field, operator, value)?)
                 } else {
-                    Err(SqlError::InvalidSyntax)
+                    Err(CQLError::InvalidSyntax)
                 }
             } else {
-                Err(SqlError::InvalidSyntax)
+                Err(CQLError::InvalidSyntax)
             }
         } else {
-            Err(SqlError::InvalidSyntax)
+            Err(CQLError::InvalidSyntax)
         }
     }
 
-    fn new_simple(field: &str, operator: &str, value: &str) -> Result<Self, SqlError> {
+    fn new_simple(field: &str, operator: &str, value: &str) -> Result<Self, CQLError> {
         let op = match operator {
             "=" => Operator::Equal,
             ">" => Operator::Greater,
             "<" => Operator::Lesser,
-            _ => return Err(SqlError::InvalidSyntax),
+            _ => return Err(CQLError::InvalidSyntax),
         };
 
         Ok(Condition::Simple {
@@ -141,8 +141,8 @@ impl Condition {
     ///
     /// * `register` - A reference to a `HashMap<String, String>` with the register to evaluate.
     ///
-    pub fn execute(&self, register: &HashMap<String, String>) -> Result<bool, SqlError> {
-        let op_result: Result<bool, SqlError> = match &self {
+    pub fn execute(&self, register: &HashMap<String, String>) -> Result<bool, CQLError> {
+        let op_result: Result<bool, CQLError> = match &self {
             Condition::Simple {
                 field,
                 operator,
@@ -151,7 +151,7 @@ impl Condition {
                 let y = value;
                 if let Some(x) = register.get(field) {
                     if is_number(y) && !is_number(x) || !is_number(y) && is_number(x) {
-                        return Err(SqlError::InvalidSyntax);
+                        return Err(CQLError::InvalidSyntax);
                     }
                     match operator {
                         Operator::Lesser => Ok(x < y),
@@ -159,7 +159,7 @@ impl Condition {
                         Operator::Equal => Ok(x == y),
                     }
                 } else {
-                    Err(SqlError::Error)
+                    Err(CQLError::Error)
                 }
             }
             Condition::Complex {
@@ -177,7 +177,7 @@ impl Condition {
                         let right_result = right.execute(register)?;
                         Ok(left_result || right_result)
                     } else {
-                        Err(SqlError::Error)
+                        Err(CQLError::Error)
                     }
                 }
                 LogicalOperator::And => {
@@ -186,7 +186,7 @@ impl Condition {
                         let right_result = right.execute(register)?;
                         Ok(left_result && right_result)
                     } else {
-                        Err(SqlError::Error)
+                        Err(CQLError::Error)
                     }
                 }
             },
