@@ -22,7 +22,6 @@ pub struct Node {
     port: u16,
     partitioner: Partitioner,
     tables: Vec<CreateTable>
-    
 }
 
 impl Node {
@@ -100,7 +99,7 @@ impl Node {
 
         node.lock()?.setup_keyspaces()?;
         let listener = TcpListener::bind(address)?;
-
+        
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -209,22 +208,11 @@ impl Node {
         }
 
         let queries = vec![
-            "CREATE TABLE airports (id INT, name TEXT, location TEXT PRIMARY KEY)",
-            "INSERT INTO airports (id, name, location) VALUES (1, ,'Desert Sky', 'New York')",
-            "INSERT INTO airports (id, name, location) VALUES (2, 'Skyway International', 'Los Angeles')",
-            "INSERT INTO airports (id, name, location) VALUES (3, 'Oceanview Airport', 'Miami')",
-            "INSERT INTO airports (id, name, location) VALUES (4, 'Mountain Top Airfield', 'Denver')",
-            "INSERT INTO airports (id, name, location) VALUES (5, 'Central Hub', 'Chicago')",
-            "INSERT INTO airports (id, name, location) VALUES (6, 'Desert Sky', 'Phoenix')",
-            "INSERT INTO airports (id, name, location) VALUES (7, 'Lakeside Gateway', 'Minneapolis')",
-            "INSERT INTO airports (id, name, location) VALUES (8, 'Bay Area Field', 'San Francisco')",
-            "INSERT INTO airports (id, name, location) VALUES (9, 'Riverbend Airport', 'Memphis')",
-            "INSERT INTO airports (id, name, location) VALUES (10, 'Hilltop Airstrip', 'Austin')",
-            "INSERT INTO airports (id, name, location) VALUES (11, 'Forest Glade Airpark', 'Seattle')",
-            "INSERT INTO airports (id, name, location) VALUES (12, 'Sunshine Terminal', 'Orlando')",
-            "INSERT INTO airports (id, name, location) VALUES (13, 'Windy Plains', 'Kansas City')",
-            "INSERT INTO airports (id, name, location) VALUES (14, 'Northern Lights Airport', 'Anchorage')",
-            "INSERT INTO airports (id, name, location) VALUES (15, 'Golden Gate Airfield', 'San Francisco')",
+            "CREATE TABLE people (id INT PRIMARY KEY, name TEXT, weight INT)",
+            "CREATE TABLE city (id INT PRIMARY KEY, name TEXT, country TEXT)",
+            "INSERT INTO people (id, name, weight) VALUES (1, 'Lorenzo', 39)",
+            "INSERT INTO people (id, name, weight) VALUES (2, 'Maggie', 67)",
+            "INSERT INTO people (id, name, weight) VALUES (1, 'Lorenzo', 41)",
         ];
 
         for query_str in queries {

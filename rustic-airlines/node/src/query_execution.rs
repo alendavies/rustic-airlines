@@ -9,9 +9,13 @@ use query_coordinator::Query;
 use query_coordinator::errors::CQLError;
 use std::sync::{Arc, Mutex};
 use crate::Node;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, OpenOptions, File};
 use crate::NodeError;
 use std::path::Path;
+use std::io::{BufRead, BufReader};
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
 
 
 pub struct QueryExecution {
@@ -167,7 +171,7 @@ impl QueryExecution {
             let ip = node.get_partitioner().get_ip(value_to_hash)?;
 
             if ip == node.get_ip() {
-                QueryExecution::insert_in_this_node(values, ip, insert_query.into_clause.table_name)?;
+                QueryExecution::insert_in_this_node(values, ip, insert_query.into_clause.table_name, pos)?;
                 return Ok(());
             }
 
@@ -178,7 +182,7 @@ impl QueryExecution {
             self.send_message(&mut stream, &message)?;
         } else {
             
-            QueryExecution::insert_in_this_node(values, node.get_ip(), insert_query.into_clause.table_name)?;
+            QueryExecution::insert_in_this_node(values, node.get_ip(), insert_query.into_clause.table_name, pos)?;
         }
 
         Ok(())
@@ -197,7 +201,7 @@ impl QueryExecution {
         Ok(())
     }
 
-    fn insert_in_this_node(values: Vec<String>, ip: Ipv4Addr, table_name: String) -> Result<(), NodeError> {
+    fn insert_in_this_node(values: Vec<String>, ip: Ipv4Addr, table_name: String, index_of_primary_key: usize) -> Result<(), NodeError> {
         // Convertimos la IP a string para usar en el nombre de la carpeta
         let ip_str = ip.to_string().replace(".", "_");
         let folder_name = format!("keyspaces_{}", ip_str);
@@ -213,19 +217,46 @@ impl QueryExecution {
         // Nombre de la tabla para almacenar la data, agregando la extensión ".csv"
         let file_path = airports_folder_path.join(format!("{}.csv", table_name));
 
-        // Abre el archivo en modo append (crear si no existe)
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(file_path)
-            .map_err(NodeError::IoError)?;
+        // Genera un nombre único para el archivo temporal
+        let temp_file_path = airports_folder_path.join(format!("{}.tmp", SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| NodeError::OtherError)?.as_nanos()));
+        
+        // Abre el archivo temporal en modo de escritura
+        let mut temp_file = File::create(&temp_file_path).map_err(NodeError::IoError)?;
 
-        // Escribe los valores en el archivo separados por comas
-        let values_str = values.join(", ");
-        writeln!(file, "{}", values_str).map_err(NodeError::IoError)?;
+        // Si el archivo de la tabla existe, lo abrimos en modo de lectura
+        let file = OpenOptions::new().read(true).open(&file_path);
+        let mut key_exists = false;
+        
+        if let Ok(file) = file {
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                let line = line.map_err(NodeError::IoError)?;
+                let row_values: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+
+                // Verifica si la clave primaria coincide
+                if row_values.get(index_of_primary_key) == Some(&values[index_of_primary_key].as_str()) {
+                    // Si coincide, escribe la nueva fila en lugar de la antigua
+                    writeln!(temp_file, "{}", values.join(", ")).map_err(NodeError::IoError)?;
+                    key_exists = true;
+                } else {
+                    // Si no coincide, copia la línea actual al archivo temporal
+                    writeln!(temp_file, "{}", line).map_err(NodeError::IoError)?;
+                }
+            }
+        }
+
+        // Si no existe una fila con la clave primaria, agrega la nueva fila al final
+        if !key_exists {
+            writeln!(temp_file, "{}", values.join(", ")).map_err(NodeError::IoError)?;
+        }
+
+        // Renombramos el archivo temporal para que reemplace al archivo original
+        fs::rename(&temp_file_path, &file_path).map_err(NodeError::IoError)?;
 
         Ok(())
     }
+
 
     fn execute_update(&self, update_query: Update) -> Result<(), NodeError> {
         println!("Ejecutando UPDATE de manera distribuida: {:?}", update_query);

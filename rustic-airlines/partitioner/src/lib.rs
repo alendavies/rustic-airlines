@@ -99,7 +99,7 @@ mod tests {
 
         let string_value = String::from("test_string");
         let result = partitioner.get_ip(string_value.as_bytes());
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "Expected Ok result, got {:?}", result);
     }
 
     #[test]
@@ -108,6 +108,15 @@ mod tests {
         partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
         let result = partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1));
         assert_eq!(result, Err(PartitionerError::NodeAlreadyExists));
+    }
+
+    #[test]
+    fn test_remove_existing_node() {
+        let mut partitioner = Partitioner::new();
+        let ip = Ipv4Addr::new(192, 168, 0, 1);
+        partitioner.add_node(ip).unwrap();
+        let result = partitioner.remove_node(ip);
+        assert_eq!(result, Ok(ip), "Expected Ok result with IP, got {:?}", result);
     }
 
     #[test]
@@ -120,7 +129,10 @@ mod tests {
     #[test]
     fn test_get_ip_empty() {
         let partitioner = Partitioner::new();
-        assert_eq!(partitioner.get_ip(100u64.to_be_bytes()), Err(PartitionerError::EmptyPartitioner));
+        assert_eq!(
+            partitioner.get_ip(100u64.to_be_bytes()),
+            Err(PartitionerError::EmptyPartitioner)
+        );
     }
 
     #[test]
@@ -135,6 +147,31 @@ mod tests {
     }
 
     #[test]
+    
+    fn test_get_ip_within_range() {
+        let mut partitioner = Partitioner::new();
+        let ip1 = Ipv4Addr::new(192, 168, 0, 1);
+        let ip2 = Ipv4Addr::new(192, 168, 0, 2);
+        partitioner.add_node(ip1).unwrap();
+        partitioner.add_node(ip2).unwrap();
+
+        // Usar el valor de hash calculado en lugar de `ip1` para simular el valor a buscar
+        let hash_to_search = Partitioner::hash_value(ip1.octets()).unwrap();
+        let result_ip = partitioner.get_ip(hash_to_search.to_be_bytes());
+
+        // Como puede devolver el sucesor más cercano (por el tipo de búsqueda), vamos a comprobar que
+        // el resultado sea o `ip1` o `ip2` (el sucesor de acuerdo a la lógica).
+        assert!(
+            result_ip == Ok(ip1) || result_ip == Ok(ip2),
+            "Expected node IP {} or {}, got {:?}",
+            ip1,
+            ip2,
+            result_ip
+        );
+    }
+
+
+    #[test]
     fn test_contains_node() {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
@@ -144,9 +181,32 @@ mod tests {
     }
 
     #[test]
+    fn test_get_nodes() {
+        let mut partitioner = Partitioner::new();
+        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
+        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 2)).unwrap();
+        
+        let nodes = partitioner.get_nodes();
+        assert_eq!(nodes.len(), 2);
+        assert!(nodes.contains(&Ipv4Addr::new(192, 168, 0, 1)));
+        assert!(nodes.contains(&Ipv4Addr::new(192, 168, 0, 2)));
+    }
+
+    #[test]
     fn test_hash_string_error_handling() {
         let string_value = String::from("test_string");
         let hash = Partitioner::hash_value(string_value.as_bytes());
-        assert!(hash.is_ok());
+        assert!(hash.is_ok(), "Expected hash calculation to succeed, got {:?}", hash);
+    }
+
+    #[test]
+    fn test_debug_trait() {
+        let mut partitioner = Partitioner::new();
+        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
+        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 2)).unwrap();
+
+        let debug_string = format!("{:?}", partitioner);
+        assert!(debug_string.contains("192.168.0.1 -> 192.168.0.2") || debug_string.contains("192.168.0.2 -> 192.168.0.1"));
     }
 }
+
