@@ -7,6 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use partitioner::Partitioner;
 use query_coordinator::clauses::insert_sql::Insert;
+use query_coordinator::clauses::table::create_table_cql::CreateTable;
+use query_coordinator::errors::CQLError;
 use query_coordinator::QueryCoordinator;
 use query_coordinator::Query;
 mod query_execution;
@@ -19,6 +21,8 @@ pub struct Node {
     seeds_node: Vec<Ipv4Addr>,
     port: u16,
     partitioner: Partitioner,
+    tables: Vec<CreateTable>
+    
 }
 
 impl Node {
@@ -30,6 +34,7 @@ impl Node {
             seeds_node,
             port: 0,
             partitioner,
+            tables: vec![],
         })
     }
 
@@ -43,6 +48,26 @@ impl Node {
 
     pub fn get_partitioner(&self) -> Partitioner {
         self.partitioner.clone()
+    }
+
+    pub fn add_table(&mut self, new_table: CreateTable) -> Result<(), NodeError> {
+        if self.tables.contains(&new_table){
+            return Err(NodeError::CQLError(CQLError::InvalidTable));
+        }
+        self.tables.push(new_table.clone());
+        Ok(())
+    }
+
+    pub fn get_table(&self, table_name: String) -> Result<CreateTable, NodeError> {
+        self.tables
+            .iter()
+            .find(|x| x.get_name() == table_name)
+            .cloned() // Clona el valor encontrado para devolverlo
+            .ok_or(NodeError::CQLError(CQLError::InvalidTable))
+    }
+    
+    pub fn table_already_exist(&self, table: CreateTable)->bool{
+        self.tables.contains(&table)
     }
 
     pub fn start(
@@ -113,11 +138,6 @@ impl Node {
             fs::create_dir(&keyspace_dir)?;
         }
 
-        let table_file = format!("{}/airports.csv", keyspace_dir);
-        if !Path::new(&table_file).exists() {
-            fs::write(&table_file, "id,name,location\n")?;
-        }
-
         Ok(())
     }
 
@@ -165,7 +185,10 @@ impl Node {
             let command = tokens[0];
             match command {
                 "IP" => Node::handle_ip_command(&node, tokens, connections.clone(), is_seed)?,
-                "INSERT" => Node::handle_insert_command(&node, tokens, connections.clone())?,
+                "INSERT" => Node::handle_insert_command(&node, tokens, connections.clone(), false)?,
+                "INSERT_INTERNODE" => Node::handle_insert_command(&node, tokens, connections.clone(), true)?,
+                "CREATE_TABLE" => Node::handle_create_table_command(&node, tokens, connections.clone(),false)?,
+                "CREATE_TABLE_INTERNODE" => Node::handle_create_table_command(&node, tokens, connections.clone(),true)?,
                 _ => println!("Comando desconocido: {}", command),
             }
         }
@@ -179,41 +202,44 @@ impl Node {
         Ok(lock_node.get_partitioner().get_nodes().len() == 4 && lock_node.is_seed())
     }
 
-   // Función para ejecutar múltiples inserciones iniciales cuando el particionador está lleno
-fn execute_initial_insert(node: Arc<Mutex<Node>>, connections: Arc<Mutex<Vec<TcpStream>>>) -> Result<(), NodeError> {
-    if !Node::initial_condition(&node)? {
-        return Ok(());
+    // Función para ejecutar múltiples inserciones iniciales cuando el particionador está lleno
+    fn execute_initial_insert(node: Arc<Mutex<Node>>, connections: Arc<Mutex<Vec<TcpStream>>>) -> Result<(), NodeError> {
+        if !Node::initial_condition(&node)? {
+            return Ok(());
+        }
+
+        let queries = vec![
+            "CREATE TABLE airports (id INT, name TEXT, location TEXT PRIMARY KEY)",
+            "INSERT INTO airports (id, name, location) VALUES (1, ,'Desert Sky', 'New York')",
+            "INSERT INTO airports (id, name, location) VALUES (2, 'Skyway International', 'Los Angeles')",
+            "INSERT INTO airports (id, name, location) VALUES (3, 'Oceanview Airport', 'Miami')",
+            "INSERT INTO airports (id, name, location) VALUES (4, 'Mountain Top Airfield', 'Denver')",
+            "INSERT INTO airports (id, name, location) VALUES (5, 'Central Hub', 'Chicago')",
+            "INSERT INTO airports (id, name, location) VALUES (6, 'Desert Sky', 'Phoenix')",
+            "INSERT INTO airports (id, name, location) VALUES (7, 'Lakeside Gateway', 'Minneapolis')",
+            "INSERT INTO airports (id, name, location) VALUES (8, 'Bay Area Field', 'San Francisco')",
+            "INSERT INTO airports (id, name, location) VALUES (9, 'Riverbend Airport', 'Memphis')",
+            "INSERT INTO airports (id, name, location) VALUES (10, 'Hilltop Airstrip', 'Austin')",
+            "INSERT INTO airports (id, name, location) VALUES (11, 'Forest Glade Airpark', 'Seattle')",
+            "INSERT INTO airports (id, name, location) VALUES (12, 'Sunshine Terminal', 'Orlando')",
+            "INSERT INTO airports (id, name, location) VALUES (13, 'Windy Plains', 'Kansas City')",
+            "INSERT INTO airports (id, name, location) VALUES (14, 'Northern Lights Airport', 'Anchorage')",
+            "INSERT INTO airports (id, name, location) VALUES (15, 'Golden Gate Airfield', 'San Francisco')",
+        ];
+
+        for query_str in queries {
+            let query = QueryCoordinator::new()
+                .handle_query(query_str.to_string())
+                .map_err(NodeError::CQLError)?;
+            
+            QueryExecution::new(node.clone(), connections.clone()).execute(query, false)?;
+        }
+
+        Ok(())
     }
-    
-    let queries = vec![
-        "INSERT INTO airports (id, name, location) VALUES (1, 'Express Airport', 'New York')",
-        "INSERT INTO airports (id, name, location) VALUES (2, 'Skyway International', 'Los Angeles')",
-        "INSERT INTO airports (id, name, location) VALUES (3, 'Oceanview Airport', 'Miami')",
-        "INSERT INTO airports (id, name, location) VALUES (4, 'Mountain Top Airfield', 'Denver')",
-        "INSERT INTO airports (id, name, location) VALUES (5, 'Central Hub', 'Chicago')",
-        "INSERT INTO airports (id, name, location) VALUES (6, 'Desert Sky', 'Phoenix')",
-        "INSERT INTO airports (id, name, location) VALUES (7, 'Lakeside Gateway', 'Minneapolis')",
-        "INSERT INTO airports (id, name, location) VALUES (8, 'Bay Area Field', 'San Francisco')",
-        "INSERT INTO airports (id, name, location) VALUES (9, 'Riverbend Airport', 'Memphis')",
-        "INSERT INTO airports (id, name, location) VALUES (10, 'Hilltop Airstrip', 'Austin')",
-        "INSERT INTO airports (id, name, location) VALUES (11, 'Forest Glade Airpark', 'Seattle')",
-        "INSERT INTO airports (id, name, location) VALUES (12, 'Sunshine Terminal', 'Orlando')",
-        "INSERT INTO airports (id, name, location) VALUES (13, 'Windy Plains', 'Kansas City')",
-        "INSERT INTO airports (id, name, location) VALUES (14, 'Northern Lights Airport', 'Anchorage')",
-        "INSERT INTO airports (id, name, location) VALUES (15, 'Golden Gate Airfield', 'San Francisco')",
-    ];
-
-    for query_str in queries {
-        let query = QueryCoordinator::new()
-            .handle_query(query_str.to_string())
-            .map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections.clone()).execute(query)?;
-    }
-
-    Ok(())
-}
 
 
+   
     // Función para manejar el comando "IP"
     fn handle_ip_command(
         node: &Arc<Mutex<Node>>,
@@ -248,10 +274,24 @@ fn execute_initial_insert(node: Arc<Mutex<Node>>, connections: Arc<Mutex<Vec<Tcp
         node: &Arc<Mutex<Node>>,
         tokens: Vec<&str>,
         connections: Arc<Mutex<Vec<TcpStream>>>,
+        internode: bool
     ) -> Result<(), NodeError> {
         let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
         let query = Insert::deserialize(&query_str).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(Query::Insert(query))
+        QueryExecution::new(node.clone(), connections).execute(Query::Insert(query),internode)
+    }
+
+     // Función para manejar el comando "IP"
+     fn handle_create_table_command(
+        node: &Arc<Mutex<Node>>,
+        tokens: Vec<&str>,
+        connections: Arc<Mutex<Vec<TcpStream>>>,
+        internode: bool,
+    ) -> Result<(), NodeError> {
+
+        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
+        let query = CreateTable::deserialize(&query_str).map_err(NodeError::CQLError)?;
+        QueryExecution::new(node.clone(), connections).execute(Query::CreateTable(query),internode)
     }
 
     fn forward_message(

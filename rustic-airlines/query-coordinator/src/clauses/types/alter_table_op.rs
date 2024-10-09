@@ -1,7 +1,7 @@
 use super::column::Column;
 use super::datatype::DataType;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AlterTableOperation {
     AddColumn(Column),
     DropColumn(String),
