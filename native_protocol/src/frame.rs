@@ -1,52 +1,60 @@
 use std::vec::Vec;
 
-use crate::header::FrameHeader;
+use crate::error::Error;
 
-#[derive(Debug)]
-pub struct Frame {
-    header: FrameHeader,
-    body: String, // Body (String should do for now)
+pub enum Frame {
+    /// Initialize the connection.
+    Startup,
+    /// Indicates that the server is ready to process queries.
+    Ready,
+    /// Performs a CQL query.
+    Query,
+    /// The result to a query.
+    Result(),
+    /// Indicates an error processing a request.
+    Error(Error),
+}
+
+struct FrameError;
+
+struct SerializationError;
+
+trait Serializable {
+    type Error;
+
+    fn to_bytes(&self) -> Vec<u8>;
+
+    fn from_bytes(bytes: &[u8]) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
 }
 
 impl Frame {
-    pub fn new(header: FrameHeader, body: String) -> Self {
-        Frame { header, body }
-    }
-
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buffer = Vec::new();
-
-        buffer.extend(self.header.to_bytes());
-
-        buffer.extend(self.body.as_bytes());
-
-        buffer
+        todo!()
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Frame, FrameError> {
         if bytes.len() < 9 {
-            return Err("El buffer es demasiado pequeño para un paquete completo".to_string());
+            return Err(FrameError);
         }
 
-        let header = FrameHeader::from_bytes(&bytes[0..9]).map_err(|e| e.to_string())?;
+        // get opcode and build packet from there
 
-        let body_length = *header.body_length() as usize;
-        if bytes.len() < 9 + body_length {
-            return Err("El buffer no tiene suficientes datos para el body".to_string());
-        }
-
-        // (We'll asume UTF-8)
-        let body = String::from_utf8(bytes[9..(9 + body_length)].to_vec())
-            .map_err(|_| "Error al convertir el body a String".to_string())?;
-
-        Ok(Frame { header, body })
+        todo!();
     }
+}
 
-    pub fn header(&self) -> &FrameHeader {
-        &self.header
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    pub fn body(&self) -> &String {
-        &self.body
+    #[test]
+    fn serialize_startup_frame() {
+        let frame = Frame::Startup;
+
+        assert!(matches!(frame, Frame::Startup));
+
+        let _ = frame.to_bytes();
     }
 }
