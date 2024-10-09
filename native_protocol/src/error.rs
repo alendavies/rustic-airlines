@@ -17,6 +17,27 @@ pub enum ErrorCode {
     Unprepared = 0x2500,
 }
 
+struct WriteTimeout;
+struct UnavailableException;
+
+pub enum Error {
+    /// Something unexpected happened. This indicates a server-side bug.
+    ServerError(String),
+    /// Timeout exception during a write request.
+    WriteTimeout(String, WriteTimeout),
+    /// Some client message triggered a protocol violation (for instance
+    /// a QUERY message is sent before a STARTUP one has been sent).
+    ProtocolError(String),
+    /// The request cannot be processed because the coordinator node is
+    /// overloaded.
+    Overloaded(String),
+    ///
+    UnavailableException(String, UnavailableException),
+    /// The request was a read request but the coordinator node is
+    /// bootstrapping.
+    IsBootstrapping(String),
+}
+
 impl ErrorCode {
     pub fn from_u32(value: u32) -> Option<ErrorCode> {
         match value {
