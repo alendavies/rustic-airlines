@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::clauses::types::column::Column;
 use crate::clauses::types::datatype::DataType;
-use crate::errors::SqlError;
+use crate::errors::CQLError;
 
 #[derive(Debug, Clone)]
 pub struct CreateTable {
@@ -12,9 +12,9 @@ pub struct CreateTable {
 
 impl CreateTable {
    
-    pub fn new_from_tokens(query: Vec<String>) -> Result<Self, SqlError> {
+    pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
         if query.len() < 4 || query[0].to_uppercase() != "CREATE" || query[1].to_uppercase() != "TABLE" {
-            return Err(SqlError::InvalidSyntax);
+            return Err(CQLError::InvalidSyntax);
         }
 
         let table_name = query[2].to_string();
@@ -24,7 +24,7 @@ impl CreateTable {
         for col_def in columns_str.split(',') {
             let col_parts: Vec<&str> = col_def.trim().split_whitespace().collect();
             if col_parts.len() < 2 {
-                return Err(SqlError::InvalidSyntax);
+                return Err(CQLError::InvalidSyntax);
             }
 
             let col_name = col_parts[0].to_string();
@@ -32,7 +32,7 @@ impl CreateTable {
                 "INT" => DataType::Int,
                 "STRING" => DataType::String,
                 "BOOLEAN" => DataType::Boolean,
-                _ => return Err(SqlError::Error),
+                _ => return Err(CQLError::Error),
             };
         
             let mut is_primary_key = false;
@@ -43,7 +43,7 @@ impl CreateTable {
                         "PRIMARY" => is_primary_key = true,
                         "KEY" => (), // Skip "KEY", part of "PRIMARY KEY"
                         "NOT" => allows_null = false, // Assuming NOT NULL is specified
-                        _ => return Err(SqlError::InvalidSyntax),
+                        _ => return Err(CQLError::InvalidSyntax),
                     }
                 }
             }

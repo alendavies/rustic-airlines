@@ -7,7 +7,7 @@ mod utils;
 use clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update};
 use clauses::table::{create_table_cql::CreateTable, drop_table_cql::DropTable, alter_table_cql::AlterTable};
 use clauses::keyspace::{create_keyspace_cql::CreateKeyspace, drop_keyspace_cql::DropKeyspace, alter_keyspace_cql::AlterKeyspace};
-use errors::SqlError;
+use errors::CQLError;
 
 
 #[derive(Debug)]  // Derivar Debug para Query
@@ -63,7 +63,7 @@ impl QueryCoordinator {
                         let create_keyspace = CreateKeyspace::new_from_tokens(tokens)?;
                         Ok(Query::CreateKeyspace(create_keyspace))
                     }
-                    _ => Err(SqlError::InvalidSyntax),
+                    _ => Err(CQLError::InvalidSyntax),
                 }                                        
             }
             "DROP" => {
@@ -76,7 +76,7 @@ impl QueryCoordinator {
                         let drop_keyspace = DropKeyspace::new_from_tokens(tokens)?;
                         Ok(Query::DropKeyspace(drop_keyspace))
                     }  
-                    _ => Err(SqlError::InvalidSyntax),
+                    _ => Err(CQLError::InvalidSyntax),
                 }                                        
             }
             "ALTER" => {
@@ -89,10 +89,10 @@ impl QueryCoordinator {
                         let alter_keyspace = AlterKeyspace::new_from_tokens(tokens)?;
                         Ok(Query::AlterKeyspace(alter_keyspace))
                     }  
-                    _ => Err(SqlError::InvalidSyntax),
+                    _ => Err(CQLError::InvalidSyntax),
                 }                                        
             }
-            _ => Err(SqlError::InvalidSyntax),
+            _ => Err(CQLError::InvalidSyntax),
         }
     }
 
