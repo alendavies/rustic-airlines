@@ -9,7 +9,7 @@ use crate::{
     opcodes::Opcode,
 };
 
-pub fn create_startup_frame() -> Frame {
+/* pub fn create_startup_frame() -> Frame {
     let body: String = "CQL_VERSION=3.0.0".to_string();
     let body_length = body.len() as u32;
 
@@ -36,4 +36,4 @@ pub fn create_error_frame(error_code: ErrorCode, error_message: String) -> Frame
         FrameHeader::new(Version::ResponseV3, 0, 0, Opcode::Error, body_length),
         body,
     )
-}
+} */
