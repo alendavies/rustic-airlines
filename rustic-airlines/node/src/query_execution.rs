@@ -4,6 +4,7 @@ use query_coordinator::clauses::table::alter_table_cql::AlterTable;
 use query_coordinator::clauses::table::create_table_cql::CreateTable;
 use query_coordinator::clauses::table::drop_table_cql::DropTable;
 use query_coordinator::clauses::types::column::Column;
+use query_coordinator::clauses::types::alter_table_op::AlterTableOperation;
 use query_coordinator::clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update};
 use query_coordinator::Query;
 use query_coordinator::errors::CQLError;
@@ -56,10 +57,10 @@ impl QueryExecution {
                 self.execute_create_table(create_table, internode)?;
             }
             Query::DropTable(drop_table) => {
-                self.execute_drop_table(drop_table)?;
+                self.execute_drop_table(drop_table, internode)?;
             }
             Query::AlterTable(alter_table) => {
-                self.execute_alter_table(alter_table)?;
+                self.execute_alter_table(alter_table, internode)?;
             }
             
         }
@@ -117,7 +118,7 @@ impl QueryExecution {
             .map_err(NodeError::IoError)?;
         
         let header: Vec<String> = columns.iter().map(|col| col.name.clone()).collect();
-        writeln!(file, "{}", header.join(", ")).map_err(NodeError::IoError)?;
+        writeln!(file, "{}", header.join(",")).map_err(NodeError::IoError)?;
 
         // Si no es internode, comunicar a otros nodos
         if !internode {
@@ -139,15 +140,185 @@ impl QueryExecution {
     }
 
 
-    fn execute_drop_table(&self, drop_table: DropTable) -> Result<(), NodeError> {
-        println!("Ejecutando SELECT localmente: {:?}", drop_table);
+    pub fn execute_drop_table(&self, drop_table: DropTable, internode: bool) -> Result<(), NodeError> {
+        // Obtiene el nombre de la tabla a eliminar
+        let table_name = drop_table.get_table_name();
+    
+        // Bloquea el nodo y elimina la tabla de la lista interna
+        self.node_that_execute
+            .lock()
+            .map_err(|_| NodeError::LockError)?
+            .remove_table(table_name.clone())?;
+    
+        // Genera el nombre de archivo y la carpeta en la cual se almacenará la tabla
+        let node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
+        let ip_str = node.get_ip().to_string().replace(".", "_");
+        let folder_name = format!("keyspaces_{}/PLANES", ip_str);
+        let file_path = format!("{}/{}.csv", folder_name, table_name);
+    
+        // Borra el archivo de la tabla si existe
+        if std::fs::remove_file(&file_path).is_err() {
+            eprintln!("Warning: File {} does not exist or cannot be deleted", file_path);
+        }
+    
+        // Si no es internode, comunicar a otros nodos
+        if !internode {
+            // Serializa el `DropTable` a un mensaje simple
+            let serialized_drop_table = drop_table.serialize();
+    
+            // Envía el mensaje `DROP_TABLE_INTERNODE` a cada nodo en el partitioner
+            for ip in node.get_partitioner().get_nodes() {
+                if ip != node.get_ip() {
+                    let mut stream = self.connect(ip, self.connections.clone())?;
+                    let message = format!("DROP_TABLE_INTERNODE {}", serialized_drop_table);
+                    self.send_message(&mut stream, &message)?;
+                }
+            }
+        }
+    
         Ok(())
     }
-
-    fn execute_alter_table(&self, alter_table: AlterTable) -> Result<(), NodeError> {
-        println!("Ejecutando SELECT localmente: {:?}", alter_table);
+    
+    pub fn execute_alter_table(&self, alter_table: AlterTable, internode: bool) -> Result<(), NodeError> {
+        // Obtiene el nombre de la tabla y bloquea el acceso a la misma
+        let table_name = alter_table.get_table_name();
+        let mut node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
+        let mut table = node.get_table(table_name.clone())?;
+    
+        // Ruta del archivo de la tabla
+        let ip_str = node.get_ip().to_string().replace(".", "_");
+        let folder_name = format!("keyspaces_{}/PLANES", ip_str);
+        let file_path = format!("{}/{}.csv", folder_name, table_name);
+    
+        // Verifica que el archivo exista antes de proceder
+        if !Path::new(&file_path).exists() {
+            return Err(NodeError::CQLError(CQLError::InvalidTable));
+        }
+    
+        // Aplica las operaciones de alteración
+        for operation in alter_table.get_operations() {
+            match operation {
+                AlterTableOperation::AddColumn(column) => {
+                    // Agrega la columna a la estructura interna de la tabla
+                    table.add_column(column.clone())?;
+                    // Agrega la columna al archivo (actualiza encabezado)
+                    Self::add_column_to_file(&file_path, &column.name)?;
+                }
+                AlterTableOperation::DropColumn(column_name) => {
+                    // Elimina la columna de la estructura interna de la tabla
+                    table.remove_column(&column_name)?;
+                    // Actualiza el archivo para eliminar la columna
+                    Self::remove_column_from_file(&file_path, &column_name)?;
+                }
+                AlterTableOperation::ModifyColumn(_column_name, _new_data_type, _allows_null) => {
+                    //no esta soportado todavia, ni se si es necesario que lo este
+                    // Modifica la columna en la estructura interna de la tabla
+                    return Err(NodeError::CQLError(CQLError::InvalidSyntax));
+                    //table.modify_column(&column_name, new_data_type, allows_null)?;
+                    // No es necesario modificar el archivo CSV ya que el tipo de dato no afecta el almacenamiento directo
+                }
+                AlterTableOperation::RenameColumn(old_name, new_name) => {
+                    // Renombra la columna en la estructura interna de la tabla
+                    table.rename_column(&old_name, &new_name)?;
+                    // Actualiza el archivo CSV con el nuevo nombre en el encabezado
+                    Self::rename_column_in_file(&file_path, &old_name, &new_name)?;
+                }
+            }
+        }
+    
+        // Guarda los cambios en el nodo
+        node.update_table(table)?;
+    
+        // Comunica a otros nodos si no es internode
+        if !internode {
+            let serialized_alter_table = alter_table.serialize();
+            for ip in node.get_partitioner().get_nodes() {
+                if ip != node.get_ip() {
+                    let mut stream = self.connect(ip, self.connections.clone())?;
+                    let message = format!("ALTER_TABLE_INTERNODE {}", serialized_alter_table);
+                    self.send_message(&mut stream, &message)?;
+                }
+            }
+        }
+    
         Ok(())
     }
+    
+    // Función auxiliar para agregar una columna al archivo CSV
+    fn add_column_to_file(file_path: &str, column_name: &str) -> Result<(), NodeError> {
+        let temp_path = format!("{}.temp", file_path);
+        let mut temp_file = OpenOptions::new().create(true).write(true).open(&temp_path)?;
+    
+        // Lee el archivo original y agrega la nueva columna en el encabezado
+        let file = OpenOptions::new().read(true).open(file_path)?;
+        let reader = BufReader::new(file);
+        let mut first_line = true;
+    
+        for line in reader.lines() {
+            let mut line = line?;
+            if first_line {
+                line.push_str(&format!(",{}", column_name));
+                first_line = false;
+            } else {
+                line.push_str(","); // Agrega una celda vacía en cada fila para la nueva columna
+            }
+            writeln!(temp_file, "{}", line)?;
+        }
+    
+        fs::rename(temp_path, file_path).map_err(NodeError::IoError)
+    }
+    
+    // Función auxiliar para eliminar una columna del archivo CSV
+    fn remove_column_from_file(file_path: &str, column_name: &str) -> Result<(), NodeError> {
+        let temp_path = format!("{}.temp", file_path);
+        let mut temp_file = OpenOptions::new().create(true).write(true).open(&temp_path)?;
+    
+        let file = OpenOptions::new().read(true).open(file_path)?;
+        let reader = BufReader::new(file);
+        let mut col_index: Option<usize> = None;
+    
+        for line in reader.lines() {
+            let line = line?;
+            let cells: Vec<&str> = line.split(',').collect();
+    
+            if col_index.is_none() {
+                // Encuentra el índice de la columna a eliminar
+                col_index = cells.iter().position(|&col| col == column_name);
+                if col_index.is_none() {
+                    return Err(NodeError::CQLError(CQLError::InvalidColumn));
+                }
+            }
+    
+            let filtered_line: Vec<&str> = cells.iter().enumerate()
+                .filter(|&(i, _)| Some(i) != col_index)
+                .map(|(_, &cell)| cell)
+                .collect();
+            
+            writeln!(temp_file, "{}", filtered_line.join(","))?;
+        }
+    
+        fs::rename(temp_path, file_path).map_err(NodeError::IoError)
+    }
+    
+    // Función auxiliar para renombrar una columna en el archivo CSV
+    fn rename_column_in_file(file_path: &str, old_name: &str, new_name: &str) -> Result<(), NodeError> {
+        let temp_path = format!("{}.temp", file_path);
+        let mut temp_file = OpenOptions::new().create(true).write(true).open(&temp_path)?;
+    
+        let file = OpenOptions::new().read(true).open(file_path)?;
+        let reader = BufReader::new(file);
+    
+        for (i, line) in reader.lines().enumerate() {
+            let mut line = line?;
+            if i == 0 {
+                line = line.replace(old_name, new_name); // Renombra en la cabecera
+            }
+            writeln!(temp_file, "{}", line)?;
+        }
+    
+        fs::rename(temp_path, file_path).map_err(NodeError::IoError)
+    }
+    
 
     fn execute_insert(&self, insert_query: Insert, table_to_insert: CreateTable, internode: bool) -> Result<(), NodeError> {
         let columns = table_to_insert.get_columns();
@@ -237,7 +408,7 @@ impl QueryExecution {
                 // Verifica si la clave primaria coincide
                 if row_values.get(index_of_primary_key) == Some(&values[index_of_primary_key].as_str()) {
                     // Si coincide, escribe la nueva fila en lugar de la antigua
-                    writeln!(temp_file, "{}", values.join(", ")).map_err(NodeError::IoError)?;
+                    writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
                     key_exists = true;
                 } else {
                     // Si no coincide, copia la línea actual al archivo temporal
@@ -248,7 +419,7 @@ impl QueryExecution {
 
         // Si no existe una fila con la clave primaria, agrega la nueva fila al final
         if !key_exists {
-            writeln!(temp_file, "{}", values.join(", ")).map_err(NodeError::IoError)?;
+            writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
         }
 
         // Renombramos el archivo temporal para que reemplace al archivo original

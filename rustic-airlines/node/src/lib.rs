@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use partitioner::Partitioner;
 use query_coordinator::clauses::insert_sql::Insert;
+use query_coordinator::clauses::table::alter_table_cql::AlterTable;
 use query_coordinator::clauses::table::create_table_cql::CreateTable;
+use query_coordinator::clauses::table::drop_table_cql::DropTable;
 use query_coordinator::errors::CQLError;
 use query_coordinator::QueryCoordinator;
 use query_coordinator::Query;
@@ -65,6 +67,31 @@ impl Node {
             .ok_or(NodeError::CQLError(CQLError::InvalidTable))
     }
     
+    pub fn remove_table(&mut self, table_name: String) -> Result<(), NodeError> {
+        let index = self.tables
+            .iter()
+            .position(|x| x.get_name() == table_name)
+            .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
+        
+        self.tables.remove(index);
+        Ok(())
+    }
+
+    pub fn update_table(&mut self, new_table: CreateTable) -> Result<(), NodeError> {
+        // Encuentra la posición de la tabla en el vector `tables`
+        let index = self
+            .tables
+            .iter()
+            .position(|table| *table == new_table)
+            .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
+        
+        // Reemplaza la tabla existente en la posición encontrada con la nueva tabla
+        self.tables[index] = new_table;
+        
+        Ok(())
+    }
+    
+
     pub fn table_already_exist(&self, table: CreateTable)->bool{
         self.tables.contains(&table)
     }
@@ -188,6 +215,10 @@ impl Node {
                 "INSERT_INTERNODE" => Node::handle_insert_command(&node, tokens, connections.clone(), true)?,
                 "CREATE_TABLE" => Node::handle_create_table_command(&node, tokens, connections.clone(),false)?,
                 "CREATE_TABLE_INTERNODE" => Node::handle_create_table_command(&node, tokens, connections.clone(),true)?,
+                "DROP_TABLE" => Node::handle_drop_table_command(&node, tokens, connections.clone(),false)?,
+                "DROP_TABLE_INTERNODE" => Node::handle_drop_table_command(&node, tokens, connections.clone(),true)?,
+                "ALTER_TABLE" => Node::handle_alter_table_command(&node, tokens, connections.clone(),false)?,
+                "ALTER_TABLE_INTERNODE" => Node::handle_alter_table_command(&node, tokens, connections.clone(),true)?,
                 _ => println!("Comando desconocido: {}", command),
             }
         }
@@ -210,16 +241,21 @@ impl Node {
         let queries = vec![
             "CREATE TABLE people (id INT PRIMARY KEY, name TEXT, weight INT)",
             "CREATE TABLE city (id INT PRIMARY KEY, name TEXT, country TEXT)",
-            "INSERT INTO people (id, name, weight) VALUES (1, 'Lorenzo', 39)",
-            "INSERT INTO people (id, name, weight) VALUES (2, 'Maggie', 67)",
-            "INSERT INTO people (id, name, weight) VALUES (1, 'Lorenzo', 41)",
+            "INSERT INTO people (id, name, weight) VALUES (1,'Lorenzo', 39)",
+            "INSERT INTO people (id, name, weight) VALUES (2,'Maggie', 67)",
+            "INSERT INTO people (id, name, weight) VALUES (1,'Lorenzo', 41)",
+            "INSERT INTO people (id, name, weight) VALUES (3,'Maxi', 56)",
+            "INSERT INTO people (id, name, weight) VALUES (7,'Nashville',32)",
+            "ALTER TABLE people ADD email TEXT",
+            "ALTER TABLE people RENAME name to super_name",
+
         ];
 
         for query_str in queries {
             let query = QueryCoordinator::new()
                 .handle_query(query_str.to_string())
                 .map_err(NodeError::CQLError)?;
-            
+            println!("{:?}", query);
             QueryExecution::new(node.clone(), connections.clone()).execute(query, false)?;
         }
 
@@ -276,10 +312,37 @@ impl Node {
         connections: Arc<Mutex<Vec<TcpStream>>>,
         internode: bool,
     ) -> Result<(), NodeError> {
-
         let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
         let query = CreateTable::deserialize(&query_str).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::CreateTable(query),internode)
+    }
+
+
+     // Función para manejar el comando "IP"
+     fn handle_drop_table_command(
+        node: &Arc<Mutex<Node>>,
+        tokens: Vec<&str>,
+        connections: Arc<Mutex<Vec<TcpStream>>>,
+        internode: bool,
+    ) -> Result<(), NodeError> {
+
+        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
+        let query = DropTable::deserialize(&query_str).map_err(NodeError::CQLError)?;
+        QueryExecution::new(node.clone(), connections).execute(Query::DropTable(query),internode)
+    }
+
+
+    // Función para manejar el comando "IP"
+    fn handle_alter_table_command(
+        node: &Arc<Mutex<Node>>,
+        tokens: Vec<&str>,
+        connections: Arc<Mutex<Vec<TcpStream>>>,
+        internode: bool,
+    ) -> Result<(), NodeError> {
+        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
+        let query = AlterTable::deserialize(&query_str).map_err(NodeError::CQLError)?;
+        
+        QueryExecution::new(node.clone(), connections).execute(Query::AlterTable(query),internode)
     }
 
     fn forward_message(

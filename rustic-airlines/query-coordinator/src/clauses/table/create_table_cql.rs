@@ -11,6 +11,54 @@ pub struct CreateTable {
 
 impl CreateTable {
 
+    // Métodos anteriores...
+
+    // Método para agregar una columna a la tabla
+    pub fn add_column(&mut self, column: Column) -> Result<(), CQLError> {
+        if self.columns.iter().any(|col| col.name == column.name) {
+            return Err(CQLError::InvalidColumn);
+        }
+        self.columns.push(column);
+        Ok(())
+    }
+
+    // Método para eliminar una columna de la tabla
+    pub fn remove_column(&mut self, column_name: &str) -> Result<(), CQLError> {
+        let index = self.columns.iter().position(|col| col.name == column_name);
+        if let Some(i) = index {
+            self.columns.remove(i);
+            Ok(())
+        } else {
+            Err(CQLError::InvalidColumn)
+        }
+    }
+
+    // Método para modificar una columna existente
+    pub fn modify_column(&mut self, column_name: &str, new_data_type: DataType, allows_null: bool) -> Result<(), CQLError> {
+        for col in &mut self.columns {
+            if col.name == column_name {
+                col.data_type = new_data_type;
+                col.allows_null = allows_null;
+                return Ok(());
+            }
+        }
+        Err(CQLError::InvalidColumn)
+    }
+
+    // Método para renombrar una columna existente
+    pub fn rename_column(&mut self, old_name: &str, new_name: &str) -> Result<(), CQLError> {
+        if self.columns.iter().any(|col| col.name == new_name) {
+            return Err(CQLError::InvalidColumn);
+        }
+        for col in &mut self.columns {
+            if col.name == old_name {
+                col.name = new_name.to_string();
+                return Ok(());
+            }
+        }
+        Err(CQLError::InvalidColumn)
+    }
+
     pub fn get_name(&self)-> String{
         self.name.clone()
     }
