@@ -102,6 +102,7 @@ impl QueryCoordinator {
         let mut index = 0;
         let mut tokens = Vec::new();
         let mut current = String::new();
+        let mut in_braces = false;
     
         let string = string.replace(";", "");
         let length = string.len();
@@ -109,7 +110,34 @@ impl QueryCoordinator {
         while index < length {
             let char = string.chars().nth(index).unwrap_or('0');
     
-            if char.is_alphabetic() || char == '_' {
+            if char == '{' {
+                tokens.push("{".to_string());
+                in_braces = true;
+                index += 1;
+            } else if char == '}' {
+                if !current.is_empty() {
+                    tokens.push(current.clone());
+                    current.clear();
+                }
+                tokens.push("}".to_string());
+                in_braces = false;
+                index += 1;
+            } else if in_braces {
+                if char == '\'' {
+                    index = Self::process_quotes(&string, index, &mut current, &mut tokens);
+                } else if char.is_alphanumeric() || char == '_' {
+                    current.push(char);
+                    index += 1;
+                } else if char == ':' || char == ',' {
+                    if !current.is_empty() {
+                        tokens.push(current.clone());
+                        current.clear();
+                    }
+                    index += 1;  // Saltar separadores ':' y ','
+                } else {
+                    index += 1;
+                }
+            } else if char.is_alphabetic() || char == '_' {
                 index = Self::process_alphabetic(&string, index, &mut current, &mut tokens);
             } else if char.is_numeric() {
                 index = Self::process_numeric(&string, index, &mut current, &mut tokens);
@@ -127,6 +155,8 @@ impl QueryCoordinator {
         tokens.retain(|s| !s.is_empty());
         tokens
     }
+    
+    
     
     fn process_alphabetic(
         string: &str,
@@ -230,4 +260,143 @@ impl QueryCoordinator {
     }
     
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_select_query() {
+        let query = "SELECT name, age FROM users WHERE age > 30;";
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        assert_eq!(tokens, vec!["SELECT", "name", "age", "FROM", "users", "WHERE", "age", ">", "30"]);
+    }
+
+    #[test]
+    fn test_insert_query() {
+        let query = "INSERT INTO users (name, age) VALUES ('John', 28);";
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        assert_eq!(tokens, vec!["INSERT", "INTO", "users", "name, age", "VALUES", "'John', 28"]);
+    }
+
+    #[test]
+    fn test_update_query() {
+        let query = "UPDATE users SET age = 29 WHERE name = 'John';";
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        assert_eq!(tokens, vec! ["UPDATE", "users", "SET", "age", "=", "29", "WHERE", "name", "=", "John"]);
+    }
+
+    #[test]
+    fn test_delete_query() {
+        let query = "DELETE FROM users WHERE age < 20;";
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        assert_eq!(tokens, vec!["DELETE", "FROM", "users", "WHERE", "age", "<", "20"]);
+    }
+
+    #[test]
+    fn test_create_table_query() {
+        let query = "CREATE TABLE users (id INT PRIMARY KEY, name TEXT);";
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        assert_eq!(tokens, vec!["CREATE", "TABLE", "users", "id INT PRIMARY KEY, name TEXT"]);
+    }
+
+    #[test]
+    fn test_drop_table_query() {
+        let query = "DROP TABLE users;";
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        assert_eq!(tokens, vec!["DROP", "TABLE", "users"]);
+    }
+
+    #[test]
+    fn test_alter_table_query() {
+        let query = "ALTER TABLE users ADD email TEXT;";
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        assert_eq!(tokens, vec!["ALTER", "TABLE", "users", "ADD", "email", "TEXT"]);
+    }
+
+    #[test]
+    fn test_create_keyspace_query() {
+        let query = "CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}";
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        assert_eq!(tokens, vec!["CREATE", "KEYSPACE", "test", "WITH", "replication", "=", "{", "class", "SimpleStrategy", "replication_factor", "1", "}"]);
+    }
+
+    #[test]
+    fn test_drop_keyspace_query() {
+        let query = "DROP KEYSPACE test;";
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        assert_eq!(tokens, vec!["DROP", "KEYSPACE", "test"]);
+    }
+
+    #[test]
+    fn test_alter_keyspace_query() {
+        let query = "ALTER KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};";
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        assert_eq!(tokens, vec!["ALTER", "KEYSPACE", "test", "WITH", "replication", "=", "{", "class", "SimpleStrategy", "replication_factor", "3", "}"]);
+    }
+
+    #[test]
+    fn test_create_select_query() {
+        let coordinator = QueryCoordinator::new();
+        let query = "SELECT name, age FROM users WHERE age > 30;".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::Select(_))));
+    }
+
+    #[test]
+    fn test_create_insert_query() {
+        let coordinator = QueryCoordinator::new();
+        let query = "INSERT INTO users (name, age) VALUES ('John', 28);".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::Insert(_))));
+    }
+
+    #[test]
+    fn test_create_update_query() {
+        let coordinator = QueryCoordinator::new();
+        let query = "UPDATE users SET age = 29 WHERE name = 'John';".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::Update(_))));
+    }
+
+    #[test]
+    fn test_create_delete_query() {
+        let coordinator = QueryCoordinator::new();
+        let query = "DELETE FROM users WHERE age < 20;".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::Delete(_))));
+    }
+
+    #[test]
+    fn test_create_table_query_success() {
+        let coordinator = QueryCoordinator::new();
+        let query = "CREATE TABLE users (id INT PRIMARY KEY, name TEXT);".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::CreateTable(_))));
+    }
+
+    #[test]
+    fn test_create_keyspace_query_success() {
+        let coordinator = QueryCoordinator::new();
+        let query = "CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::CreateKeyspace(_))));
+    }
+
+    #[test]
+    fn test_drop_keyspace_query_success() {
+        let coordinator = QueryCoordinator::new();
+        let query = "DROP KEYSPACE test;".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::DropKeyspace(_))));
+    }
+
+    #[test]
+    fn test_alter_keyspace_query_success() {
+        let coordinator = QueryCoordinator::new();
+        let query = "ALTER KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::AlterKeyspace(_))));
+    }
 }

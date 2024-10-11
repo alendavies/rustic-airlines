@@ -1,5 +1,6 @@
 use std::net::{TcpStream, Ipv4Addr, SocketAddrV4};
 use std::io:: Write;
+use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
 use query_coordinator::clauses::table::alter_table_cql::AlterTable;
 use query_coordinator::clauses::table::create_table_cql::CreateTable;
 use query_coordinator::clauses::table::drop_table_cql::DropTable;
@@ -9,12 +10,12 @@ use query_coordinator::clauses::{delete_sql::Delete, insert_sql::Insert, select_
 use query_coordinator::Query;
 use query_coordinator::errors::CQLError;
 use std::sync::{Arc, Mutex};
+use crate::table::Table;
 use crate::Node;
 use std::fs::{self, OpenOptions, File};
 use crate::NodeError;
 use std::path::Path;
 use std::io::{BufRead, BufReader};
-
 use std::time::{SystemTime, UNIX_EPOCH};
 
 
@@ -51,7 +52,7 @@ impl QueryExecution {
                 self.execute_delete(delete_query)?;
             }
             Query::CreateTable(create_table) => {
-                if self.node_that_execute.lock()?.table_already_exist(create_table.clone()){
+                if self.node_that_execute.lock()?.table_already_exist(create_table.get_name())?{
                     return Err(NodeError::CQLError(CQLError::InvalidTable));
                 }
                 self.execute_create_table(create_table, internode)?;
@@ -61,6 +62,15 @@ impl QueryExecution {
             }
             Query::AlterTable(alter_table) => {
                 self.execute_alter_table(alter_table, internode)?;
+            }
+            Query::CreateKeyspace(create_keyspace) => {
+                self.execute_create_keyspace(create_keyspace, internode)?;
+            }
+            Query::DropKeyspace(alter_table) => {
+                //self.execute_alter_table(alter_table, internode)?;
+            }
+            Query::AlterKeyspace(alter_table) => {
+                //self.execute_alter_table(alter_table, internode)?;
             }
             
         }
@@ -90,8 +100,48 @@ impl QueryExecution {
         Ok(())
     }
 
+    pub fn execute_create_keyspace(&self, create_keyspace: CreateKeyspace, internode: bool) -> Result<(), NodeError> {
+        
+        self.node_that_execute.lock().map_err(|_| NodeError::LockError)?.add_keyspace(create_keyspace.clone())?;
+    
+        // Obtiene el nombre del keyspace
+        let keyspace_name = create_keyspace.get_name().clone();
+    
+        // Genera el nombre de la carpeta donde se almacenará el keyspace
+        let node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
+        let ip_str = node.get_ip().to_string().replace(".", "_");
+        let folder_name = format!("keyspaces_{}", ip_str);
+    
+        // Crea la carpeta del keyspace si no existe
+        let keyspace_path = format!("{}/{}", folder_name, keyspace_name);
+        if let Err(e) = std::fs::create_dir_all(&keyspace_path) {
+            return Err(NodeError::IoError(e));
+        }
+    
+        // Si no es una operación de `internode`, comunicar a otros nodos
+        if !internode {
+            // Serializa la estructura `CreateKeyspace`
+            let serialized_create_keyspace = create_keyspace.serialize();
+            // Envía el mensaje `CREATE_KEYSPACE_INTERNODE` a cada nodo en el partitioner
+            for ip in node.get_partitioner().get_nodes() {
+                if ip != node.get_ip() {
+                    let mut stream = self.connect(ip, self.connections.clone())?;
+                    let message = format!("CREATE_KEYSPACE_INTERNODE {}", serialized_create_keyspace);
+                    self.send_message(&mut stream, &message)?;
+                }
+            }
+        }
+    
+        Ok(())
+    }
+    
+
+
     pub fn execute_create_table(&self, create_table: CreateTable, internode: bool) -> Result<(), NodeError> {
         // Agrega la tabla al nodo
+        if self.node_that_execute.lock()?.has_no_actual_keyspace(){
+            return Err(NodeError::CQLError(CQLError::Error));
+        }
         self.node_that_execute.lock().map_err(|_| NodeError::LockError)?.add_table(create_table.clone())?;
 
         // Obtiene el nombre de la tabla y la estructura de columnas
@@ -101,7 +151,7 @@ impl QueryExecution {
         // Genera el nombre de archivo y la carpeta en la cual se almacenará la tabla
         let node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
         let ip_str = node.get_ip().to_string().replace(".", "_");
-        let folder_name = format!("keyspaces_{}/PLANES", ip_str);
+        let folder_name = format!("keyspaces_{}/{}", ip_str, node.actual_keyspace_name()?);
         let file_path = format!("{}/{}.csv", folder_name, table_name);
 
         // Crea la carpeta si no existe
@@ -141,6 +191,10 @@ impl QueryExecution {
 
 
     pub fn execute_drop_table(&self, drop_table: DropTable, internode: bool) -> Result<(), NodeError> {
+        // Agrega la tabla al nodo
+        if self.node_that_execute.lock()?.has_no_actual_keyspace(){
+            return Err(NodeError::CQLError(CQLError::Error));
+        }
         // Obtiene el nombre de la tabla a eliminar
         let table_name = drop_table.get_table_name();
     
@@ -153,7 +207,7 @@ impl QueryExecution {
         // Genera el nombre de archivo y la carpeta en la cual se almacenará la tabla
         let node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
         let ip_str = node.get_ip().to_string().replace(".", "_");
-        let folder_name = format!("keyspaces_{}/PLANES", ip_str);
+        let folder_name = format!("keyspaces_{}/{}", ip_str, node.actual_keyspace_name()?);
         let file_path = format!("{}/{}.csv", folder_name, table_name);
     
         // Borra el archivo de la tabla si existe
@@ -180,14 +234,18 @@ impl QueryExecution {
     }
     
     pub fn execute_alter_table(&self, alter_table: AlterTable, internode: bool) -> Result<(), NodeError> {
+        // Agrega la tabla al nodo
+        if self.node_that_execute.lock()?.has_no_actual_keyspace(){
+            return Err(NodeError::CQLError(CQLError::Error));
+        }
         // Obtiene el nombre de la tabla y bloquea el acceso a la misma
         let table_name = alter_table.get_table_name();
         let mut node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
-        let mut table = node.get_table(table_name.clone())?;
+        let mut table = node.get_table(table_name.clone())?.inner;
     
         // Ruta del archivo de la tabla
         let ip_str = node.get_ip().to_string().replace(".", "_");
-        let folder_name = format!("keyspaces_{}/PLANES", ip_str);
+        let folder_name = format!("keyspaces_{}/{}", ip_str, node.actual_keyspace_name()?);
         let file_path = format!("{}/{}.csv", folder_name, table_name);
     
         // Verifica que el archivo exista antes de proceder
@@ -320,7 +378,17 @@ impl QueryExecution {
     }
     
 
-    fn execute_insert(&self, insert_query: Insert, table_to_insert: CreateTable, internode: bool) -> Result<(), NodeError> {
+    fn execute_insert(&self, insert_query: Insert, table_to_insert: Table, internode: bool) -> Result<(), NodeError> {
+
+        // Agrega la tabla al nodo
+        if self.node_that_execute.lock()?.has_no_actual_keyspace(){
+            return Err(NodeError::CQLError(CQLError::Error));
+        }
+
+        if !self.node_that_execute.lock()?.table_already_exist(table_to_insert.get_name())?{
+            return Err(NodeError::CQLError(CQLError::Error));
+        }
+
         let columns = table_to_insert.get_columns();
         let primary_key = columns.iter().find(|column| column.is_primary_key).ok_or(NodeError::CQLError(CQLError::InvalidSyntax))?;
 
@@ -342,7 +410,7 @@ impl QueryExecution {
             let ip = node.get_partitioner().get_ip(value_to_hash)?;
 
             if ip == node.get_ip() {
-                QueryExecution::insert_in_this_node(values, ip, insert_query.into_clause.table_name, pos)?;
+                QueryExecution::insert_in_this_node(values, ip, insert_query.into_clause.table_name, pos, node.actual_keyspace_name()?)?;
                 return Ok(());
             }
 
@@ -353,7 +421,7 @@ impl QueryExecution {
             self.send_message(&mut stream, &message)?;
         } else {
             
-            QueryExecution::insert_in_this_node(values, node.get_ip(), insert_query.into_clause.table_name, pos)?;
+            QueryExecution::insert_in_this_node(values, node.get_ip(), insert_query.into_clause.table_name, pos, node.actual_keyspace_name()? )?;
         }
 
         Ok(())
@@ -372,24 +440,22 @@ impl QueryExecution {
         Ok(())
     }
 
-    fn insert_in_this_node(values: Vec<String>, ip: Ipv4Addr, table_name: String, index_of_primary_key: usize) -> Result<(), NodeError> {
+    fn insert_in_this_node(values: Vec<String>, ip: Ipv4Addr, table_name: String, index_of_primary_key: usize, actual_key_space_name: String) -> Result<(), NodeError> {
         // Convertimos la IP a string para usar en el nombre de la carpeta
         let ip_str = ip.to_string().replace(".", "_");
-        let folder_name = format!("keyspaces_{}", ip_str);
+    
+        let folder_name = format!("keyspaces_{}/{}", ip_str, actual_key_space_name);
+        let folder_path = Path::new(&folder_name);
 
-        // Carpeta "Airports" dentro de "keyspaces_{ip}"
-        let airports_folder_name = format!("{}/PLANES", folder_name);
-        let airports_folder_path = Path::new(&airports_folder_name);
-
-        if !airports_folder_path.exists() {
-            fs::create_dir_all(&airports_folder_path).map_err(NodeError::IoError)?;
+        if !folder_path.exists() {
+            fs::create_dir_all(&folder_path).map_err(NodeError::IoError)?;
         }
 
         // Nombre de la tabla para almacenar la data, agregando la extensión ".csv"
-        let file_path = airports_folder_path.join(format!("{}.csv", table_name));
+        let file_path = folder_path.join(format!("{}.csv", table_name));
 
         // Genera un nombre único para el archivo temporal
-        let temp_file_path = airports_folder_path.join(format!("{}.tmp", SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| NodeError::OtherError)?.as_nanos()));
+        let temp_file_path = folder_path.join(format!("{}.tmp", SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| NodeError::OtherError)?.as_nanos()));
         
         // Abre el archivo temporal en modo de escritura
         let mut temp_file = File::create(&temp_file_path).map_err(NodeError::IoError)?;

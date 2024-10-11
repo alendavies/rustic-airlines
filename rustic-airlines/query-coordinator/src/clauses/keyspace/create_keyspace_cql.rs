@@ -1,4 +1,4 @@
-use crate::errors::CQLError;
+use crate::{errors::CQLError, QueryCoordinator};
 
 #[derive(Debug, Clone)]
 pub struct CreateKeyspace {
@@ -7,57 +7,147 @@ pub struct CreateKeyspace {
     replication_factor: u32,
 }
 
-
-/// Partamos de que solamente vamos a usar la clase simple, entonces durable writes no es necesario, siempre va a ser true.
-
 impl CreateKeyspace {
-   
     pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
-        if query.len() < 6 || query[0].to_uppercase() != "CREATE" || query[1].to_uppercase() != "KEYSPACE" {
+        if query.len() < 10 || query[0].to_uppercase() != "CREATE" || query[1].to_uppercase() != "KEYSPACE" {
             return Err(CQLError::InvalidSyntax);
         }
 
         let keyspace_name = query[2].to_string();
 
-        if query[3].to_uppercase() != "WITH" || query[4].to_uppercase() != "REPLICATION" {
+        if query[3].to_uppercase() != "WITH" || query[4].to_uppercase() != "REPLICATION" || query[5] != "=" {
             return Err(CQLError::InvalidSyntax);
         }
-
-        let replication_options = &query[5];
-        if !replication_options.starts_with('{') || !replication_options.ends_with('}') {
-            return Err(CQLError::InvalidSyntax);
-        }
-
-        let cleaned_options = &replication_options[1..replication_options.len() - 1];
-        let options_parts: Vec<&str> = cleaned_options.split(',').collect();
 
         let mut replication_class = String::new();
         let mut replication_factor = 0;
 
-        for option in options_parts {
-            let kv: Vec<&str> = option.split(':').collect();
-            if kv.len() != 2 {
-                return Err(CQLError::InvalidSyntax);
-            }
-
-            let key = kv[0].trim().replace("'", ""); // Remove quotes, just in case
-            let value = kv[1].trim().replace("'", "");
-
-            match key.as_str() {
-                "class" => replication_class = value,
-                "replication_factor" => {
-                    replication_factor = value.parse::<u32>().map_err(|_| CQLError::InvalidSyntax)?;
+        let mut index = 6; // Comienza después de "WITH REPLICATION ="
+        while index < query.len() {
+            match query[index].as_str() {
+                "{" => index += 1, // Saltar el inicio de bloque '{'
+                "class" => {
+                    replication_class = query[index + 1].to_string();
+                    index += 2;
                 }
-                // Ignore other options like "durable_writes" fow now
-                _ => continue, 
+                "replication_factor" => {
+                    replication_factor = query[index + 1]
+                        .parse::<u32>()
+                        .map_err(|_| CQLError::InvalidSyntax)?;
+                    index += 2;
+                }
+                "}" => break, // Finaliza al encontrar '}'
+                _ => index += 1,
             }
         }
 
+        if replication_class != "SimpleStrategy" {
+            return Err(CQLError::InvalidSyntax);
+        }
+
         Ok(Self {
-            name: keyspace_name, 
-            replication_class: replication_class, 
-            replication_factor: replication_factor
+            name: keyspace_name,
+            replication_class,
+            replication_factor,
         })
     }
 
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+
+   /// Serializa la estructura `CreateKeyspace` a una consulta CQL
+pub fn serialize(&self) -> String {
+    format!(
+        "CREATE KEYSPACE {} WITH replication = {{'class': '{}', 'replication_factor': {}}};",
+        self.name, self.replication_class, self.replication_factor
+    )
+}
+
+
+    /// Deserializa una consulta CQL en formato `String` y convierte a la estructura `CreateKeyspace`
+    pub fn deserialize(query: &str) -> Result<Self, CQLError> {
+        // Divide la consulta en tokens y convierte a `Vec<String>`
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        Self::new_from_tokens(tokens)
+    }
+}
+
+impl PartialEq for CreateKeyspace {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_keyspace_valid_simple_strategy() {
+        let query = vec![
+            "CREATE".to_string(),
+            "KEYSPACE".to_string(),
+            "example".to_string(),
+            "WITH".to_string(),
+            "replication".to_string(),
+            "=".to_string(),
+            "{".to_string(),
+            "class".to_string(),
+            "SimpleStrategy".to_string(),
+            "replication_factor".to_string(),
+            "3".to_string(),
+            "}".to_string(),
+        ];
+
+        let result = CreateKeyspace::new_from_tokens(query);
+        assert!(result.is_ok());
+
+        let create_keyspace = result.unwrap();
+        assert_eq!(create_keyspace.name, "example");
+        assert_eq!(create_keyspace.replication_class, "SimpleStrategy");
+        assert_eq!(create_keyspace.replication_factor, 3);
+    }
+
+    #[test]
+    fn test_create_keyspace_invalid_replication_class() {
+        let query = vec![
+            "CREATE".to_string(),
+            "KEYSPACE".to_string(),
+            "example".to_string(),
+            "WITH".to_string(),
+            "replication".to_string(),
+            "=".to_string(),
+            "{".to_string(),
+            "class".to_string(),
+            "InvalidStrategy".to_string(),
+            "replication_factor".to_string(),
+            "3".to_string(),
+            "}".to_string(),
+        ];
+
+        let result = CreateKeyspace::new_from_tokens(query);
+        assert!(matches!(result, Err(CQLError::InvalidSyntax)));
+    }
+
+    #[test]
+    fn test_create_keyspace_invalid_replication_factor() {
+        let query = vec![
+            "CREATE".to_string(),
+            "KEYSPACE".to_string(),
+            "example".to_string(),
+            "WITH".to_string(),
+            "replication".to_string(),
+            "=".to_string(),
+            "{".to_string(),
+            "class".to_string(),
+            "SimpleStrategy".to_string(),
+            "replication_factor".to_string(),
+            "three".to_string(),
+            "}".to_string(),
+        ];
+
+        let result = CreateKeyspace::new_from_tokens(query);
+        assert!(matches!(result, Err(CQLError::InvalidSyntax)));
+    }
 }

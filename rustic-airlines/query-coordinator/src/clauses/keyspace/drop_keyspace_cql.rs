@@ -19,5 +19,17 @@ impl DropKeyspace {
             name: name.to_string(),
         })
     }
+
+    /// Serializa la estructura `DropKeyspace` a una consulta CQL
+    pub fn serialize(&self) -> String {
+        format!("DROP KEYSPACE {};", self.name)
+    }
+
+    /// Deserializa una consulta CQL en formato `String` y convierte a la estructura `DropKeyspace`
+    pub fn deserialize(query: &str) -> Result<Self, CQLError> {
+        // Divide la consulta en tokens y convierte a `Vec<String>`
+        let tokens = query.split_whitespace().map(|s| s.to_string()).collect();
+        Self::new_from_tokens(tokens)
+    }
 }
 
