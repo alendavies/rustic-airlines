@@ -15,6 +15,13 @@ pub mod table {
     pub mod alter_table_cql;
 }
 
+pub mod keyspace {
+    pub mod create_keyspace_cql;
+    pub mod alter_keyspace_cql;
+    pub mod drop_keyspace_cql;
+}
+
+
 pub mod types {
     pub mod column;
     pub mod datatype;

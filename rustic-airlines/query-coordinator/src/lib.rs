@@ -6,6 +6,7 @@ mod utils;
 
 use clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update};
 use clauses::table::{create_table_cql::CreateTable, drop_table_cql::DropTable, alter_table_cql::AlterTable};
+use clauses::keyspace::{create_keyspace_cql::CreateKeyspace, drop_keyspace_cql::DropKeyspace, alter_keyspace_cql::AlterKeyspace};
 use errors::CQLError;
 
 
@@ -17,7 +18,10 @@ pub enum Query {
     Delete(Delete),
     CreateTable(CreateTable),
     DropTable(DropTable),
-    AlterTable(AlterTable)
+    AlterTable(AlterTable),
+    CreateKeyspace(CreateKeyspace),
+    DropKeyspace(DropKeyspace),
+    AlterKeyspace(AlterKeyspace)
 }
 
 #[derive(Debug)]  // Agrega Debug también al QueryCoordinator si lo necesitas
@@ -55,9 +59,11 @@ impl QueryCoordinator {
                         let create_table = CreateTable::new_from_tokens(tokens)?;
                         Ok(Query::CreateTable(create_table))
                     }
-                    //"KEYSPACE" => {
-                    //    
-                    //}
+                    "KEYSPACE" => {
+                        let create_keyspace = CreateKeyspace::new_from_tokens(tokens)?;
+                        Ok(Query::CreateKeyspace(create_keyspace))
+                    }
+
                     _ => Err(CQLError::InvalidSyntax),
                 }                                        
             }
@@ -66,7 +72,12 @@ impl QueryCoordinator {
                     "TABLE" => {
                         let drop_table = DropTable::new_from_tokens(tokens)?;
                         Ok(Query::DropTable(drop_table))
-                    }                   
+                    }          
+                    "KEYSPACE" => {
+                        let drop_keyspace = DropKeyspace::new_from_tokens(tokens)?;
+                        Ok(Query::DropKeyspace(drop_keyspace))
+                    }  
+                   
                     _ => Err(CQLError::InvalidSyntax),
                 }                                        
             }
@@ -75,7 +86,11 @@ impl QueryCoordinator {
                     "TABLE" => {
                         let alter_table = AlterTable::new_from_tokens(tokens)?;
                         Ok(Query::AlterTable(alter_table))
-                    }                   
+                    }      
+                    "KEYSPACE" => {
+                        let alter_keyspace = AlterKeyspace::new_from_tokens(tokens)?;
+                        Ok(Query::AlterKeyspace(alter_keyspace))
+                    }                    
                     _ => Err(CQLError::InvalidSyntax),
                 }                                        
             }

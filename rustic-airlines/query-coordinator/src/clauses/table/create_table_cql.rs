@@ -168,3 +168,4 @@ impl PartialEq for CreateTable {
         self.name == other.name
     }
 }
+
