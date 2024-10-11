@@ -18,3 +18,10 @@ impl Column {
         }
     }
 }
+
+// Implementación del trait `PartialEq` para comparar solo por el nombre
+impl PartialEq for Column {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
