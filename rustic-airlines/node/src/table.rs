@@ -1,8 +1,8 @@
 // table.rs
 use query_coordinator::clauses::{table::create_table_cql::CreateTable, types::column::Column};
-use crate::keyspace::Keyspace;
+use std::fmt;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Table {
     pub inner: CreateTable,
 }
@@ -23,3 +23,10 @@ impl Table {
         self.inner.get_columns()
     }
 }
+
+impl fmt::Debug for Table {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Table: {}", self.get_name())
+    }
+}
+

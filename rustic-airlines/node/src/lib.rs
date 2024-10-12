@@ -83,6 +83,24 @@ impl Node {
         Ok(())
     }
 
+    pub fn remove_keyspace(&mut self, keyspace_name: String) -> Result<(), NodeError> {
+        
+        let mut keyspaces = self.keyspaces.clone();
+
+        let index = keyspaces
+            .iter()
+            .position(|keyspace| keyspace.get_name() == keyspace_name)
+            .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
+        
+        keyspaces.remove(index);
+        if self.actual_keyspace_name().is_ok() && self.actual_keyspace_name()? == keyspace_name{
+            self.actual_keyspace = None;
+        }
+
+        self.keyspaces = keyspaces;
+        Ok(())
+    }
+
     pub fn add_table(&mut self, new_table: CreateTable) -> Result<(), NodeError> {
 
         let mut new_keyspace = self.actual_keyspace.clone().ok_or(NodeError::OtherError)?;
@@ -93,23 +111,12 @@ impl Node {
     
 
     pub fn get_table(&self, table_name: String) -> Result<Table, NodeError> {
-        self.actual_keyspace.clone().ok_or(NodeError::OtherError)?.get_tables().clone()
-            .iter()
-            .find(|x| x.get_name() == table_name)
-            .cloned() // Clona el valor encontrado para devolverlo
-            .ok_or(NodeError::CQLError(CQLError::InvalidTable))
+        self.actual_keyspace.clone().ok_or(NodeError::OtherError)?.get_table(&table_name) // Clona el valor encontrado para devolverlo
     }
     
     pub fn remove_table(&mut self, table_name: String) -> Result<(), NodeError> {
         let keyspace = self.actual_keyspace.as_mut().ok_or(NodeError::OtherError)?;
-        
-        let index = keyspace
-            .get_tables()
-            .iter()
-            .position(|table| table.get_name() == table_name)
-            .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
-        
-        keyspace.get_tables().remove(index);
+        keyspace.remove_table(&table_name)?;
         Ok(())
     }
     
@@ -131,7 +138,24 @@ impl Node {
         Ok(())
     }
     
+    pub fn update_keyspace(&mut self, new_keyspace: Keyspace) -> Result<(), NodeError> {
     
+
+        // Encuentra la posición del keyspace en kesyapces
+        let index = self.keyspaces
+            .iter()
+            .position(|table| table.get_name() == new_keyspace.get_name())
+            .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
+        
+        // Reemplaza la tabla existente en la posición encontrada con la nueva tabla
+        self.keyspaces[index] = new_keyspace.clone();
+
+        //Actualizamos el actual si es que era ese
+        if self.actual_keyspace.is_some() && self.actual_keyspace.clone().ok_or(NodeError::OtherError)? == new_keyspace{
+            self.actual_keyspace = Some(new_keyspace);
+        }
+        Ok(())
+    }
     pub fn table_already_exist(&self, table_name: String) -> Result<bool, NodeError> {
         // Obtiene una referencia a `actual_keyspace` si existe; si no, devuelve un error
         let keyspace = self.actual_keyspace.as_ref().ok_or(NodeError::OtherError)?;
@@ -241,7 +265,7 @@ impl Node {
             }
 
             let command = tokens[0];
-            println!("Me llego el comando {:?}", tokens[0]);
+            
             match command {
                 "IP" => Node::handle_ip_command(&node, tokens, connections.clone(), is_seed)?,
                 "INSERT" => Node::handle_insert_command(&node, tokens, connections.clone(), false)?,
@@ -260,9 +284,24 @@ impl Node {
                 "ALTER_KEYSPACE_INTERNODE" => Node::handle_alter_keyspace_command(&node, tokens, connections.clone(),true)?,
                 _ => println!("Comando desconocido: {}", command),
             }
+        
+            // let node = node.lock()?;
+            // // Imprimir un string vacío si `node.actual_keyspace` es `None`
+            // println!(
+            //     "El actual keyspace es {:?}",
+            //     node.actual_keyspace.as_ref().map(|ks| format!("{:?}", ks)).unwrap_or_else(|| "".to_string())
+            // );
+    
+            // // Imprimir las tablas, mostrando un string vacío si `node.actual_keyspace` es `None`
+            // println!(
+            //     "Las tablas que tiene son {:?}",
+            //     node.actual_keyspace.as_ref().map(|ks| format!("{:?}", ks.tables)).unwrap_or_else(|| "".to_string())
+            // );
+    
+        
         }
-
         Ok(())
+        
     }
 
     // Función para verificar si el particionador está lleno y el nodo es una semilla
@@ -284,10 +323,10 @@ impl Node {
             "INSERT INTO people (id, name, weight) VALUES (1,'Lorenzo', 39)",
             "INSERT INTO people (id, name, weight) VALUES (2,'Maggie', 67)",
             "INSERT INTO people (id, name, weight) VALUES (1,'Palta', 41)",
-            "INSERT INTO people (id, name, weight) VALUES (3,'Maxi', 56)",
+            "INSERT INTO city (id, name, country) VALUES (5,'Fucking', 'Brazil')",
             "INSERT INTO people (id, name, weight) VALUES (7,'Nashville',32)",
-            "ALTER TABLE people ADD email TEXT",
-            "ALTER TABLE people RENAME name to super_name",
+            "DROP TABLE people",
+            "ALTER KEYSPACE world WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 4}"
 
         ];
 
@@ -364,7 +403,6 @@ impl Node {
         connections: Arc<Mutex<Vec<TcpStream>>>,
         internode: bool,
     ) -> Result<(), NodeError> {
-
         let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
         let query = DropTable::deserialize(&query_str).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::DropTable(query),internode)
@@ -420,8 +458,9 @@ impl Node {
     ) -> Result<(), NodeError> {
         let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
         let query = AlterKeyspace::deserialize(&query_str).map_err(NodeError::CQLError)?;
-        
         QueryExecution::new(node.clone(), connections).execute(Query::AlterKeyspace(query),internode)
+        
+        
     }
 
     fn forward_message(

@@ -56,6 +56,22 @@ impl CreateKeyspace {
         self.name.clone()
     }
 
+    pub fn get_replication_class(&self) -> String {
+        self.replication_class.clone()
+    }
+
+    pub fn get_replication_factor(&self) -> u32 {
+        self.replication_factor.clone()
+    }
+
+    pub fn update_replication_class(&mut self, replication_class: String){
+        self.replication_class = replication_class;
+    }
+
+    pub fn update_replication_factor(&mut self, replication_factor: u32){
+        self.replication_factor = replication_factor;
+    }
+
    /// Serializa la estructura `CreateKeyspace` a una consulta CQL
 pub fn serialize(&self) -> String {
     format!(

@@ -1,6 +1,8 @@
 use std::net::{TcpStream, Ipv4Addr, SocketAddrV4};
 use std::io:: Write;
 use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
+use query_coordinator::clauses::keyspace::drop_keyspace_cql::DropKeyspace;
+use query_coordinator::clauses::keyspace::alter_keyspace_cql::AlterKeyspace;
 use query_coordinator::clauses::table::alter_table_cql::AlterTable;
 use query_coordinator::clauses::table::create_table_cql::CreateTable;
 use query_coordinator::clauses::table::drop_table_cql::DropTable;
@@ -66,11 +68,11 @@ impl QueryExecution {
             Query::CreateKeyspace(create_keyspace) => {
                 self.execute_create_keyspace(create_keyspace, internode)?;
             }
-            Query::DropKeyspace(alter_table) => {
-                //self.execute_alter_table(alter_table, internode)?;
+            Query::DropKeyspace(drop_keyspace) => {
+                self.execute_drop_keyspace(drop_keyspace, internode)?;
             }
-            Query::AlterKeyspace(alter_table) => {
-                //self.execute_alter_table(alter_table, internode)?;
+            Query::AlterKeyspace(alter_keyspace) => {
+                self.execute_alter_keyspace(alter_keyspace, internode)?;
             }
             
         }
@@ -134,6 +136,82 @@ impl QueryExecution {
     
         Ok(())
     }
+
+    pub fn execute_drop_keyspace(&self, drop_keyspace: DropKeyspace, internode: bool) -> Result<(), NodeError> {
+
+        // Obtiene el nombre del keyspace a eliminar
+        let keyspace_name = drop_keyspace.get_name().clone();
+    
+        // Bloquea el nodo y remueve el keyspace de la estructura interna
+        let mut node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
+        node.remove_keyspace(keyspace_name.clone())?;
+    
+        // Genera el nombre de la carpeta donde se almacena el keyspace
+        let ip_str = node.get_ip().to_string().replace(".", "_");
+        let folder_name = format!("keyspaces_{}", ip_str);
+    
+        // Define la ruta del keyspace y elimina la carpeta si existe
+        let keyspace_path = format!("{}/{}", folder_name, keyspace_name);
+        if let Err(e) = std::fs::remove_dir_all(&keyspace_path) {
+            return Err(NodeError::IoError(e));
+        }
+    
+        // Si no es una operación de `internode`, comunicar a otros nodos
+        if !internode {
+            // Serializa la estructura `DropKeyspace`
+            let serialized_drop_keyspace = drop_keyspace.serialize();
+            // Envía el mensaje `DROP_KEYSPACE_INTERNODE` a cada nodo en el partitioner
+            for ip in node.get_partitioner().get_nodes() {
+                if ip != node.get_ip() {
+                    let mut stream = self.connect(ip, self.connections.clone())?;
+                    let message = format!("DROP_KEYSPACE_INTERNODE {}", serialized_drop_keyspace);
+                    self.send_message(&mut stream, &message)?;
+                }
+            }
+        }
+    
+        Ok(())
+    }
+
+
+    pub fn execute_alter_keyspace(
+        &self, 
+        alter_keyspace: AlterKeyspace, 
+        internode: bool
+    ) -> Result<(), NodeError> {
+        // Buscar el keyspace en la lista de keyspaces
+        let mut node = self.node_that_execute.lock()?;
+        let mut keyspace = node.actual_keyspace.clone().ok_or(NodeError::OtherError)?.clone();
+    
+        // Validar si la clase de replicación y el factor son los mismos para evitar operaciones innecesarias
+        if keyspace.get_replication_class() == alter_keyspace.get_replication_class()
+            && keyspace.get_replication_factor() == alter_keyspace.get_replication_factor()
+        {
+            return Ok(()); // No hay cambios, nada que ejecutar
+        }
+        
+        keyspace.update_replication_class(alter_keyspace.get_replication_class());
+        keyspace.update_replication_factor(alter_keyspace.get_replication_factor());
+        node.update_keyspace(keyspace)?;      // Si no es internode, comunicar a otros nodos
+        if !internode {
+        
+            // Serializa la estructura `CreateTable`
+            let serialized_alter_keyspace = alter_keyspace.serialize();
+
+            // Envía el mensaje `CREATE_TABLE_INTERNODE` a cada nodo en el partitioner
+            for ip in node.get_partitioner().get_nodes() {
+                if ip != node.get_ip() {
+                    let mut stream = self.connect(ip, self.connections.clone())?;
+                    let message = format!("ALTER_KEYSPACE_INTERNODE {}", serialized_alter_keyspace);
+                    self.send_message(&mut stream, &message)?;
+                }
+            }
+        }
+    
+        Ok(())
+    }
+    
+    
     
 
 

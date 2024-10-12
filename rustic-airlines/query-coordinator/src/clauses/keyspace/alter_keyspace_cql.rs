@@ -1,4 +1,5 @@
 use crate::errors::CQLError;
+use crate::QueryCoordinator;
 
 #[derive(Debug, Clone)]
 pub struct AlterKeyspace {
@@ -55,6 +56,14 @@ impl AlterKeyspace {
         })
     }
 
+    pub fn get_replication_class(&self) -> String {
+        self.replication_class.clone()
+    }
+
+    pub fn get_replication_factor(&self) -> u32 {
+        self.replication_factor
+    }
+
     /// Serializa la estructura `AlterKeyspace` a una consulta CQL
     pub fn serialize(&self) -> String {
         format!(
@@ -66,7 +75,7 @@ impl AlterKeyspace {
     /// Deserializa una consulta CQL en formato `String` y convierte a la estructura `AlterKeyspace`
     pub fn deserialize(query: &str) -> Result<Self, CQLError> {
         // Divide la consulta en tokens y convierte a `Vec<String>`
-        let tokens = query.split_whitespace().map(|s| s.to_string()).collect();
+        let tokens: Vec<String> = QueryCoordinator::tokens_from_query(query);
         Self::new_from_tokens(tokens)
     }
 }

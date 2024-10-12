@@ -2,6 +2,7 @@ use crate::errors::CQLError;
 use crate::clauses::types::column::Column;
 use crate::clauses::types::datatype::DataType;
 use crate::clauses::types::alter_table_op::AlterTableOperation;
+use crate::QueryCoordinator;
 use std::cmp::PartialEq;
 
 #[derive(Debug, Clone)]
@@ -20,7 +21,7 @@ impl AlterTable {
 
     // Método para deserializar una cadena de texto en una instancia de `AlterTable` utilizando `new_from_tokens`
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
-        let tokens: Vec<String> = serialized.split_whitespace().map(|s| s.to_string()).collect();
+        let tokens: Vec<String> = QueryCoordinator::tokens_from_query(serialized);
         Self::new_from_tokens(tokens)
     }
 
