@@ -2,6 +2,7 @@ use super::set_sql::Set;
 use super::where_sql::Where;
 use crate::errors::CQLError;
 use crate::utils::{is_set, is_update, is_where};
+use crate::QueryCoordinator;
 
 /// Struct representing the `UPDATE` SQL clause.
 /// The `UPDATE` clause is used to modify records in a table.
@@ -12,7 +13,7 @@ use crate::utils::{is_set, is_update, is_where};
 /// * `set_clause` - The set clause to be applied.
 /// * `where_clause` - The where clause to be applied.
 ///
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Update {
     pub table_name: String,
     pub set_clause: Set,
@@ -93,6 +94,24 @@ impl Update {
             set_clause,
         })
     }
+
+    // Serializa el struct `Update` en un string
+    pub fn serialize(&self) -> String {
+        let mut result = format!("UPDATE {} SET {}", self.table_name, self.set_clause.serialize());
+        
+        if let Some(where_clause) = &self.where_clause {
+            result.push_str(&format!(" WHERE {}", where_clause.serialize()));
+        }
+        
+        result
+    }
+
+    // Deserializa un string en una instancia de `Update`
+    pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
+        let tokens: Vec<String> = QueryCoordinator::tokens_from_query(serialized);
+        Self::new_from_tokens(tokens)
+    }
+
 }
 
 #[cfg(test)]

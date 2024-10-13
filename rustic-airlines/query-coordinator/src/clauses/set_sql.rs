@@ -8,7 +8,7 @@ use crate::{errors::CQLError, utils::is_set};
 ///
 /// * A vector of tuples containing the column name and the new value.
 ///
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Set(pub Vec<(String, String)>);
 
 impl Set {
@@ -30,6 +30,11 @@ impl Set {
     /// assert_eq!(set_from_tokens, set_clause);
     /// ```
     ///
+    /// 
+    // Método para obtener una referencia al vector interno
+    pub fn get_pairs(&self) -> &Vec<(String, String)> {
+        &self.0
+    }
     pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, CQLError> {
         let mut set = Vec::new();
         let mut i = 0;
@@ -48,4 +53,19 @@ impl Set {
 
         Ok(Self(set))
     }
+    pub fn serialize(&self) -> String {
+        self.0.iter()
+            .map(|(col, val)| {
+                let formatted_value = if val.parse::<f64>().is_ok() {
+                    val.clone() // Es un número, se deja sin comillas
+                } else {
+                    format!("'{}'", val) // No es un número, se envuelve entre comillas
+                };
+                format!("{} = {}", col, formatted_value)
+            })
+            .collect::<Vec<String>>()
+            .join(", ")
+    }
+    
+
 }

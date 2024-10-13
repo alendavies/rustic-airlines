@@ -8,10 +8,11 @@ use query_coordinator::clauses::table::create_table_cql::CreateTable;
 use query_coordinator::clauses::table::drop_table_cql::DropTable;
 use query_coordinator::clauses::types::column::Column;
 use query_coordinator::clauses::types::alter_table_op::AlterTableOperation;
+use query_coordinator::clauses::set_sql::Set;
 use query_coordinator::clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update};
 use query_coordinator::Query;
 use query_coordinator::errors::CQLError;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use crate::table::Table;
 use crate::Node;
 use std::fs::{self, OpenOptions, File};
@@ -19,6 +20,8 @@ use crate::NodeError;
 use std::path::Path;
 use std::io::{BufRead, BufReader};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::HashMap;
+
 
 
 
@@ -48,7 +51,7 @@ impl QueryExecution {
                 self.execute_insert(insert_query, table, internode)?;
             }
             Query::Update(update_query) => {
-                self.execute_update(update_query)?;
+                self.execute_update(update_query, internode)?;
             }
             Query::Delete(delete_query) => {
                 self.execute_delete(delete_query)?;
@@ -104,13 +107,13 @@ impl QueryExecution {
 
     pub fn execute_create_keyspace(&self, create_keyspace: CreateKeyspace, internode: bool) -> Result<(), NodeError> {
         
-        self.node_that_execute.lock().map_err(|_| NodeError::LockError)?.add_keyspace(create_keyspace.clone())?;
+        let mut node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
+        node.add_keyspace(create_keyspace.clone())?;
     
         // Obtiene el nombre del keyspace
         let keyspace_name = create_keyspace.get_name().clone();
     
         // Genera el nombre de la carpeta donde se almacenará el keyspace
-        let node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
         let ip_str = node.get_ip().to_string().replace(".", "_");
         let folder_name = format!("keyspaces_{}", ip_str);
     
@@ -124,14 +127,7 @@ impl QueryExecution {
         if !internode {
             // Serializa la estructura `CreateKeyspace`
             let serialized_create_keyspace = create_keyspace.serialize();
-            // Envía el mensaje `CREATE_KEYSPACE_INTERNODE` a cada nodo en el partitioner
-            for ip in node.get_partitioner().get_nodes() {
-                if ip != node.get_ip() {
-                    let mut stream = self.connect(ip, self.connections.clone())?;
-                    let message = format!("CREATE_KEYSPACE_INTERNODE {}", serialized_create_keyspace);
-                    self.send_message(&mut stream, &message)?;
-                }
-            }
+            self.send_to_other_nodes(node,"CREATE_KEYSPACE_INTERNODE", serialized_create_keyspace)?;
         }
     
         Ok(())
@@ -160,14 +156,7 @@ impl QueryExecution {
         if !internode {
             // Serializa la estructura `DropKeyspace`
             let serialized_drop_keyspace = drop_keyspace.serialize();
-            // Envía el mensaje `DROP_KEYSPACE_INTERNODE` a cada nodo en el partitioner
-            for ip in node.get_partitioner().get_nodes() {
-                if ip != node.get_ip() {
-                    let mut stream = self.connect(ip, self.connections.clone())?;
-                    let message = format!("DROP_KEYSPACE_INTERNODE {}", serialized_drop_keyspace);
-                    self.send_message(&mut stream, &message)?;
-                }
-            }
+            self.send_to_other_nodes(node,"DROP_KEYSPACE_INTERNODE", serialized_drop_keyspace)?;
         }
     
         Ok(())
@@ -195,26 +184,14 @@ impl QueryExecution {
         node.update_keyspace(keyspace)?;      // Si no es internode, comunicar a otros nodos
         if !internode {
         
-            // Serializa la estructura `CreateTable`
             let serialized_alter_keyspace = alter_keyspace.serialize();
-
-            // Envía el mensaje `CREATE_TABLE_INTERNODE` a cada nodo en el partitioner
-            for ip in node.get_partitioner().get_nodes() {
-                if ip != node.get_ip() {
-                    let mut stream = self.connect(ip, self.connections.clone())?;
-                    let message = format!("ALTER_KEYSPACE_INTERNODE {}", serialized_alter_keyspace);
-                    self.send_message(&mut stream, &message)?;
-                }
-            }
+            self.send_to_other_nodes(node,"ALTER_KEYSPACE_INTERNODE", serialized_alter_keyspace)?;
         }
     
         Ok(())
     }
     
     
-    
-
-
     pub fn execute_create_table(&self, create_table: CreateTable, internode: bool) -> Result<(), NodeError> {
         // Agrega la tabla al nodo
         if self.node_that_execute.lock()?.has_no_actual_keyspace(){
@@ -250,18 +227,9 @@ impl QueryExecution {
 
         // Si no es internode, comunicar a otros nodos
         if !internode {
-        
             // Serializa la estructura `CreateTable`
             let serialized_create_table = create_table.serialize();
-
-            // Envía el mensaje `CREATE_TABLE_INTERNODE` a cada nodo en el partitioner
-            for ip in node.get_partitioner().get_nodes() {
-                if ip != node.get_ip() {
-                    let mut stream = self.connect(ip, self.connections.clone())?;
-                    let message = format!("CREATE_TABLE_INTERNODE {}", serialized_create_table);
-                    self.send_message(&mut stream, &message)?;
-                }
-            }
+            self.send_to_other_nodes(node,"CREATE_TABLE_INTERNODE", serialized_create_table)?;
         }
 
         Ok(())
@@ -297,15 +265,7 @@ impl QueryExecution {
         if !internode {
             // Serializa el `DropTable` a un mensaje simple
             let serialized_drop_table = drop_table.serialize();
-    
-            // Envía el mensaje `DROP_TABLE_INTERNODE` a cada nodo en el partitioner
-            for ip in node.get_partitioner().get_nodes() {
-                if ip != node.get_ip() {
-                    let mut stream = self.connect(ip, self.connections.clone())?;
-                    let message = format!("DROP_TABLE_INTERNODE {}", serialized_drop_table);
-                    self.send_message(&mut stream, &message)?;
-                }
-            }
+            self.send_to_other_nodes(node,"DROP_TABLE_INTERNODE", serialized_drop_table)?;
         }
     
         Ok(())
@@ -368,20 +328,15 @@ impl QueryExecution {
         // Comunica a otros nodos si no es internode
         if !internode {
             let serialized_alter_table = alter_table.serialize();
-            for ip in node.get_partitioner().get_nodes() {
-                if ip != node.get_ip() {
-                    let mut stream = self.connect(ip, self.connections.clone())?;
-                    let message = format!("ALTER_TABLE_INTERNODE {}", serialized_alter_table);
-                    self.send_message(&mut stream, &message)?;
-                }
-            }
+            self.send_to_other_nodes(node,"ALTER_TABLE_INTERNODE", serialized_alter_table)?;
         }
     
         Ok(())
     }
-    
-    // Función auxiliar para agregar una columna al archivo CSV
-    fn add_column_to_file(file_path: &str, column_name: &str) -> Result<(), NodeError> {
+
+
+     // Función auxiliar para agregar una columna al archivo CSV
+     fn add_column_to_file(file_path: &str, column_name: &str) -> Result<(), NodeError> {
         let temp_path = format!("{}.temp", file_path);
         let mut temp_file = OpenOptions::new().create(true).write(true).open(&temp_path)?;
     
@@ -454,7 +409,6 @@ impl QueryExecution {
     
         fs::rename(temp_path, file_path).map_err(NodeError::IoError)
     }
-    
 
     fn execute_insert(&self, insert_query: Insert, table_to_insert: Table, internode: bool) -> Result<(), NodeError> {
 
@@ -505,24 +459,11 @@ impl QueryExecution {
         Ok(())
     }
 
-    pub fn validate_values(&self, columns: Vec<Column>, values: &[String]) -> Result<(), CQLError> {
-        if values.len() != columns.len() {
-            return Err(CQLError::InvalidColumn);
-        }
-
-        for (column, value) in columns.iter().zip(values) {
-            if !column.data_type.is_valid_value(value) {
-                return Err(CQLError::InvalidSyntax);
-            }
-        }
-        Ok(())
-    }
-
-    fn insert_in_this_node(values: Vec<String>, ip: Ipv4Addr, table_name: String, index_of_primary_key: usize, actual_key_space_name: String) -> Result<(), NodeError> {
+    fn insert_in_this_node(values: Vec<String>, ip: Ipv4Addr, table_name: String, index_of_primary_key: usize, actual_keyspace_name: String) -> Result<(), NodeError> {
         // Convertimos la IP a string para usar en el nombre de la carpeta
         let ip_str = ip.to_string().replace(".", "_");
     
-        let folder_name = format!("keyspaces_{}/{}", ip_str, actual_key_space_name);
+        let folder_name = format!("keyspaces_{}/{}", ip_str, actual_keyspace_name);
         let folder_path = Path::new(&folder_name);
 
         if !folder_path.exists() {
@@ -573,10 +514,146 @@ impl QueryExecution {
     }
 
 
-    fn execute_update(&self, update_query: Update) -> Result<(), NodeError> {
-        println!("Ejecutando UPDATE de manera distribuida: {:?}", update_query);
+     // Función auxiliar para enviar un mensaje a todos los nodos en el partitioner
+     fn send_to_other_nodes(&self, peer_node: MutexGuard<'_, Node>,header: &str, serialized_message: String)-> Result<(), NodeError> {
+        // Serializa el objeto que se quiere enviar
+        let message = format!("{} {}", header, serialized_message);
+
+        // Bloquea el nodo para obtener el partitioner y la IP
+        let current_ip = peer_node.get_ip();
+
+        // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
+        for ip in peer_node.get_partitioner().get_nodes() {
+            if ip != current_ip {
+                let mut stream = self.connect(ip, self.connections.clone())?;
+                self.send_message(&mut stream, &message)?;
+            }
+        }
         Ok(())
     }
+    
+    
+    pub fn validate_values(&self, columns: Vec<Column>, values: &[String]) -> Result<(), CQLError> {
+        if values.len() != columns.len() {
+            return Err(CQLError::InvalidColumn);
+        }
+
+        for (column, value) in columns.iter().zip(values) {
+            if !column.data_type.is_valid_value(value) {
+                return Err(CQLError::InvalidSyntax);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn validate_update_types(set_clause: Set, columns: Vec<Column>)->Result< (), NodeError>{
+        for (column_name, value) in set_clause.get_pairs(){
+            for column in &columns{
+                if *column_name == column.name{
+                    if !column.data_type.is_valid_value(value){
+                        return Err(NodeError::CQLError(CQLError::InvalidSyntax))
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn execute_update(&self, update_query: Update, internode: bool) -> Result<(), NodeError> {
+        // Obtiene el nombre de la tabla y genera la ruta del archivo
+        let table_name = update_query.table_name.clone();
+        let node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
+        let table = node.get_table(table_name.clone())?;
+        let ip_str = node.get_ip().to_string().replace(".", "_");
+        let folder_name = format!("keyspaces_{}/{}", ip_str, node.actual_keyspace_name()?);
+        let file_path = format!("{}/{}.csv", folder_name, table_name);
+    
+        // Genera un nombre único para el archivo temporal
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| NodeError::OtherError)?
+            .as_nanos();
+        let temp_file_path = format!("{}.{}.temp", file_path, timestamp);
+    
+        // Abre el archivo original y el archivo temporal
+        let file = OpenOptions::new().read(true).open(&file_path)?;
+        let reader = BufReader::new(file);
+        let mut temp_file = match File::create(&temp_file_path) {
+            Ok(file) => file,
+            Err(e) => return Err(NodeError::from(e)),
+        };
+    
+        // Lee el encabezado (primera línea) y lo escribe en el archivo temporal
+        let mut lines = reader.lines();
+        if let Some(header_line) = lines.next() {
+            if let Err(e) = writeln!(temp_file, "{}", header_line?) {
+                let _ = std::fs::remove_file(&temp_file_path);
+                return Err(NodeError::from(e));
+            }
+        }
+    
+        // Itera sobre cada línea de datos del archivo original
+        for line in lines {
+            let line = line?;
+            let mut columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
+    
+            // Crea un HashMap para representar la fila como columna-valor
+            let mut column_value_map: HashMap<String, String> = HashMap::new();
+            for (i, column) in table.get_columns().iter().enumerate() {
+                if let Some(value) = columns.get(i) {
+                    if column.is_primary_key {
+                        column_value_map.insert(column.name.clone(), value.clone());
+                    }
+                }
+            }
+    
+            // Verifica si la condición `WHERE` se cumple
+            if let Some(where_clause) = &update_query.where_clause {
+                let condition ;
+                if let Ok(value) = where_clause.condition.execute(&column_value_map) {
+                    condition = value;
+                }else {
+                    let _ = std::fs::remove_file(&temp_file_path);
+                    return Err(NodeError::CQLError(CQLError::InvalidColumn));
+                }
+                if condition {
+                    // Aplica las modificaciones de `SET`
+                    for (column, new_value) in update_query.clone().set_clause.get_pairs() {
+                        let index = table.get_column_index(column).ok_or(NodeError::CQLError(CQLError::InvalidColumn))?;
+                        columns[index] = new_value.clone();
+                    }
+                }
+            }
+            
+            if let Err(e) = Self::validate_update_types(update_query.clone().set_clause, table.get_columns()){
+                let _ = std::fs::remove_file(&temp_file_path);
+                 return Err(e);
+            }
+            // Escribe la línea modificada o la línea original en el archivo temporal
+            if let Err(e) = writeln!(temp_file, "{}", columns.join(",")) {
+                let _ = std::fs::remove_file(&temp_file_path);
+                return Err(NodeError::from(e));
+            }
+        }
+    
+        // Reemplaza el archivo original con el archivo temporal
+        if let Err(e) = std::fs::rename(&temp_file_path, &file_path) {
+            let _ = std::fs::remove_file(&temp_file_path);
+            return Err(NodeError::from(e));
+        }
+        
+        // Si `internode` es false, envía el `UPDATE` a otros nodos
+        if !internode {
+            let serialized_update = update_query.serialize();
+            if let Err(e) = self.send_to_other_nodes(node, "UPDATE_INTERNODE", serialized_update) {
+                let _ = std::fs::remove_file(&temp_file_path);
+                return Err(e);
+            }
+        }
+    
+        Ok(())
+    }
+    
 
     fn execute_delete(&self, delete_query: Delete) -> Result<(), NodeError> {
         println!("Ejecutando DELETE de manera distribuida: {:?}", delete_query);

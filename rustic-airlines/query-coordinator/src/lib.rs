@@ -50,6 +50,7 @@ impl QueryCoordinator {
                 Ok(Query::Delete(delete))
             }
             "UPDATE" => {
+                println!("{:?}", tokens);
                 let update = Update::new_from_tokens(tokens)?;
                 Ok(Query::Update(update))
             }

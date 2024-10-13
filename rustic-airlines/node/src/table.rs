@@ -22,6 +22,12 @@ impl Table {
     pub fn get_columns(&self) -> Vec<Column> {
         self.inner.get_columns()
     }
+
+    pub fn get_column_index(&self, column_name: &str) -> Option<usize> {
+        self.get_columns()
+            .iter()
+            .position(|col| col.name == column_name)
+    }
 }
 
 impl fmt::Debug for Table {

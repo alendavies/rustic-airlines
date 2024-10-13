@@ -8,7 +8,7 @@ use std::collections::HashMap;
 /// - `Simple`: Simple condition with a field, operator and value.
 /// - `Complex`: Complex condition with a left condition, logical operator and right condition.
 ///
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Condition {
     Simple {
         field: String,
@@ -193,7 +193,64 @@ impl Condition {
         };
         op_result
     }
+
+    pub fn serialize(&self) -> String {
+        match self {
+            Condition::Simple { field, operator, value } => {
+                format!("{} {} {}", field, operator.serialize(), value)
+            }
+            Condition::Complex { left, operator, right } => {
+                match operator {
+                    LogicalOperator::Not => format!("{} ({})", operator.serialize(), right.serialize()),
+                    _ => format!("({}) {} ({})", left.as_ref().unwrap().serialize(), operator.serialize(), right.serialize()),
+                }
+            }
+        }
+    }
+
+    /// Deserializa un string en una instancia de `Condition`
+    pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
+        let tokens: Vec<&str> = serialized.split_whitespace().collect();
+        Self::parse_tokens(&tokens, 0, tokens.len())
+    }
+
+    /// Función auxiliar para parsear tokens y crear la `Condition` correspondiente
+    fn parse_tokens(tokens: &[&str], start: usize, end: usize) -> Result<Self, CQLError> {
+        // Si solo tiene 3 tokens, es una condición simple (e.g., `field = value`)
+        if end - start == 3 {
+            return Self::new_simple_from_tokens(tokens, &mut (start as usize));
+        }
+
+        // Si contiene un operador lógico en el centro, entonces es una condición compleja
+        let mut i = start;
+        while i < end {
+            match tokens[i] {
+                "AND" | "OR" | "NOT" => {
+                    let operator = LogicalOperator::deserialize(tokens[i])?;
+                    if operator == LogicalOperator::Not {
+                        let right = Self::parse_tokens(tokens, i + 1, end)?;
+                        return Ok(Condition::Complex {
+                            left: None,
+                            operator,
+                            right: Box::new(right),
+                        });
+                    } else {
+                        let left = Self::parse_tokens(tokens, start, i)?;
+                        let right = Self::parse_tokens(tokens, i + 1, end)?;
+                        return Ok(Condition::Complex {
+                            left: Some(Box::new(left)),
+                            operator,
+                            right: Box::new(right),
+                        });
+                    }
+                }
+                _ => i += 1,
+            }
+        }
+        Err(CQLError::InvalidSyntax)
+    }
 }
+
 
 #[cfg(test)]
 mod tests {

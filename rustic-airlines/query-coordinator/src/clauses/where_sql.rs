@@ -9,7 +9,7 @@ use crate::errors::CQLError;
 ///
 /// * `condition` - The condition to be evaluated.
 ///
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Where {
     pub condition: Condition,
 }
@@ -47,5 +47,8 @@ impl Where {
         let condition = parse_condition(&tokens, &mut pos)?;
 
         Ok(Self { condition })
+    }
+    pub fn serialize(&self) -> String {
+        self.condition.serialize()
     }
 }

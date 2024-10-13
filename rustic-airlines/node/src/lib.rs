@@ -12,6 +12,7 @@ use query_coordinator::clauses::keyspace::alter_keyspace_cql::AlterKeyspace;
 use query_coordinator::clauses::table::alter_table_cql::AlterTable;
 use query_coordinator::clauses::table::create_table_cql::CreateTable;
 use query_coordinator::clauses::table::drop_table_cql::DropTable;
+use query_coordinator::clauses::update_sql::Update;
 use query_coordinator::errors::CQLError;
 use query_coordinator::QueryCoordinator;
 use query_coordinator::Query;
@@ -265,11 +266,9 @@ impl Node {
             }
 
             let command = tokens[0];
-            
+            println!("Recibi {:?}", command);
             match command {
                 "IP" => Node::handle_ip_command(&node, tokens, connections.clone(), is_seed)?,
-                "INSERT" => Node::handle_insert_command(&node, tokens, connections.clone(), false)?,
-                "INSERT_INTERNODE" => Node::handle_insert_command(&node, tokens, connections.clone(), true)?,
                 "CREATE_TABLE" => Node::handle_create_table_command(&node, tokens, connections.clone(),false)?,
                 "CREATE_TABLE_INTERNODE" => Node::handle_create_table_command(&node, tokens, connections.clone(),true)?,
                 "DROP_TABLE" => Node::handle_drop_table_command(&node, tokens, connections.clone(),false)?,
@@ -282,6 +281,10 @@ impl Node {
                 "DROP_KEYSPACE_INTERNODE" => Node::handle_drop_keyspace_command(&node, tokens, connections.clone(),true)?,
                 "ALTER_KEYSPACE" => Node::handle_alter_keyspace_command(&node, tokens, connections.clone(),false)?,
                 "ALTER_KEYSPACE_INTERNODE" => Node::handle_alter_keyspace_command(&node, tokens, connections.clone(),true)?,
+                "INSERT" => Node::handle_insert_command(&node, tokens, connections.clone(), false)?,
+                "INSERT_INTERNODE" => Node::handle_insert_command(&node, tokens, connections.clone(), true)?,
+                "UPDATE" => Node::handle_update_command(&node, tokens, connections.clone(), false)?,
+                "UPDATE_INTERNODE" => Node::handle_update_command(&node, tokens, connections.clone(), true)?,
                 _ => println!("Comando desconocido: {}", command),
             }
         
@@ -319,14 +322,16 @@ impl Node {
         let queries = vec![
             "CREATE KEYSPACE world WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
             "CREATE TABLE people (id INT PRIMARY KEY, name TEXT, weight INT)",
-            "CREATE TABLE city (id INT PRIMARY KEY, name TEXT, country TEXT)",
             "INSERT INTO people (id, name, weight) VALUES (1,'Lorenzo', 39)",
-            "INSERT INTO people (id, name, weight) VALUES (2,'Maggie', 67)",
-            "INSERT INTO people (id, name, weight) VALUES (1,'Palta', 41)",
-            "INSERT INTO city (id, name, country) VALUES (5,'Fucking', 'Brazil')",
-            "INSERT INTO people (id, name, weight) VALUES (7,'Nashville',32)",
-            "DROP TABLE people",
-            "ALTER KEYSPACE world WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 4}"
+            "INSERT INTO people (id, name, weight) VALUES (2,'Lorenzo', 67)",
+            "INSERT INTO people (id, name, weight) VALUES (3,'Lorenzo',32)",
+            "INSERT INTO people (id, name, weight) VALUES (4,'Maggie', 39)",
+            "INSERT INTO people (id, name, weight) VALUES (5,'Maggie', 67)",
+            "INSERT INTO people (id, name, weight) VALUES (6,'Maggie',32)",
+            "INSERT INTO people (id, name, weight) VALUES (7,'Maggie', 39)",
+            "INSERT INTO people (id, name, weight) VALUES (8,'Maggie', 67)",
+            "INSERT INTO people (id, name, weight) VALUES (9,'Maggie',32)",
+            "UPDATE people SET name = 'ESA', weight = 'papallo' WHERE id = 2"
 
         ];
 
@@ -459,6 +464,20 @@ impl Node {
         let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
         let query = AlterKeyspace::deserialize(&query_str).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::AlterKeyspace(query),internode)
+        
+        
+    }
+
+    // Función para manejar el comando "IP"
+    fn handle_update_command(
+        node: &Arc<Mutex<Node>>,
+        tokens: Vec<&str>,
+        connections: Arc<Mutex<Vec<TcpStream>>>,
+        internode: bool,
+    ) -> Result<(), NodeError> {
+        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
+        let query = Update::deserialize(&query_str).map_err(NodeError::CQLError)?;
+        QueryExecution::new(node.clone(), connections).execute(Query::Update(query),internode)
         
         
     }
