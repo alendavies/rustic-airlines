@@ -4,11 +4,10 @@ use std::{
 };
 
 use crate::{
-    header::{FrameHeader, HeaderFlags, Version},
+    header::{Flags, FrameHeader, Opcode, Version},
     messages::{error::Error, query::Query, result::Result},
-    opcodes::Opcode,
     types::{Int, Short},
-    Serializable, SerializationError,
+    ByteSerializable, Serializable, SerializationError,
 };
 
 pub enum Frame {
@@ -43,7 +42,7 @@ impl Serializable for Frame {
             Frame::Error(_) => Opcode::Error,
         };
 
-        let flags = HeaderFlags {
+        let flags = Flags {
             compression: false,
             tracing: false,
         };
@@ -79,7 +78,7 @@ impl Serializable for Frame {
         // Read flags (1 byte)
         let mut flags_bytes = [0u8];
         cursor.read_exact(&mut flags_bytes).unwrap();
-        let _ = HeaderFlags::from_byte(flags_bytes[0]);
+        let _ = Flags::from_byte(flags_bytes[0]).unwrap();
 
         // Read stream (2 bytes)
         let mut stream_bytes = [0u8; 2];

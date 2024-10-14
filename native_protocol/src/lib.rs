@@ -1,7 +1,6 @@
 mod frame;
 mod header;
 mod messages;
-mod opcodes;
 mod types;
 
 #[derive(Debug)]
