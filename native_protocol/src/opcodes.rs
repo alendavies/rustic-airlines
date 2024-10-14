@@ -1,3 +1,4 @@
+use crate::frame::SerializationError;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Opcode {
@@ -20,25 +21,25 @@ pub enum Opcode {
 }
 
 impl Opcode {
-    pub fn from_byte(byte: u8) -> Option<Self> {
+    pub fn from_byte(byte: u8) -> Result<Self, SerializationError> {
         match byte {
-            0x00 => Some(Opcode::Error),
-            0x01 => Some(Opcode::Startup),
-            0x02 => Some(Opcode::Ready),
-            0x03 => Some(Opcode::Authenticate),
-            0x05 => Some(Opcode::Options),
-            0x06 => Some(Opcode::Supported),
-            0x07 => Some(Opcode::Query),
-            0x08 => Some(Opcode::Result),
-            0x09 => Some(Opcode::Prepare),
-            0x0A => Some(Opcode::Execute),
-            0x0B => Some(Opcode::Register),
-            0x0C => Some(Opcode::Event),
-            0x0D => Some(Opcode::Batch),
-            0x0E => Some(Opcode::AuthChallenge),
-            0x0F => Some(Opcode::AuthResponse),
-            0x10 => Some(Opcode::AuthSuccess),
-            _ => None,  // Retorna None si no coincide con ningún opcode válido
+            0x00 => Ok(Opcode::Error),
+            0x01 => Ok(Opcode::Startup),
+            0x02 => Ok(Opcode::Ready),
+            0x03 => Ok(Opcode::Authenticate),
+            0x05 => Ok(Opcode::Options),
+            0x06 => Ok(Opcode::Supported),
+            0x07 => Ok(Opcode::Query),
+            0x08 => Ok(Opcode::Result),
+            0x09 => Ok(Opcode::Prepare),
+            0x0A => Ok(Opcode::Execute),
+            0x0B => Ok(Opcode::Register),
+            0x0C => Ok(Opcode::Event),
+            0x0D => Ok(Opcode::Batch),
+            0x0E => Ok(Opcode::AuthChallenge),
+            0x0F => Ok(Opcode::AuthResponse),
+            0x10 => Ok(Opcode::AuthSuccess),
+            _ => Err(SerializationError),
         }
     }
 
