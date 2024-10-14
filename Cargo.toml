@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies]
 
 [workspace]
-members = [
+members = [ 
+    "flight-sim",
     "gossip",
     "native_protocol"
 ]
