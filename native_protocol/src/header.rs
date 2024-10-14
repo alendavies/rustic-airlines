@@ -29,6 +29,10 @@ impl FrameHeader {
 }
 
 impl Serializable for FrameHeader {
+    /// 0         8        16        24        32         40
+    /// +---------+---------+---------+---------+---------+
+    /// | version |  flags  |      stream       | opcode  |
+    /// +---------+---------+---------+---------+---------+
     fn to_bytes(&self) -> Vec<u8> {
         let mut buffer = Vec::new();
 
