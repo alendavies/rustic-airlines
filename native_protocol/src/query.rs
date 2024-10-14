@@ -14,8 +14,8 @@ enum ConsistencyCode {
     LocalOne = 0x000A,
 }
 
-#[derive(Debug, PartialEq)]
-enum Consistency {
+#[derive(Debug, PartialEq, Clone)]
+pub enum Consistency {
     Any,
     One,
     Two,
@@ -76,8 +76,8 @@ enum FlagCode {
     WithNamesForValues = 0x40,
 }
 
-#[derive(Debug, PartialEq)]
-enum Flag {
+#[derive(Debug, PartialEq, Clone)]
+pub enum Flag {
     /// If set, a [short] <n> followed by <n> [value]
     /// values are provided. Those values are used for bound variables in
     /// the query.
@@ -107,15 +107,19 @@ enum Flag {
     WithNamesForValues,
 }
 
-#[derive(PartialEq, Debug)]
-struct QueryParams {
+#[derive(PartialEq, Debug, Clone)]
+pub struct QueryParams {
     /// Is the consistency level for the operation.
     consistency: Consistency,
     /// Is a byte whose bits define the options for this query.
-    flags: Vec<Flag>,
+    flags: Vec<Flag>, // TODO: should be struct with possible values
 }
 
 impl QueryParams {
+    pub fn new(consistency: Consistency, flags: Vec<Flag>) -> Self {
+        QueryParams { consistency, flags }
+    }
+
     fn flags_to_byte(&self) -> u8 {
         let mut flags_byte: u8 = 0;
 
@@ -164,12 +168,16 @@ impl QueryParams {
 }
 
 #[derive(PartialEq, Debug)]
-struct Query {
-    query: String,
-    params: QueryParams,
+pub struct Query {
+    pub query: String,
+    pub params: QueryParams,
 }
 
 impl Query {
+    pub fn new(query: String, params: QueryParams) -> Self {
+        Query { query, params }
+    }
+    // this is a [long string]
     /// 0         8        16        24        32
     /// +---------+---------+---------+---------+
     /// |        query length (4 bytes)         |
