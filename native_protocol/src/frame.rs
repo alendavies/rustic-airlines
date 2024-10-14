@@ -26,6 +26,17 @@ pub enum Frame {
 struct FrameError;
 
 impl Serializable for Frame {
+    /// 0         8        16        24        32         40
+    /// +---------+---------+---------+---------+---------+
+    /// | version |  flags  |      stream       | opcode  |
+    /// +---------+---------+---------+---------+---------+
+    /// |                length                 |         |
+    /// +---------+---------+---------+---------+---------+
+    /// |                                                 |
+    /// .                ...  body ...                    .
+    /// .                                                 .
+    /// .                                                 .
+    /// +-------------------------------------------------+
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
 
@@ -104,7 +115,7 @@ impl Serializable for Frame {
             Opcode::Ready => Self::Ready,
             Opcode::Query => Self::Query(Query::from_bytes(&body)),
             Opcode::Error => Self::Error(Error::from_bytes(&body).unwrap()),
-            Opcode::Result => Self::Result(Result::from_bytes(&body)),
+            Opcode::Result => Self::Result(Result::from_bytes(&body)?),
             _ => unimplemented!(),
         };
 
