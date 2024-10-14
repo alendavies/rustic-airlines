@@ -5,3 +5,4 @@ mod header;
 mod opcodes;
 mod query;
 mod result;
+mod types;
