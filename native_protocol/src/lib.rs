@@ -1,12 +1,12 @@
-mod frame;
-mod header;
-mod messages;
+pub mod frame;
+pub mod header;
+pub mod messages;
 mod types;
 
 #[derive(Debug)]
 pub struct SerializationError;
 
-pub(crate) trait Serializable {
+pub trait Serializable {
     fn to_bytes(&self) -> Vec<u8>;
 
     fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, SerializationError>
@@ -14,7 +14,7 @@ pub(crate) trait Serializable {
         Self: Sized;
 }
 
-pub(crate) trait ByteSerializable {
+pub trait ByteSerializable {
     fn to_byte(&self) -> u8;
 
     fn from_byte(byte: u8) -> std::result::Result<Self, SerializationError>
