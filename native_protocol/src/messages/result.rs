@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::{collections::HashMap, io::Read, net::IpAddr};
 
 pub enum ResultCode {
     Void = 0x0001,
@@ -21,21 +21,16 @@ impl ResultCode {
     }
 }
 
-enum FlagCode {
+enum MetadataFlagsCode {
     GlobalTablesSpec = 0x0001,
     HasMorePages = 0x0002,
     NoMetadata = 0x0004,
 }
 
-enum Flag {
-    GlobalTablesSpec,
-    HasMorePages,
-    NoMetadata,
-}
-
-struct TableSpec {
-    keyspace_name: String,
-    table_name: String,
+struct MetadataFlags {
+    global_tables_spec: bool,
+    has_more_pages: bool,
+    no_metadata: bool,
 }
 
 enum ColumnTypeCode {
@@ -62,7 +57,8 @@ enum ColumnTypeCode {
     Tuple = 0x0031,
 }
 
-pub enum ColType {
+#[derive(Debug)]
+enum ColumnType {
     Custom(String),
     Ascii,
     Bigint,
@@ -79,31 +75,79 @@ pub enum ColType {
     Varint,
     Timeuuid,
     Inet,
-    List(Box<ColType>),
-    Map(Box<ColType>, Box<ColType>),
-    Set(Box<ColType>),
-    UDT(String, String, Vec<(String, ColType)>), // Keyspace, UDT name, fields
-    Tuple(Vec<ColType>),
+    List(Box<ColumnType>),
+    Map(Box<ColumnType>, Box<ColumnType>),
+    Set(Box<ColumnType>),
+    UDT {
+        keyspace: String,
+        name: String,
+        fields: Vec<(String, ColumnType)>,
+    },
+    Tuple(Vec<ColumnType>),
 }
 
-struct ColSpec {
-    col_name: String,
-    col_type: ColType,
+type Uuid = [u8; 16];
+
+#[derive(Debug)]
+enum ColumnValue {
+    Custom(Vec<u8>),
+    Ascii(String), // this is actually an ascii string
+    Bigint(i64),
+    Blob(Vec<u8>),
+    Boolean(bool),
+    Counter(i64),
+    Decimal {
+        scale: i32,
+        unscaled: Vec<u8>, // Big-endian two's complement representation
+    },
+    Double(f64),
+    Float(f32),
+    Int(i32),
+    Timestamp(i64), // Milliseconds since epoch
+    Uuid(Uuid),
+    Varchar(String),
+    Varint(Vec<u8>),
+    Timeuuid(Uuid),
+    Inet(IpAddr),
+    List(Box<ColumnValue>),
+    Map(Box<ColumnValue>, Box<ColumnValue>),
+    Set(Box<ColumnValue>),
+    UDT {
+        keyspace: String,
+        name: String,
+        fields: Vec<(String, ColumnValue)>,
+    },
+    Tuple(Vec<ColumnValue>),
+}
+
+struct ColumnSpec {
+    keyspace: Option<String>,
+    table_name: Option<String>,
+    name: String,
+    type_: ColumnType,
+}
+
+struct TableSpec {
+    keyspace: String,
+    table_name: String,
 }
 
 struct Metadata {
-    flags: Vec<Flag>,
+    flags: MetadataFlags,
     columns_count: u32,
     global_table_spec: Option<TableSpec>,
-    col_spec_i: ColSpec,
+    col_spec_i: Vec<ColumnSpec>,
 }
 
 /// Indicates a set of rows.
 struct Rows {
     metadata: Metadata,
     rows_count: u32,
-    // rows_content: Vec<Row>,
+    rows_content: Vec<Row>,
 }
+
+// key: column name, value: column value
+type Row = HashMap<String, ColumnType>;
 
 /// The result to a `use` query.
 type SetKeyspace = String;
