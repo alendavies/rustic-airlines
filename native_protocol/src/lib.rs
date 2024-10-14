@@ -1,8 +1,24 @@
-mod error;
 mod frame;
-mod frame_builder;
 mod header;
+mod messages;
 mod opcodes;
-mod query;
-mod result;
 mod types;
+
+#[derive(Debug)]
+pub struct SerializationError;
+
+pub(crate) trait Serializable {
+    fn to_bytes(&self) -> Vec<u8>;
+
+    fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, SerializationError>
+    where
+        Self: Sized;
+}
+
+pub(crate) trait ByteSerializable {
+    fn to_byte(&self) -> u8;
+
+    fn from_byte(byte: u8) -> std::result::Result<Self, SerializationError>
+    where
+        Self: Sized;
+}

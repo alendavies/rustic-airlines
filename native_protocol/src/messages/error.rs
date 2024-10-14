@@ -19,6 +19,8 @@ pub enum ErrorCode {
     Unprepared = 0x2500,
 }
 
+// TODO: impl TryInto<u32> for ErrorCode
+
 impl ErrorCode {
     pub fn from_u32(value: u32) -> Option<ErrorCode> {
         match value {

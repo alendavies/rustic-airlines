@@ -1,4 +1,4 @@
-use crate::frame::SerializationError;
+use crate::SerializationError;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Opcode {

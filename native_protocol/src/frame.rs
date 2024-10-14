@@ -4,12 +4,11 @@ use std::{
 };
 
 use crate::{
-    error::Error,
     header::{FrameHeader, HeaderFlags, Version},
+    messages::{error::Error, query::Query, result::Result},
     opcodes::Opcode,
-    query::Query,
-    result::Result,
     types::{Int, Short},
+    Serializable, SerializationError,
 };
 
 pub enum Frame {
@@ -26,17 +25,6 @@ pub enum Frame {
 }
 
 struct FrameError;
-
-#[derive(Debug)]
-pub struct SerializationError;
-
-pub trait Serializable {
-    fn to_bytes(&self) -> Vec<u8>;
-
-    fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, SerializationError>
-    where
-        Self: Sized;
-}
 
 impl Serializable for Frame {
     fn to_bytes(&self) -> Vec<u8> {
@@ -127,7 +115,7 @@ impl Serializable for Frame {
 
 #[cfg(test)]
 mod tests {
-    use crate::query::{self, Consistency, QueryParams};
+    use crate::messages::query::{Consistency, QueryParams};
 
     use super::*;
 

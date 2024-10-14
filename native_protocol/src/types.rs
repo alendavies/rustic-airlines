@@ -1,6 +1,6 @@
 use std::io::{Cursor, Read};
 
-use crate::frame::{Serializable, SerializationError};
+use crate::{Serializable, SerializationError};
 
 /// A 2 bytes unsigned integer.
 pub type Short = u16;
