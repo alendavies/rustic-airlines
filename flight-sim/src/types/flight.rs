@@ -3,14 +3,14 @@ use crate::types::flight_status::FlightStatus;
 use crate::types::tracking::Tracking;
 use std::time::SystemTime;
 
-
+#[derive(Clone, PartialEq, Debug)]
 pub struct Flight {
-    flight_number: String,
-    origin: Airport,
-    destination: Airport,
-    average_speed: f64, // Average speed in km/h
-    status: FlightStatus,
-    departure_time: SystemTime,
+    pub flight_number: String,
+    pub origin: Airport,
+    pub destination: Airport,
+    pub average_speed: f64, // Average speed in km/h
+    pub status: FlightStatus,
+    pub departure_time: SystemTime,
 }
 
 impl Flight {

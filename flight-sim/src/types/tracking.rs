@@ -44,11 +44,19 @@ impl Tracking {
         self.altitude = 0.0;
     }
 
-     pub fn total_distance(&self) -> &f64 {
+    pub fn total_distance(&self) -> &f64 {
         &self.total_distance
     }
 
     pub fn distance_traveled(&self) -> &f64 {
         &self.distance_traveled
+    }
+
+    pub fn latitude(&self) -> &f64 {
+        &self.latitude
+    }
+
+    pub fn longitude(&self) -> &f64 {
+        &self.longitude
     }
 }
