@@ -8,7 +8,56 @@ pub type Short = u16;
 pub type Int = i32;
 /// A 8 bytes signed integer.
 pub type Long = i64;
-type LongString = String;
+
+fn option<T>(cursor: &mut std::io::Cursor<&[u8]>) -> bool {}
+
+trait CassandraOption {
+    fn from_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> Self;
+    fn to_bytes(&self) -> Vec<u8>;
+}
+
+pub trait CassandraString {
+    fn from_long_string_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> Self;
+    fn to_long_string_bytes(&self) -> Vec<u8>;
+    fn from_string_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> Self;
+    fn to_string_bytes(&self) -> Vec<u8>;
+}
+
+impl CassandraString for String {
+    fn from_long_string_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> Self {
+        let mut len_bytes = [0u8; 4];
+        cursor.read_exact(&mut len_bytes).unwrap();
+        let len = u32::from_be_bytes(len_bytes) as usize;
+
+        let mut string_bytes = vec![0u8; len];
+        cursor.read_exact(&mut string_bytes).unwrap();
+        String::from_utf8(string_bytes).unwrap()
+    }
+
+    fn to_long_string_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(self.len() as u32).to_be_bytes());
+        bytes.extend_from_slice(self.as_bytes());
+        bytes
+    }
+
+    fn from_string_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> Self {
+        let mut len_bytes = [0u8; 2];
+        cursor.read_exact(&mut len_bytes).unwrap();
+        let len = u16::from_be_bytes(len_bytes) as usize;
+
+        let mut string_bytes = vec![0u8; len];
+        cursor.read_exact(&mut string_bytes).unwrap();
+        String::from_utf8(string_bytes).unwrap()
+    }
+
+    fn to_string_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(self.len() as u16).to_be_bytes());
+        bytes.extend_from_slice(self.as_bytes());
+        bytes
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Bytes {
