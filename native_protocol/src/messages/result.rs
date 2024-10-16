@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io::Read, net::IpAddr};
 
-use crate::{Serializable, SerializationError};
+use crate::{types::CassandraString, Serializable, SerializationError};
 
 pub enum ResultCode {
     Void = 0x0001,
@@ -115,6 +115,128 @@ enum ColumnType {
         fields: Vec<(String, ColumnType)>,
     },
     Tuple(Vec<ColumnType>),
+}
+
+impl ColumnType {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+
+        match self {
+            ColumnType::Custom(custom) => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Custom as u16).to_be_bytes());
+                bytes.extend_from_slice(custom.to_string_bytes().as_slice());
+            }
+            ColumnType::Ascii => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Ascii as u16).to_be_bytes());
+            }
+            ColumnType::Bigint => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Bigint as u16).to_be_bytes());
+            }
+            ColumnType::Blob => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Blob as u16).to_be_bytes());
+            }
+            ColumnType::Boolean => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Boolean as u16).to_be_bytes());
+            }
+            ColumnType::Counter => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Counter as u16).to_be_bytes());
+            }
+            ColumnType::Decimal => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Decimal as u16).to_be_bytes());
+            }
+            ColumnType::Double => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Double as u16).to_be_bytes());
+            }
+            ColumnType::Float => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Float as u16).to_be_bytes());
+            }
+            ColumnType::Int => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Int as u16).to_be_bytes());
+            }
+            ColumnType::Timestamp => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Timestamp as u16).to_be_bytes());
+            }
+            ColumnType::Uuid => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Uuid as u16).to_be_bytes());
+            }
+            ColumnType::Varchar => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Varchar as u16).to_be_bytes());
+            }
+            ColumnType::Varint => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Varint as u16).to_be_bytes());
+            }
+            ColumnType::Timeuuid => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Timeuuid as u16).to_be_bytes());
+            }
+            ColumnType::Inet => {
+                bytes.extend_from_slice(&(ColumnTypeCode::Inet as u16).to_be_bytes());
+            }
+            ColumnType::List(inner_type) => {
+                todo!()
+            }
+            ColumnType::Map(key_type, value_type) => {
+                todo!()
+            }
+            ColumnType::Set(inner_type) => {
+                todo!()
+            }
+            ColumnType::UDT {
+                keyspace,
+                name,
+                fields,
+            } => {
+                todo!()
+            }
+            ColumnType::Tuple(inner_types) => {
+                todo!()
+            }
+        }
+        bytes
+    }
+
+    pub fn from_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> ColumnType {
+        let mut col_type_bytes = [0u8; 2];
+        cursor.read_exact(&mut col_type_bytes).unwrap();
+        let col_type = u16::from_be_bytes(col_type_bytes);
+
+        match col_type {
+            0x0000 => {
+                let custom = String::from_string_bytes(cursor);
+                ColumnType::Custom(custom)
+            }
+            0x0001 => ColumnType::Ascii,
+            0x0002 => ColumnType::Bigint,
+            0x0003 => ColumnType::Blob,
+            0x0004 => ColumnType::Boolean,
+            0x0005 => ColumnType::Counter,
+            0x0006 => ColumnType::Decimal,
+            0x0007 => ColumnType::Double,
+            0x0008 => ColumnType::Float,
+            0x0009 => ColumnType::Int,
+            0x000B => ColumnType::Timestamp,
+            0x000C => ColumnType::Uuid,
+            0x000D => ColumnType::Varchar,
+            0x000E => ColumnType::Varint,
+            0x000F => ColumnType::Timeuuid,
+            0x0010 => ColumnType::Inet,
+            0x0020 => {
+                todo!()
+            }
+            0x0021 => {
+                todo!()
+            }
+            0x0022 => {
+                todo!()
+            }
+            0x0030 => {
+                todo!()
+            }
+            0x0031 => {
+                todo!()
+            }
+            _ => unimplemented!(),
+        }
+    }
 }
 
 type Uuid = [u8; 16];
@@ -434,6 +556,7 @@ impl Serializable for SchemaChange {
             ChangeType::Updated => "UPDATED",
             ChangeType::Dropped => "DROPPED",
         };
+        bytes.extend_from_slice(&(change_type.len() as u16).to_be_bytes());
         bytes.extend_from_slice(change_type.as_bytes());
 
         let target = match self.target {
@@ -441,10 +564,13 @@ impl Serializable for SchemaChange {
             Target::Table => "TABLE",
             Target::Type => "TYPE",
         };
+        bytes.extend_from_slice(&(target.len() as u16).to_be_bytes());
         bytes.extend_from_slice(target.as_bytes());
 
+        bytes.extend_from_slice(&(self.options.keyspace.len() as u16).to_be_bytes());
         bytes.extend_from_slice(self.options.keyspace.as_bytes());
         if let Some(name) = &self.options.name {
+            bytes.extend_from_slice(&(name.len() as u16).to_be_bytes());
             bytes.extend_from_slice(name.as_bytes());
         }
 
@@ -455,28 +581,47 @@ impl Serializable for SchemaChange {
     fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, SerializationError> {
         let mut cursor = std::io::Cursor::new(bytes);
 
-        let mut change_type = String::new();
-        cursor.read_to_string(&mut change_type).unwrap();
+        // Read change type
+        let mut change_type_len_bytes = [0u8; 2];
+        cursor.read_exact(&mut change_type_len_bytes).unwrap();
+        let change_type_len = u16::from_be_bytes(change_type_len_bytes) as usize;
 
-        let mut target = String::new();
-        cursor.read_to_string(&mut target).unwrap();
+        let mut change_type_bytes = vec![0u8; change_type_len];
+        cursor.read_exact(&mut change_type_bytes).unwrap();
+        let change_type = String::from_utf8(change_type_bytes).unwrap();
 
-        let mut keyspace = String::new();
-        cursor.read_to_string(&mut keyspace).unwrap();
+        // Read target
+        let mut target_len_bytes = [0u8; 2];
+        cursor.read_exact(&mut target_len_bytes).unwrap();
+        let target_len = u16::from_be_bytes(target_len_bytes) as usize;
 
+        let mut target_bytes = vec![0u8; target_len];
+        cursor.read_exact(&mut target_bytes).unwrap();
+        let target = String::from_utf8(target_bytes).unwrap();
+
+        // Read keyspace
+        let mut keyspace_len_bytes = [0u8; 2];
+        cursor.read_exact(&mut keyspace_len_bytes).unwrap();
+        let keyspace_len = u16::from_be_bytes(keyspace_len_bytes) as usize;
+
+        let mut keyspace_bytes = vec![0u8; keyspace_len];
+        cursor.read_exact(&mut keyspace_bytes).unwrap();
+        let keyspace = String::from_utf8(keyspace_bytes).unwrap();
+
+        // Read name of the table or type if present
         let name = {
-            let mut name_buf = Vec::new();
-            cursor
-                .read_to_end(&mut name_buf)
-                .map_err(|_| SerializationError)?;
-            if !name_buf.is_empty() {
-                Some(String::from_utf8(name_buf).map_err(|_| SerializationError)?)
+            let mut name_bytes_len = [0u8; 2];
+            cursor.read_exact(&mut name_bytes_len).unwrap();
+            let name_len = u16::from_be_bytes(name_bytes_len) as usize;
+
+            if name_len > 0 {
+                let mut name_bytes = vec![0u8; name_len];
+                cursor.read_exact(&mut name_bytes).unwrap();
+                Some(String::from_utf8(name_bytes).unwrap())
             } else {
                 None
             }
         };
-
-        dbg!(change_type.clone());
 
         let change_type = match change_type.as_str() {
             "CREATED" => ChangeType::Created,
@@ -545,7 +690,7 @@ pub enum Result {
     /// +---------+---------+---------+---------+
     /// |            kind (4 bytes)             |  // 0x0003
     /// +---------+---------+---------+---------+
-    /// |        keyspace name (string)         |
+    /// |    keyspace name (string + len (2))   |
     /// +---------+---------+---------+---------+
     SetKeyspace(SetKeyspace),
     /// Result to a PREPARE message.
@@ -577,11 +722,11 @@ pub enum Result {
     /// +---------+---------+---------+---------+
     /// |            kind (4 bytes)             |  // 0x0005
     /// +---------+---------+---------+---------+
-    /// |        change_type (string)           |
+    /// |    change_type (string + len (2))     |
     /// +---------+---------+---------+---------+
-    /// |            target (string)            |
+    /// |       target (string + len (2))       |
     /// +---------+---------+---------+---------+
-    /// |            options (string)           |
+    /// |       options (string + len (2))      |
     /// +---------+---------+---------+---------+
     SchemaChange(SchemaChange),
 }
@@ -726,9 +871,13 @@ mod tests {
 
         let mut expected_bytes = Vec::new();
         expected_bytes.extend_from_slice(&(ResultCode::SchemaChange as u32).to_be_bytes());
+        expected_bytes.extend_from_slice(&("CREATED".len() as u16).to_be_bytes());
         expected_bytes.extend_from_slice("CREATED".as_bytes());
+        expected_bytes.extend_from_slice(&("TABLE".len() as u16).to_be_bytes());
         expected_bytes.extend_from_slice("TABLE".as_bytes());
+        expected_bytes.extend_from_slice(&("my_keyspace".len() as u16).to_be_bytes());
         expected_bytes.extend_from_slice("my_keyspace".as_bytes());
+        expected_bytes.extend_from_slice(&("my_table".len() as u16).to_be_bytes());
         expected_bytes.extend_from_slice("my_table".as_bytes());
 
         assert_eq!(bytes, expected_bytes);
@@ -736,18 +885,6 @@ mod tests {
 
     #[test]
     fn test_schema_change_from_bytes() {
-        let keyspace = "my_keyspace".to_string();
-        let name = "my_table".to_string();
-
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&(ResultCode::SchemaChange as u32).to_be_bytes());
-        bytes.extend_from_slice("CREATED".as_bytes());
-        bytes.extend_from_slice("TABLE".as_bytes());
-        bytes.extend_from_slice(keyspace.as_bytes());
-        bytes.extend_from_slice(name.as_bytes());
-
-        let result = Result::from_bytes(&bytes).unwrap();
-
         let expected_result = Result::SchemaChange(SchemaChange {
             change_type: ChangeType::Created,
             target: Target::Table,
@@ -756,6 +893,10 @@ mod tests {
                 name: Some("my_table".to_string()),
             },
         });
+
+        let bytes = Result::to_bytes(&expected_result);
+
+        let result = Result::from_bytes(&bytes).unwrap();
 
         assert_eq!(result, expected_result);
     }
