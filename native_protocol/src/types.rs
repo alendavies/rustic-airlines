@@ -9,11 +9,34 @@ pub type Int = i32;
 /// A 8 bytes signed integer.
 pub type Long = i64;
 
-fn option<T>(cursor: &mut std::io::Cursor<&[u8]>) -> bool {}
+pub trait OptionSerializable {
+    fn deserialize_option(option_id: u16, cursor: &mut Cursor<&[u8]>) -> std::result::Result<Self, String>
+    where
+        Self: Sized;
+    
+    fn serialize_option(&self) -> Vec<u8>;
+    fn get_option_code(&self) -> u16;
+}
 
-trait CassandraOption {
-    fn from_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> Self;
-    fn to_bytes(&self) -> Vec<u8>;
+pub trait OptionBytes: Sized {
+    fn from_option_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> std::result::Result<Self, String>;
+    fn to_option_bytes(&self) -> Vec<u8>;
+}
+
+impl<T: OptionSerializable> OptionBytes for T {
+    fn to_option_bytes(&self) -> Vec<u8> {
+        let code = self.get_option_code();
+        self.serialize_option()
+    }
+
+    fn from_option_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> std::result::Result<Self, String> {
+
+        let mut option_id_bytes = [0u8; 2];
+        cursor.read_exact(&mut option_id_bytes).unwrap();
+        let option_id = u16::from_be_bytes(option_id_bytes);
+
+        T::deserialize_option(option_id, cursor)
+    }
 }
 
 pub trait CassandraString {
@@ -45,6 +68,10 @@ impl CassandraString for String {
         let mut len_bytes = [0u8; 2];
         cursor.read_exact(&mut len_bytes).unwrap();
         let len = u16::from_be_bytes(len_bytes) as usize;
+
+        if len == 0 {
+            return String::new();
+        }
 
         let mut string_bytes = vec![0u8; len];
         cursor.read_exact(&mut string_bytes).unwrap();
@@ -144,5 +171,116 @@ mod tests {
         let result = Bytes::from_bytes(&input).unwrap();
 
         assert_eq!(result, Bytes::Vec(vec![0x01, 0x02, 0x03, 0x00]));
+    }
+
+    #[test]
+    fn string_from_string_bytes() {
+        let input = [0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8, 'd' as u8];
+
+        let mut cursor = std::io::Cursor::new(input.as_slice());
+
+        let string = String::from_string_bytes(&mut cursor);
+
+        assert_eq!(string, "abc");
+    }
+
+    #[test]
+    fn string_from_long_string_bytes() {
+        let input = [0x00, 0x00, 0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8, 'd' as u8];
+
+        let mut cursor = std::io::Cursor::new(input.as_slice());
+
+        let string = String::from_long_string_bytes(&mut cursor);
+
+        assert_eq!(string, "abc");
+    }
+
+    #[test]
+    fn option_from_option_bytes() {
+        #[derive(PartialEq, Debug)]
+        enum Options {
+            Something,
+            SomethinElse(String)
+        }
+
+        impl OptionSerializable for Options {
+            fn deserialize_option(option_id: u16, cursor: &mut Cursor<&[u8]>) -> std::result::Result<Self, String>
+            where
+                Self: Sized {
+                    match option_id {
+                        0x0001 => {
+                            Ok(Options::Something)
+                        }
+                        0x0002 => {
+                            let string = String::from_string_bytes(cursor);
+                            Ok(Options::SomethinElse(string))
+                        }
+                        _ => unimplemented!()
+                    }
+            }
+            
+            fn serialize_option(&self) -> Vec<u8> {
+                todo!()
+            }
+
+            fn get_option_code(&self) -> u16 {
+                todo!()
+            }
+        }
+
+        let input = [0x00, 0x02, 0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8];
+        let mut cursor = std::io::Cursor::new(input.as_slice());
+
+        let option = Options::from_option_bytes(&mut cursor).unwrap();
+
+        assert_eq!(option, Options::SomethinElse("abc".to_string()));
+    }
+
+    #[test]
+    fn option_to_option_bytes() {
+        #[derive(PartialEq, Debug)]
+        enum Options {
+            Something,
+            SomethinElse(String)
+        }
+
+        impl OptionSerializable for Options {
+            fn deserialize_option(option_id: u16, cursor: &mut Cursor<&[u8]>) -> std::result::Result<Self, String>
+            where
+                Self: Sized {
+                todo!()
+            }
+        
+            fn serialize_option(&self) -> Vec<u8> {
+                let mut bytes = Vec::new();
+
+                match self {
+                    Options::Something => {
+                        bytes.extend_from_slice(&(0x0001 as u16).to_be_bytes());
+                        bytes
+                    },
+                    Options::SomethinElse(txt) => {
+                        bytes.extend_from_slice(&(0x0002 as u16).to_be_bytes());
+                        bytes.extend_from_slice(&txt.to_string_bytes());
+                        bytes
+                    },
+                }
+            }
+        
+            fn get_option_code(&self) -> u16 {
+                match self {
+                    Options::Something => 0x0001,
+                    Options::SomethinElse(_) => 0x0002,
+                }
+            }
+        }
+
+        let option = Options::SomethinElse("abc".to_string());
+        let bytes = option.to_option_bytes();
+
+        let expected = vec![0x00, 0x02, 0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8];
+
+        assert_eq!(bytes, expected)
+
     }
 }
