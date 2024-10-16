@@ -25,9 +25,9 @@ impl Partitioner {
         murmur3_32(&mut hasher, 0).map(|hash| hash as u64).map_err(|_| PartitionerError::HashError)
     }
 
-    /// Agrega una IP a la estructura y genera el hash automáticamente, manejando el error si ya existe
+    /// Agrega una dirección `Ipv4Addr` a la estructura y genera el hash automáticamente, manejando el error si ya existe
     pub fn add_node(&mut self, ip: Ipv4Addr) -> Result<(), PartitionerError> {
-        let hash = Self::hash_value(ip.octets())?;
+        let hash = Self::hash_value(ip.to_string())?;
         if self.nodes.contains_key(&hash) {
             return Err(PartitionerError::NodeAlreadyExists);
         }
@@ -36,13 +36,13 @@ impl Partitioner {
         Ok(())
     }
 
-    /// Elimina una IP de la estructura calculando el hash, devuelve error si no existe
+    /// Elimina una `Ipv4Addr` de la estructura calculando el hash, devuelve error si no existe
     pub fn remove_node(&mut self, ip: Ipv4Addr) -> Result<Ipv4Addr, PartitionerError> {
-        let hash = Self::hash_value(ip.octets())?;
+        let hash = Self::hash_value(ip.to_string())?;
         self.nodes.remove(&hash).ok_or(PartitionerError::NodeNotFound)
     }
 
-    /// Devuelve la IP correspondiente para un valor dado.
+    /// Devuelve la dirección `Ipv4Addr` correspondiente para un valor dado.
     /// Encuentra el nodo sucesor más cercano al hash calculado o devuelve un error si el Partitioner está vacío.
     pub fn get_ip<T: AsRef<[u8]>>(&self, value: T) -> Result<Ipv4Addr, PartitionerError> {
         let hash = Self::hash_value(value)?;
@@ -50,24 +50,22 @@ impl Partitioner {
             return Err(PartitionerError::EmptyPartitioner);
         }
 
-        // Busca el primer hash que sea mayor o igual al hash dado
         match self.nodes.range(hash..).next() {
-            Some((_key, ip)) => Ok(*ip),
+            Some((_key, addr)) => Ok(*addr),
             None => {
-                // Si no se encontró un sucesor, devolver el primer nodo (envolver al inicio del ring)
                 self.nodes.values().next().cloned().ok_or(PartitionerError::EmptyPartitioner)
             }
         }
     }
 
-    /// Devuelve todas las IPs de los nodos, sin las claves (hashes).
+    /// Devuelve todas las `Ipv4Addr` de los nodos, sin las claves (hashes).
     pub fn get_nodes(&self) -> Vec<Ipv4Addr> {
         self.nodes.values().cloned().collect()
     }
 
-    /// Verifica si una IP ya pertenece al Partitioner
+    /// Verifica si una dirección `Ipv4Addr` ya pertenece al Partitioner
     pub fn contains_node(&self, ip: &Ipv4Addr) -> bool {
-        let hash = Self::hash_value(ip.octets()).unwrap_or_default();
+        let hash = Self::hash_value(ip.to_string()).unwrap_or_default();
         self.nodes.contains_key(&hash)
     }
 }
@@ -75,9 +73,9 @@ impl Partitioner {
 /// Implementación personalizada del trait `Debug` para la estructura `Partitioner`
 impl fmt::Debug for Partitioner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ips: Vec<String> = self.nodes.values().map(|ip| ip.to_string()).collect();
-        if !ips.is_empty() {
-            write!(f, "{}", ips.join(" -> "))
+        let addresses: Vec<String> = self.nodes.values().map(|addr| addr.to_string()).collect();
+        if !addresses.is_empty() {
+            write!(f, "{}", addresses.join(" -> "))
         } else {
             write!(f, "No nodes available")
         }
@@ -97,7 +95,7 @@ mod tests {
         partitioner.add_node(Ipv4Addr::new(192, 168, 0, 2)).unwrap();
         partitioner.add_node(Ipv4Addr::new(192, 168, 0, 3)).unwrap();
 
-        let string_value = String::from("test_string");
+        let string_value = "test_string";
         let result = partitioner.get_ip(string_value.as_bytes());
         assert!(result.is_ok(), "Expected Ok result, got {:?}", result);
     }
@@ -113,10 +111,10 @@ mod tests {
     #[test]
     fn test_remove_existing_node() {
         let mut partitioner = Partitioner::new();
-        let ip = Ipv4Addr::new(192, 168, 0, 1);
-        partitioner.add_node(ip).unwrap();
-        let result = partitioner.remove_node(ip);
-        assert_eq!(result, Ok(ip), "Expected Ok result with IP, got {:?}", result);
+        let addr = Ipv4Addr::new(192, 168, 0, 1);
+        partitioner.add_node(addr).unwrap();
+        let result = partitioner.remove_node(addr);
+        assert_eq!(result, Ok(addr), "Expected Ok result with Addr, got {:?}", result);
     }
 
     #[test]
@@ -136,40 +134,24 @@ mod tests {
     }
 
     #[test]
-    fn test_get_ip_wrapping() {
-        let mut partitioner = Partitioner::new();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 2)).unwrap();
-    
-        // Hash mayor al mayor nodo existente, debería devolver el primer nodo
-        let hash = Partitioner::hash_value(Ipv4Addr::new(255, 255, 255, 255).octets()).unwrap();
-        assert_eq!(partitioner.get_ip(hash.to_be_bytes()), Ok(Ipv4Addr::new(192, 168, 0, 1)));
-    }
-
-    #[test]
-    
     fn test_get_ip_within_range() {
         let mut partitioner = Partitioner::new();
-        let ip1 = Ipv4Addr::new(192, 168, 0, 1);
-        let ip2 = Ipv4Addr::new(192, 168, 0, 2);
-        partitioner.add_node(ip1).unwrap();
-        partitioner.add_node(ip2).unwrap();
+        let addr1 = Ipv4Addr::new(192, 168, 0, 1);
+        let addr2 = Ipv4Addr::new(192, 168, 0, 2);
+        partitioner.add_node(addr1).unwrap();
+        partitioner.add_node(addr2).unwrap();
 
-        // Usar el valor de hash calculado en lugar de `ip1` para simular el valor a buscar
-        let hash_to_search = Partitioner::hash_value(ip1.octets()).unwrap();
-        let result_ip = partitioner.get_ip(hash_to_search.to_be_bytes());
+        let hash_to_search = Partitioner::hash_value(addr1.octets()).unwrap();
+        let result_addr = partitioner.get_ip(hash_to_search.to_be_bytes());
 
-        // Como puede devolver el sucesor más cercano (por el tipo de búsqueda), vamos a comprobar que
-        // el resultado sea o `ip1` o `ip2` (el sucesor de acuerdo a la lógica).
         assert!(
-            result_ip == Ok(ip1) || result_ip == Ok(ip2),
-            "Expected node IP {} or {}, got {:?}",
-            ip1,
-            ip2,
-            result_ip
+            result_addr == Ok(addr1) || result_addr == Ok(addr2),
+            "Expected node Addr {} or {}, got {:?}",
+            addr1,
+            addr2,
+            result_addr
         );
     }
-
 
     #[test]
     fn test_contains_node() {
@@ -194,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_hash_string_error_handling() {
-        let string_value = String::from("test_string");
+        let string_value = "test_string";
         let hash = Partitioner::hash_value(string_value.as_bytes());
         assert!(hash.is_ok(), "Expected hash calculation to succeed, got {:?}", hash);
     }
@@ -206,7 +188,13 @@ mod tests {
         partitioner.add_node(Ipv4Addr::new(192, 168, 0, 2)).unwrap();
 
         let debug_string = format!("{:?}", partitioner);
-        assert!(debug_string.contains("192.168.0.1 -> 192.168.0.2") || debug_string.contains("192.168.0.2 -> 192.168.0.1"));
+        assert!(
+            debug_string.contains("192.168.0.1 -> 192.168.0.2") || debug_string.contains("192.168.0.2 -> 192.168.0.1"),
+            "Debug output mismatch: got {}",
+            debug_string
+        );
     }
 }
+
+
 

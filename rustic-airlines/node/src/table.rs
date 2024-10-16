@@ -2,6 +2,8 @@
 use query_coordinator::clauses::{table::create_table_cql::CreateTable, types::column::Column};
 use std::fmt;
 
+use crate::errors::NodeError;
+
 #[derive(Clone, PartialEq)]
 pub struct Table {
     pub inner: CreateTable,
@@ -28,8 +30,26 @@ impl Table {
             .iter()
             .position(|col| col.name == column_name)
     }
-}
 
+    pub fn is_primary_key(&self, column_name: &str) -> Result<bool, NodeError> {
+        let column_index = self.get_column_index(column_name).ok_or(NodeError::OtherError)?;
+        let columns = self.inner.get_columns(); // Guarda una referencia a los columns
+        let column = columns.get(column_index).ok_or(NodeError::OtherError)?;
+        Ok(column.is_primary_key)
+    }
+
+    pub fn get_primary_key(&self) -> Result<String, NodeError> {
+        let columns = self.get_columns();
+        for column in columns {
+            if column.is_primary_key {
+                return Ok(column.name.clone());
+            }
+        }
+        Err(NodeError::OtherError)
+    }
+
+
+}
 impl fmt::Debug for Table {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Table: {}", self.get_name())

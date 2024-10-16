@@ -8,6 +8,7 @@ use clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update
 use clauses::table::{create_table_cql::CreateTable, drop_table_cql::DropTable, alter_table_cql::AlterTable};
 use clauses::keyspace::{create_keyspace_cql::CreateKeyspace, drop_keyspace_cql::DropKeyspace, alter_keyspace_cql::AlterKeyspace};
 use errors::CQLError;
+use std::fmt;
 
 
 #[derive(Debug)]  // Derivar Debug para Query
@@ -22,6 +23,25 @@ pub enum Query {
     CreateKeyspace(CreateKeyspace),
     DropKeyspace(DropKeyspace),
     AlterKeyspace(AlterKeyspace)
+}
+
+// Implementamos el trait fmt::Display para Query
+impl fmt::Display for Query {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let query_type = match self {
+            Query::Select(_) => "Select",
+            Query::Insert(_) => "Insert",
+            Query::Update(_) => "Update",
+            Query::Delete(_) => "Delete",
+            Query::CreateTable(_) => "CreateTable",
+            Query::DropTable(_) => "DropTable",
+            Query::AlterTable(_) => "AlterTable",
+            Query::CreateKeyspace(_) => "CreateKeyspace",
+            Query::DropKeyspace(_) => "DropKeyspace",
+            Query::AlterKeyspace(_) => "AlterKeyspace",
+        };
+        write!(f, "{}", query_type)
+    }
 }
 
 #[derive(Debug)]  // Agrega Debug también al QueryCoordinator si lo necesitas
@@ -50,7 +70,6 @@ impl QueryCoordinator {
                 Ok(Query::Delete(delete))
             }
             "UPDATE" => {
-                println!("{:?}", tokens);
                 let update = Update::new_from_tokens(tokens)?;
                 Ok(Query::Update(update))
             }
