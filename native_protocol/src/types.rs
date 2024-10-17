@@ -13,7 +13,7 @@ pub trait OptionSerializable {
     fn deserialize_option(option_id: u16, cursor: &mut Cursor<&[u8]>) -> std::result::Result<Self, String>
     where
         Self: Sized;
-    
+
     fn serialize_option(&self) -> Vec<u8>;
     fn get_option_code(&self) -> u16;
 }
@@ -92,6 +92,9 @@ pub enum Bytes {
     Vec(Vec<u8>),
 }
 
+// value_bytes = [0x01, 0x02, 0x00, 0x07]
+// bytes = Bytes::Vec(value_bytes).to_bytes() -> [0x00, 0x04, 0x01, 0x02, 0x00, 0x07]
+
 impl Serializable for Bytes {
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
@@ -108,13 +111,10 @@ impl Serializable for Bytes {
         return bytes;
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, SerializationError>
+    fn from_bytes(cursor: &mut std::io::Cursor<&u8>) -> std::result::Result<Self, SerializationError>
     where
         Self: Sized,
     {
-        let mut cursor = Cursor::new(bytes);
-
-        // get length of bytes
         let mut bytes_len_bytes = [0u8; 4];
         cursor.read_exact(&mut bytes_len_bytes).unwrap();
         let bytes_len = Int::from_be_bytes(bytes_len_bytes);
@@ -158,6 +158,7 @@ mod tests {
     #[test]
     fn test_from_bytes_null() {
         let input = [0xFF, 0xFF, 0xFF, 0xFF];
+        let cursor = std::io::Cursor
 
         let result = Bytes::from_bytes(&input).unwrap();
 
@@ -218,7 +219,7 @@ mod tests {
                         _ => unimplemented!()
                     }
             }
-            
+
             fn serialize_option(&self) -> Vec<u8> {
                 todo!()
             }
@@ -250,7 +251,7 @@ mod tests {
                 Self: Sized {
                 todo!()
             }
-        
+
             fn serialize_option(&self) -> Vec<u8> {
                 let mut bytes = Vec::new();
 
@@ -266,7 +267,7 @@ mod tests {
                     },
                 }
             }
-        
+
             fn get_option_code(&self) -> u16 {
                 match self {
                     Options::Something => 0x0001,
