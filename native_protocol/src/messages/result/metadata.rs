@@ -6,8 +6,8 @@ use super::rows::ColumnType;
 
 #[derive(Debug, PartialEq)]
 pub struct ColumnSpec {
-    keyspace: Option<String>,
-    table_name: Option<String>,
+    pub keyspace: Option<String>,
+    pub table_name: Option<String>,
     pub name: String,
     pub type_: ColumnType,
 }
@@ -57,9 +57,9 @@ impl ColumnSpec {
 }
 
 #[derive(Debug, PartialEq)]
-struct TableSpec {
-    keyspace: String,
-    table_name: String,
+pub struct TableSpec {
+    pub keyspace: String,
+    pub table_name: String,
 }
 
 enum MetadataFlagsCode {
@@ -69,10 +69,10 @@ enum MetadataFlagsCode {
 }
 
 #[derive(Debug, PartialEq)]
-struct MetadataFlags {
-    global_tables_spec: bool,
-    has_more_pages: bool,
-    no_metadata: bool,
+pub struct MetadataFlags {
+    pub global_tables_spec: bool,
+    pub has_more_pages: bool,
+    pub no_metadata: bool,
 }
 
 impl MetadataFlags {
@@ -105,9 +105,9 @@ impl MetadataFlags {
 
 #[derive(Debug, PartialEq)]
 pub struct Metadata {
-    flags: MetadataFlags,
-    columns_count: u32,
-    global_table_spec: Option<TableSpec>,
+    pub flags: MetadataFlags,
+    pub columns_count: u32,
+    pub global_table_spec: Option<TableSpec>,
     pub col_spec_i: Vec<ColumnSpec>,
 }
 

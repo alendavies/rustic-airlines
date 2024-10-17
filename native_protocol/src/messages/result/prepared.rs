@@ -48,3 +48,72 @@ impl Serializable for Prepared {
         })
     }
 }
+
+#[cfg(test)]
+
+mod tests {
+    use crate::{
+        messages::result::{
+            metadata::{ColumnSpec, Metadata, MetadataFlags, TableSpec},
+            prepared::Prepared,
+            rows::ColumnType,
+        },
+        Serializable,
+    };
+
+    fn mock_metadata() -> Metadata {
+        Metadata {
+            flags: MetadataFlags {
+                global_tables_spec: true,
+                has_more_pages: false,
+                no_metadata: false,
+            },
+            columns_count: 1,
+            global_table_spec: Some(TableSpec {
+                keyspace: "test_keyspace".to_string(),
+                table_name: "test_table".to_string(),
+            }),
+            col_spec_i: vec![ColumnSpec {
+                keyspace: Some("test_keyspace".to_string()),
+                table_name: Some("test_table".to_string()),
+                name: "test_column".to_string(),
+                type_: ColumnType::Int,
+            }],
+        }
+    }
+
+    #[test]
+    fn test_prepared_to_bytes() {
+        let prepared = Prepared {
+            id: vec![0x01, 0x02, 0x03],
+            metadata: mock_metadata(),
+            result_metadata: mock_metadata(),
+        };
+
+        let bytes = prepared.to_bytes();
+
+        let mut expected_bytes = Vec::new();
+
+        expected_bytes.extend_from_slice(&(prepared.id.len() as u16).to_be_bytes());
+        expected_bytes.extend_from_slice(&prepared.id);
+        expected_bytes.extend_from_slice(&prepared.metadata.to_bytes());
+        expected_bytes.extend_from_slice(&prepared.result_metadata.to_bytes());
+
+        assert_eq!(bytes, expected_bytes);
+    }
+
+    #[test]
+    fn test_prepared_from_bytes() {
+        let expected_prepared = Prepared {
+            id: vec![0x01, 0x02, 0x03],
+            metadata: mock_metadata(),
+            result_metadata: mock_metadata(),
+        };
+
+        let bytes = expected_prepared.to_bytes();
+
+        let prepared = Prepared::from_bytes(&bytes).unwrap();
+
+        assert_eq!(expected_prepared, prepared);
+    }
+}
