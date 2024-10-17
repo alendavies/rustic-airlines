@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     header::{Flags, FrameHeader, Opcode, Version},
-    messages::{error::Error, query::Query, result::Result},
+    messages::{error::Error, query::Query, result::result::Result},
     types::{Int, Short},
     ByteSerializable, Serializable, SerializationError,
 };
