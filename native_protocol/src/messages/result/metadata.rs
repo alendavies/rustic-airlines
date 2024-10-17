@@ -164,4 +164,152 @@ impl Metadata {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use std::{io::Cursor, vec};
+
+    use crate::{
+        messages::result::{
+            metadata::{ColumnSpec, Metadata, MetadataFlags, TableSpec},
+            rows::ColumnType,
+        },
+        types::{CassandraString, OptionBytes},
+    };
+
+    #[test]
+    fn test_column_spec_to_bytes() {
+        let col_spec = ColumnSpec {
+            keyspace: Some("test_keyspace".to_string()),
+            table_name: Some("test_table".to_string()),
+            name: "test_column".to_string(),
+            type_: ColumnType::Int,
+        };
+
+        let bytes = col_spec.to_bytes();
+        let keyspace_bytes = if let Some(keyspace) = &col_spec.keyspace {
+            keyspace.to_string_bytes()
+        } else {
+            vec![]
+        };
+        let table_name_bytes = if let Some(table_name) = &col_spec.table_name {
+            table_name.to_string_bytes()
+        } else {
+            vec![]
+        };
+        let expected_bytes = [
+            keyspace_bytes.as_slice(),
+            table_name_bytes.as_slice(),
+            col_spec.name.to_string_bytes().as_slice(),
+            col_spec.type_.to_option_bytes().as_slice(),
+        ]
+        .concat();
+
+        assert_eq!(bytes, expected_bytes);
+    }
+
+    #[test]
+    fn test_column_spec_from_bytes() {
+        let expected_col_spec = ColumnSpec {
+            keyspace: Some("test_keyspace".to_string()),
+            table_name: Some("test_table".to_string()),
+            name: "test_column".to_string(),
+            type_: ColumnType::Int,
+        };
+
+        let bytes = expected_col_spec.to_bytes();
+        let mut cursor = Cursor::new(bytes.as_slice());
+        let col_spec = ColumnSpec::from_bytes(&mut cursor);
+
+        assert_eq!(expected_col_spec, col_spec);
+    }
+
+    #[test]
+    fn test_metadata_flags_to_bytes() {
+        let flags = MetadataFlags {
+            global_tables_spec: true,
+            has_more_pages: false,
+            no_metadata: false,
+        };
+        let bytes = flags.to_bytes();
+        let expected_bytes = 0x0001u32.to_be_bytes().to_vec();
+
+        assert_eq!(bytes, expected_bytes);
+    }
+
+    #[test]
+    fn test_metadata_flags_to_from_bytes() {
+        let expected_flags = MetadataFlags {
+            global_tables_spec: true,
+            has_more_pages: false,
+            no_metadata: false,
+        };
+        let bytes = expected_flags.to_bytes();
+        let mut cursor = Cursor::new(bytes.as_slice());
+        let flags = MetadataFlags::from_bytes(&mut cursor);
+
+        assert_eq!(expected_flags, flags);
+    }
+
+    #[test]
+    fn test_metadata_to_bytes() {
+        let metadata = Metadata {
+            flags: MetadataFlags {
+                global_tables_spec: true,
+                has_more_pages: false,
+                no_metadata: false,
+            },
+            columns_count: 1,
+            global_table_spec: Some(TableSpec {
+                keyspace: "test_keyspace".to_string(),
+                table_name: "test_table".to_string(),
+            }),
+            col_spec_i: vec![ColumnSpec {
+                keyspace: Some("test_keyspace".to_string()),
+                table_name: Some("test_table".to_string()),
+                name: "test_column".to_string(),
+                type_: ColumnType::Int,
+            }],
+        };
+        let bytes = metadata.to_bytes();
+
+        let global_table_spec = metadata.global_table_spec.unwrap();
+
+        let expected_bytes = [
+            metadata.flags.to_bytes(),
+            metadata.columns_count.to_be_bytes().to_vec(),
+            global_table_spec.keyspace.to_string_bytes(),
+            global_table_spec.table_name.to_string_bytes(),
+            metadata.col_spec_i[0].to_bytes(),
+        ]
+        .concat();
+
+        assert_eq!(bytes, expected_bytes);
+    }
+
+    #[test]
+    fn test_metadata_from_bytes() {
+        let expected_metadata = Metadata {
+            flags: MetadataFlags {
+                global_tables_spec: true,
+                has_more_pages: false,
+                no_metadata: false,
+            },
+            columns_count: 1,
+            global_table_spec: Some(TableSpec {
+                keyspace: "test_keyspace".to_string(),
+                table_name: "test_table".to_string(),
+            }),
+            col_spec_i: vec![ColumnSpec {
+                keyspace: Some("test_keyspace".to_string()),
+                table_name: Some("test_table".to_string()),
+                name: "test_column".to_string(),
+                type_: ColumnType::Int,
+            }],
+        };
+
+        let bytes = expected_metadata.to_bytes();
+        let mut cursor = Cursor::new(bytes.as_slice());
+        let metadata = Metadata::from_bytes(&mut cursor);
+
+        assert_eq!(expected_metadata, metadata);
+    }
+}
