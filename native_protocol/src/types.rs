@@ -1,7 +1,5 @@
 use std::io::{Cursor, Read};
 
-use crate::{Serializable, SerializationError};
-
 /// A 2 bytes unsigned integer.
 pub type Short = u16;
 /// A 4 bytes signed integer.
@@ -9,8 +7,24 @@ pub type Int = i32;
 /// A 8 bytes signed integer.
 pub type Long = i64;
 
+pub trait FromCursorDeserializable {
+    fn deserialize(cursor: &mut Cursor<&[u8]>) -> Self;
+}
+
+impl FromCursorDeserializable for Int {
+    fn deserialize(cursor: &mut Cursor<&[u8]>) -> Self {
+        let mut bytes = [0u8; 4];
+        cursor.read_exact(&mut bytes).unwrap();
+
+        Int::from_be_bytes(bytes)
+    }
+}
+
 pub trait OptionSerializable {
-    fn deserialize_option(option_id: u16, cursor: &mut Cursor<&[u8]>) -> std::result::Result<Self, String>
+    fn deserialize_option(
+        option_id: u16,
+        cursor: &mut Cursor<&[u8]>,
+    ) -> std::result::Result<Self, String>
     where
         Self: Sized;
 
@@ -30,7 +44,6 @@ impl<T: OptionSerializable> OptionBytes for T {
     }
 
     fn from_option_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> std::result::Result<Self, String> {
-
         let mut option_id_bytes = [0u8; 2];
         cursor.read_exact(&mut option_id_bytes).unwrap();
         let option_id = u16::from_be_bytes(option_id_bytes);
@@ -95,8 +108,8 @@ pub enum Bytes {
 // value_bytes = [0x01, 0x02, 0x00, 0x07]
 // bytes = Bytes::Vec(value_bytes).to_bytes() -> [0x00, 0x04, 0x01, 0x02, 0x00, 0x07]
 
-impl Serializable for Bytes {
-    fn to_bytes(&self) -> Vec<u8> {
+impl Bytes {
+    pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
 
         match self {
@@ -111,10 +124,7 @@ impl Serializable for Bytes {
         return bytes;
     }
 
-    fn from_bytes(cursor: &mut std::io::Cursor<&u8>) -> std::result::Result<Self, SerializationError>
-    where
-        Self: Sized,
-    {
+    pub fn from_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> std::result::Result<Self, String> {
         let mut bytes_len_bytes = [0u8; 4];
         cursor.read_exact(&mut bytes_len_bytes).unwrap();
         let bytes_len = Int::from_be_bytes(bytes_len_bytes);
@@ -157,19 +167,21 @@ mod tests {
 
     #[test]
     fn test_from_bytes_null() {
-        let input = [0xFF, 0xFF, 0xFF, 0xFF];
-        let cursor = std::io::Cursor
+        let input = [0xFF, 0xFF, 0xFF, 0xFF].as_slice();
+        let mut cursor = std::io::Cursor::new(input);
 
-        let result = Bytes::from_bytes(&input).unwrap();
+        let result = Bytes::from_bytes(&mut cursor).unwrap();
 
         assert_eq!(result, Bytes::None)
     }
 
     #[test]
     fn test_from_bytes_vec() {
-        let input = [0x00, 0x00, 0x00, 0x04, 0x01, 0x02, 0x03, 0x00];
+        let input = [0x00, 0x00, 0x00, 0x04, 0x01, 0x02, 0x03, 0x00].as_slice();
 
-        let result = Bytes::from_bytes(&input).unwrap();
+        let mut cursor = std::io::Cursor::new(input);
+
+        let result = Bytes::from_bytes(&mut cursor).unwrap();
 
         assert_eq!(result, Bytes::Vec(vec![0x01, 0x02, 0x03, 0x00]));
     }
@@ -187,7 +199,9 @@ mod tests {
 
     #[test]
     fn string_from_long_string_bytes() {
-        let input = [0x00, 0x00, 0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8, 'd' as u8];
+        let input = [
+            0x00, 0x00, 0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8, 'd' as u8,
+        ];
 
         let mut cursor = std::io::Cursor::new(input.as_slice());
 
@@ -201,23 +215,25 @@ mod tests {
         #[derive(PartialEq, Debug)]
         enum Options {
             Something,
-            SomethinElse(String)
+            SomethinElse(String),
         }
 
         impl OptionSerializable for Options {
-            fn deserialize_option(option_id: u16, cursor: &mut Cursor<&[u8]>) -> std::result::Result<Self, String>
+            fn deserialize_option(
+                option_id: u16,
+                cursor: &mut Cursor<&[u8]>,
+            ) -> std::result::Result<Self, String>
             where
-                Self: Sized {
-                    match option_id {
-                        0x0001 => {
-                            Ok(Options::Something)
-                        }
-                        0x0002 => {
-                            let string = String::from_string_bytes(cursor);
-                            Ok(Options::SomethinElse(string))
-                        }
-                        _ => unimplemented!()
+                Self: Sized,
+            {
+                match option_id {
+                    0x0001 => Ok(Options::Something),
+                    0x0002 => {
+                        let string = String::from_string_bytes(cursor);
+                        Ok(Options::SomethinElse(string))
                     }
+                    _ => unimplemented!(),
+                }
             }
 
             fn serialize_option(&self) -> Vec<u8> {
@@ -242,13 +258,17 @@ mod tests {
         #[derive(PartialEq, Debug)]
         enum Options {
             Something,
-            SomethinElse(String)
+            SomethinElse(String),
         }
 
         impl OptionSerializable for Options {
-            fn deserialize_option(option_id: u16, cursor: &mut Cursor<&[u8]>) -> std::result::Result<Self, String>
+            fn deserialize_option(
+                option_id: u16,
+                cursor: &mut Cursor<&[u8]>,
+            ) -> std::result::Result<Self, String>
             where
-                Self: Sized {
+                Self: Sized,
+            {
                 todo!()
             }
 
@@ -259,12 +279,12 @@ mod tests {
                     Options::Something => {
                         bytes.extend_from_slice(&(0x0001 as u16).to_be_bytes());
                         bytes
-                    },
+                    }
                     Options::SomethinElse(txt) => {
                         bytes.extend_from_slice(&(0x0002 as u16).to_be_bytes());
                         bytes.extend_from_slice(&txt.to_string_bytes());
                         bytes
-                    },
+                    }
                 }
             }
 
@@ -282,6 +302,5 @@ mod tests {
         let expected = vec![0x00, 0x02, 0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8];
 
         assert_eq!(bytes, expected)
-
     }
 }

@@ -5,7 +5,7 @@ use crate::types::{CassandraString, OptionBytes};
 use super::rows::ColumnType;
 
 #[derive(Debug, PartialEq)]
-struct ColumnSpec {
+pub struct ColumnSpec {
     keyspace: Option<String>,
     table_name: Option<String>,
     pub name: String,

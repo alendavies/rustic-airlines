@@ -1,7 +1,9 @@
+use std::io::Cursor;
 use std::{collections::HashMap, io::Read, net::IpAddr};
 
+use crate::types::FromCursorDeserializable;
 use crate::{
-    types::{Bytes, CassandraString, OptionBytes, OptionSerializable},
+    types::{Bytes, CassandraString, Int, OptionBytes, OptionSerializable},
     Serializable, SerializationError,
 };
 
@@ -287,10 +289,7 @@ enum ColumnValue {
     Varint(Vec<u8>),
     Timeuuid(Uuid),
     Inet(IpAddr),
-    /* List {
-        len: u16,
-        values: Vec,
-    }, */
+    List(Vec<ColumnValue>),
     Map(Box<ColumnValue>, Box<ColumnValue>),
     Set(Box<ColumnValue>),
     UDT {
@@ -361,9 +360,17 @@ impl ColumnValue {
                     bytes.extend_from_slice(&ipv6.octets());
                 }
             },
-            /* ColumnValue::List(inner_value) => {
-                todo!()
-            } */
+            // A [int] n indicating the number of elements in the list, followed
+            // by n elements. Each element is [bytes] representing the serialized value.
+            ColumnValue::List(inner_value) => {
+                let number_of_elements = Int::from(inner_value.len() as i32);
+                bytes.extend_from_slice(number_of_elements.to_be_bytes().as_slice());
+
+                for value in inner_value {
+                    let value_bytes = Bytes::Vec(value.to_bytes()).to_bytes();
+                    bytes.extend_from_slice(&value_bytes);
+                }
+            }
             ColumnValue::Map(key_value, value_value) => {
                 todo!()
             }
@@ -384,82 +391,107 @@ impl ColumnValue {
         bytes
     }
 
-    pub fn from_bytes(bytes: &[u8], type_: &ColumnType) -> Self {
-        let mut cursor = std::io::Cursor::new(bytes);
+    pub fn from_bytes(cursor: &mut Cursor<&[u8]>, type_: &ColumnType) -> Self {
         match type_ {
             ColumnType::Custom(_) => {
-                let custom = String::from_string_bytes(&mut cursor);
+                let custom = String::from_string_bytes(cursor);
                 ColumnValue::Custom(custom)
             }
             ColumnType::Ascii => {
-                let ascii = String::from_string_bytes(&mut cursor);
+                let ascii = String::from_string_bytes(cursor);
                 ColumnValue::Ascii(ascii)
             }
             ColumnType::Bigint => {
                 let mut bigint_bytes = [0u8; 8];
-                bigint_bytes.copy_from_slice(&bytes[0..8]);
+                cursor.read_exact(&mut bigint_bytes).unwrap();
                 let bigint = i64::from_be_bytes(bigint_bytes);
                 ColumnValue::Bigint(bigint)
             }
-            ColumnType::Blob => ColumnValue::Blob(bytes.to_vec()),
+            ColumnType::Blob => {
+                let blob = Bytes::from_bytes(cursor).unwrap();
+                if let Bytes::Vec(blob) = blob {
+                    ColumnValue::Blob(blob)
+                } else {
+                    ColumnValue::Blob(vec![])
+                }
+            }
             ColumnType::Boolean => {
-                let boolean = bytes[0] != 0;
+                let mut boolean_byte = [0u8; 1];
+                cursor.read_exact(&mut boolean_byte).unwrap();
+                let boolean = boolean_byte[0] == 1;
                 ColumnValue::Boolean(boolean)
             }
             ColumnType::Counter => {
                 let mut counter_bytes = [0u8; 8];
-                counter_bytes.copy_from_slice(&bytes[0..8]);
+                cursor.read_exact(&mut counter_bytes).unwrap();
                 let counter = i64::from_be_bytes(counter_bytes);
                 ColumnValue::Counter(counter)
             }
             ColumnType::Decimal => {
                 let mut scale_bytes = [0u8; 4];
-                scale_bytes.copy_from_slice(&bytes[0..4]);
+                cursor.read_exact(&mut scale_bytes).unwrap();
                 let scale = i32::from_be_bytes(scale_bytes);
-                let unscaled = bytes[4..].to_vec();
+
+                let unscaled = Bytes::from_bytes(cursor).unwrap();
+                let unscaled = if let Bytes::Vec(unscaled) = unscaled {
+                    unscaled
+                } else {
+                    vec![]
+                };
+
                 ColumnValue::Decimal { scale, unscaled }
             }
             ColumnType::Double => {
                 let mut double_bytes = [0u8; 8];
-                double_bytes.copy_from_slice(&bytes[0..8]);
+                cursor.read_exact(&mut double_bytes).unwrap();
                 let double = f64::from_be_bytes(double_bytes);
                 ColumnValue::Double(double)
             }
             ColumnType::Float => {
                 let mut float_bytes = [0u8; 4];
-                float_bytes.copy_from_slice(&bytes[0..4]);
+                cursor.read_exact(&mut float_bytes).unwrap();
                 let float = f32::from_be_bytes(float_bytes);
                 ColumnValue::Float(float)
             }
             ColumnType::Int => {
                 let mut int_bytes = [0u8; 4];
-                int_bytes.copy_from_slice(&bytes[0..4]);
+                cursor.read_exact(&mut int_bytes).unwrap();
                 let int = i32::from_be_bytes(int_bytes);
                 ColumnValue::Int(int)
             }
             ColumnType::Timestamp => {
                 let mut timestamp_bytes = [0u8; 8];
-                timestamp_bytes.copy_from_slice(&bytes[0..8]);
+                cursor.read_exact(&mut timestamp_bytes).unwrap();
                 let timestamp = i64::from_be_bytes(timestamp_bytes);
                 ColumnValue::Timestamp(timestamp)
             }
             ColumnType::Uuid => {
                 let mut uuid = [0u8; 16];
-                uuid.copy_from_slice(&bytes[0..16]);
+                cursor.read_exact(&mut uuid).unwrap();
                 ColumnValue::Uuid(uuid)
             }
             ColumnType::Varchar => {
-                let varchar = String::from_string_bytes(&mut cursor);
+                let varchar = String::from_string_bytes(cursor);
                 ColumnValue::Varchar(varchar)
             }
-            ColumnType::Varint => ColumnValue::Varint(bytes.to_vec()),
+            ColumnType::Varint => {
+                let varint = Bytes::from_bytes(cursor).unwrap();
+                let varint = if let Bytes::Vec(varint) = varint {
+                    varint
+                } else {
+                    vec![]
+                };
+                ColumnValue::Varint(varint)
+            }
             ColumnType::Timeuuid => {
                 let mut timeuuid = [0u8; 16];
-                timeuuid.copy_from_slice(&bytes[0..16]);
+                cursor.read_exact(&mut timeuuid).unwrap();
                 ColumnValue::Timeuuid(timeuuid)
             }
             ColumnType::Inet => {
-                let inet = match bytes.len() {
+                let mut bytes = [0u8; 16];
+                let bytes_len = cursor.read(&mut bytes).unwrap();
+                let inet = match bytes_len {
                     4 => IpAddr::V4(std::net::Ipv4Addr::new(
                         bytes[0], bytes[1], bytes[2], bytes[3],
                     )),
@@ -477,8 +509,9 @@ impl ColumnValue {
                 };
                 ColumnValue::Inet(inet)
             }
-            ColumnType::List(_) => {
-                todo!()
+            ColumnType::List(inner_type) => {
+                let list = list_from_cursor(cursor, inner_type);
+                ColumnValue::List(list)
             }
             ColumnType::Map(_, _) => {
                 todo!()
@@ -496,6 +529,37 @@ impl ColumnValue {
     }
 }
 
+fn list_from_cursor(
+    cursor: &mut std::io::Cursor<&[u8]>,
+    col_type: &ColumnType,
+) -> Vec<ColumnValue> {
+    let number_of_elements = Int::deserialize(cursor);
+
+    if number_of_elements < 0 {
+        return vec![];
+    }
+
+    let number_of_elements: u16 = number_of_elements.try_into().unwrap();
+
+    let elements = (0..number_of_elements)
+        .map(|_| {
+            let bytes = Bytes::from_bytes(cursor).unwrap();
+
+            let inner_bytes = if let Bytes::Vec(inner_bytes) = bytes {
+                inner_bytes
+            } else {
+                vec![]
+            };
+
+            let mut cursor = Cursor::new(inner_bytes.as_slice());
+
+            ColumnValue::from_bytes(&mut cursor, col_type)
+        })
+        .collect();
+
+    elements
+}
+
 // key: column name, value: column value
 type Row = HashMap<String, ColumnValue>;
 
@@ -503,7 +567,7 @@ type Row = HashMap<String, ColumnValue>;
 /// Indicates a set of rows.
 pub struct Rows {
     metadata: Metadata,
-    rows_count: u32,
+    rows_count: i32,
     rows_content: Vec<Row>,
 }
 
@@ -516,9 +580,8 @@ impl Serializable for Rows {
         bytes.extend_from_slice(&self.rows_count.to_be_bytes());
 
         for row in &self.rows_content {
-            for (column_name, column_value) in row {
-                bytes.extend_from_slice(column_name.to_string_bytes().as_slice());
-                let value_bytes = Bytes::Vec(column_value.to_bytes()).to_bytes();
+            for (_, value) in row {
+                let value_bytes = Bytes::Vec(value.to_bytes()).to_bytes();
                 bytes.extend_from_slice(&value_bytes);
             }
         }
@@ -531,16 +594,23 @@ impl Serializable for Rows {
 
         let metadata = Metadata::from_bytes(&mut cursor);
 
-        let mut rows_count_bytes = [0u8; 4];
-        cursor.read_exact(&mut rows_count_bytes).unwrap();
-        let rows_count = u32::from_be_bytes(rows_count_bytes);
+        let rows_count = Int::deserialize(&mut cursor);
 
         let mut rows_content = Vec::new();
         for _ in 0..rows_count {
             let mut row = HashMap::new();
             for col_spec in &metadata.col_spec_i {
-                // let col_value = ColumnValue::from_bytes(&mut cursor, &col_spec.type_);
-                // row.insert(col_spec.name, col_value);
+                let value_bytes = Bytes::from_bytes(&mut cursor).unwrap();
+
+                let bytes = if let Bytes::Vec(bytes) = value_bytes {
+                    bytes
+                } else {
+                    vec![]
+                };
+
+                let mut cursor = &mut Cursor::new(bytes.as_slice());
+                let value = ColumnValue::from_bytes(&mut cursor, &col_spec.type_);
+                row.insert(col_spec.name.clone(), value);
             }
             rows_content.push(row);
         }
@@ -550,5 +620,13 @@ impl Serializable for Rows {
             rows_count,
             rows_content,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn bytes_to_list() {
+        todo!()
     }
 }
