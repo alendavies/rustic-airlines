@@ -71,7 +71,7 @@ mod tests {
         };
         let serialized = drop_keyspace.serialize();
         
-        assert_eq!(serialized, "DROP KEYSPACE example_keyspace;");
+        assert_eq!(serialized, "DROP KEYSPACE example_keyspace");
     }
 
     #[test]

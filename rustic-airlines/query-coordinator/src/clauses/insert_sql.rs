@@ -10,7 +10,7 @@ use crate::utils::{is_insert, is_values};
 /// * `values` - A vector of strings that contains the values to be inserted.
 /// * `into_clause` - An `Into` struct that contains the table name and columns.
 ///
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Insert {
     pub values: Vec<String>,
     pub into_clause: Into,

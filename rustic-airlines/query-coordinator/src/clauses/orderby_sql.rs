@@ -2,6 +2,7 @@ use crate::{
     errors::CQLError,
     utils::{is_by, is_order},
 };
+use crate::QueryCoordinator;
 
 /// Struct that epresents the `ORDER BY` SQL clause.
 /// The `ORDER BY` clause is used to sort the result set in ascending or descending order in a `SELECT` clause.
@@ -11,7 +12,7 @@ use crate::{
 /// * `columns` - The columns to sort the result set by.
 /// * `order` - The order to sort the result set by. It can be either `ASC` or `DESC`.
 ///
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct OrderBy {
     pub columns: Vec<String>,
     pub order: String,
@@ -39,7 +40,7 @@ impl OrderBy {
     /// assert_eq!(order_by., OrderBy { columns: vec!["name".to_string()], order: "DESC".to_string() });
     /// ```
     ///
-    pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, CQLError> {
+    pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 3 {
             return Err(CQLError::InvalidSyntax);
         }
@@ -48,7 +49,7 @@ impl OrderBy {
         let mut order = String::new();
         let mut i = 0;
 
-        if !is_order(tokens[i]) && !is_by(tokens[i + 1]) {
+        if !is_order(&tokens[i]) && !is_by(&tokens[i + 1]) {
             return Err(CQLError::InvalidSyntax);
         }
 
@@ -65,4 +66,20 @@ impl OrderBy {
 
         Ok(Self { columns, order })
     }
+
+    pub fn serialize(&self) -> String{
+        let columns_str = self.columns.join(", ");
+        if self.order.is_empty() {
+            format!("ORDER BY {}", columns_str)
+        } else {
+            format!("ORDER BY {} {}", columns_str, self.order)
+        }
+    }
+
+    pub fn deserialize(&mut self, query: &str) -> Result<OrderBy, CQLError> {
+        let tokens= QueryCoordinator::tokens_from_query(query);
+        Self::new_from_tokens(tokens)
+    }
+    
+
 }

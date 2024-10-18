@@ -1,6 +1,7 @@
 use super::where_sql::Where;
 use crate::errors::CQLError;
 use crate::utils::{is_delete, is_from, is_where};
+use crate::QueryCoordinator;
 
 /// Struct that represents the `DELETE` SQL clause.
 /// The `DELETE` clause is used to delete records from a table.
@@ -10,7 +11,7 @@ use crate::utils::{is_delete, is_from, is_where};
 /// - `table_name`: a `String` that holds the name of the table from which the records will be deleted.
 /// - `where_clause`: an `Option<Where>` that holds the condition that the records must meet to be deleted. If it is `None`, all records will be deleted.
 ///
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Delete {
     pub table_name: String,
     pub where_clause: Option<Where>,
@@ -87,6 +88,25 @@ impl Delete {
             where_clause,
         })
     }
+
+    /// Serializa la instancia de `Delete` en una cadena de texto.
+    pub fn serialize(&self) -> String {
+        let mut serialized = format!("DELETE FROM {}", self.table_name);
+
+        if let Some(where_clause) = &self.where_clause {
+            serialized.push_str(&format!(" WHERE {}", where_clause.serialize()));
+        }
+
+        serialized
+    }
+
+    /// Deserializa una cadena de texto en una instancia de `Delete`.
+    pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
+        let tokens: Vec<String> = QueryCoordinator::tokens_from_query(serialized);
+        Self::new_from_tokens(tokens)
+    }
+
+
 }
 
 #[cfg(test)]

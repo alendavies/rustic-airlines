@@ -3,6 +3,7 @@ use crate::{
     errors::CQLError,
     utils::{is_by, is_from, is_order, is_select, is_where},
 };
+use crate::QueryCoordinator;
 
 /// Struct that represents the `SELECT` SQL clause.
 /// The `SELECT` clause is used to select data from a table.
@@ -14,7 +15,7 @@ use crate::{
 /// * `where_clause` - The `WHERE` clause to filter the result set.
 /// * `orderby_clause` - The `ORDER BY` clause to sort the result set.
 ///
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Select {
     pub table_name: String,
     pub columns: Vec<String>,
@@ -110,8 +111,10 @@ impl Select {
             None
         };
 
+        let order_by_tokens = orderby_tokens.iter().map(|s| s.to_string()).collect();
+
         let orderby_clause = if !orderby_tokens.is_empty() {
-            Some(OrderBy::new_from_tokens(orderby_tokens)?)
+            Some(OrderBy::new_from_tokens(order_by_tokens)?)
         } else {
             None
         };
@@ -123,6 +126,29 @@ impl Select {
             orderby_clause,
         })
     }
+    
+    /// Serializa la consulta `Select` a un `String`.
+    pub fn serialize(&self) -> String {
+        let mut result = format!("SELECT {} FROM {}", self.columns.join(","), self.table_name);
+        
+        // Agrega el `WHERE` si existe
+        if let Some(where_clause) = &self.where_clause {
+            result.push_str(&format!(" WHERE {}", where_clause.serialize()));
+        }
+        
+        // Agrega el `ORDER BY` si existe
+        if let Some(orderby_clause) = &self.orderby_clause {
+            result.push_str(&format!(" ORDER BY {}", orderby_clause.serialize()));
+        }
+        
+        result
+    }
+
+    pub fn deserialize(query: &str) -> Result<Self, CQLError>{
+        let tokens = QueryCoordinator::tokens_from_query(query);
+        Self::new_from_tokens(tokens)
+    }
+
 }
 
 #[cfg(test)]

@@ -1,60 +1,88 @@
-use std::io::{BufRead, BufReader, Write};
-use std::net::{Ipv4Addr, TcpListener, TcpStream, SocketAddrV4};
-use std::str::FromStr;
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use keyspace::Keyspace;
+use open_query_handler::OpenQueryHandler;
 use partitioner::Partitioner;
-use query_coordinator::clauses::insert_sql::Insert;
 use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
-use query_coordinator::clauses::keyspace::drop_keyspace_cql::DropKeyspace;
-use query_coordinator::clauses::keyspace::alter_keyspace_cql::AlterKeyspace;
-use query_coordinator::clauses::table::alter_table_cql::AlterTable;
 use query_coordinator::clauses::table::create_table_cql::CreateTable;
-use query_coordinator::clauses::table::drop_table_cql::DropTable;
-use query_coordinator::clauses::update_sql::Update;
 use query_coordinator::errors::CQLError;
-use query_coordinator::QueryCoordinator;
+use query_coordinator::{NeededResponses, QueryCoordinator};
 use query_coordinator::Query;
 mod query_execution;
 use query_execution::QueryExecution;
+mod internode_protocol_handler;
+use internode_protocol_handler::InternodeProtocolHandler;
 mod errors;
 use errors::NodeError;
 mod table;
 mod keyspace;
+mod utils;
+mod open_query_handler;
+use crate::utils::{send_message, connect};
 use crate::table::Table;
+use std::thread::sleep;
+use std::time::Duration;
+
+
+
+const  _CLIENT_NODE_PORT_1: u16 = 0x4645; // Hexadecimal de "FE" (FERRUM) = 17989
+const  INTERNODE_PORT: u16 = 0x554D; // Hexadecimal de "UM" (FERRUM) = 21837
 
 pub struct Node {
     ip: Ipv4Addr,
-    seeds_node: Vec<Ipv4Addr>,
-    port: u16,
+    seeds_nodes: Vec<Ipv4Addr>,
     partitioner: Partitioner,
+    open_query_handler: OpenQueryHandler,
     keyspaces: Vec<Keyspace>,
-    actual_keyspace: Option<Keyspace>
+    actual_keyspace: Option<Keyspace>,
+    aux: bool
 }
 
 impl Node {
-    pub fn new(ip: Ipv4Addr, seeds_node: Vec<Ipv4Addr>) -> Result<Node, NodeError> {
+    pub fn new(ip:Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>) -> Result<Node, NodeError> {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip)?;
         Ok(Node {
             ip,
-            seeds_node,
-            port: 0,
+            seeds_nodes,
             partitioner,
+            open_query_handler: OpenQueryHandler::new(),
             keyspaces: vec![],
-            actual_keyspace: None
+            actual_keyspace: None,
+            aux: true,
         })
     }
 
-    pub fn get_ip(&self) -> Ipv4Addr {
-        self.ip
+    // pub fn add_response_to_open_query(&mut self, open_query_id: i32, response: String)->bool{
+    //     self.open_query_handler.add_response(open_query_id, response)
+    // }
+
+    pub fn add_open_query(&mut self, needed_responses: i32) -> i32{
+        self.open_query_handler.new_open_query(needed_responses)
+    }
+
+    pub fn remove_open_query(&mut self, id: i32) {
+        self.open_query_handler.remove_query(&id);
     }
 
     pub fn is_seed(&self) -> bool {
-        self.seeds_node.contains(&self.get_ip())
+        self.seeds_nodes.contains(&self.ip)
     }
 
+    pub fn get_ip(&self)->Ipv4Addr{
+        self.ip
+    }
+
+    pub fn get_ip_string(&self)->String{
+        self.ip.to_string()
+    }
+
+    pub fn get_how_many_nodes_i_know(&self) -> usize{
+        self.partitioner.get_nodes().len() - 1
+    }
     pub fn get_partitioner(&self) -> Partitioner {
         self.partitioner.clone()
     }
@@ -73,8 +101,12 @@ impl Node {
     }
 
 
-    pub fn add_keyspace(&mut self, new_keyspace: CreateKeyspace) -> Result<(), NodeError> {
+    pub fn get_open_hanlde_query(&mut self)-> &mut OpenQueryHandler{
+        &mut self.open_query_handler
+    }
 
+
+    pub fn add_keyspace(&mut self, new_keyspace: CreateKeyspace) -> Result<(), NodeError> {
         let new_keyspace = Keyspace::new(new_keyspace);
         if self.keyspaces.contains(&new_keyspace){
             return Err(NodeError::CQLError(CQLError::InvalidTable));
@@ -121,7 +153,6 @@ impl Node {
         Ok(())
     }
     
-
     pub fn update_table(&mut self, new_table: CreateTable) -> Result<(), NodeError> {
         // Obtiene una referencia mutable a `actual_keyspace` si existe
         let keyspace = self.actual_keyspace.as_mut().ok_or(NodeError::OtherError)?;
@@ -169,153 +200,159 @@ impl Node {
     
         Ok(false)
     }
+
+pub fn start(
+    node: Arc<Mutex<Node>>,
+    connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>, // Modificación aquí
+) -> Result<(), NodeError> {
     
-    pub fn start(
-        node: Arc<Mutex<Node>>,
-        port: u16,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-    ) -> Result<(), NodeError> {
-        let address = {
-            let mut node_guard = node.lock()?;
-            node_guard.port = port;
-            SocketAddrV4::new(node_guard.ip, port)
-        };
+    let is_seed;
+    let seed_ip;
+    let self_ip;
+    {
+        let mut node_guard = node.lock()?;
+        is_seed = node_guard.is_seed();
+        seed_ip = node_guard.seeds_nodes[0];
+        self_ip = node_guard.get_ip();
 
-        let is_seed = node.lock()?.is_seed();
-        let seed_ip = node.lock()?.seeds_node[0];
+        if !is_seed {
+            
+            if let Ok(stream) = connect(seed_ip, INTERNODE_PORT, Arc::clone(&connections)) {
 
-        {
-            let mut node_guard = node.lock()?;
-            if !is_seed {
-                println!("El nodo NO es semilla");
-                if let Ok(mut stream) = node_guard.connect(node_guard.seeds_node[0], Arc::clone(&connections)) {
-                    let message = format!("IP {}", node_guard.ip.to_string());
-                    node_guard.send_message(&mut stream, &message)?;
-                    node_guard.partitioner.add_node(seed_ip)?;
-                }
-            } else {
-                println!("El Nodo ES semilla");
+                let stream = Arc::new(Mutex::new(stream)); // Encapsulamos en Arc<Mutex<TcpStream>>
+                let message = InternodeProtocolHandler::create_protocol_message(&node_guard.get_ip_string(), 0,"HANDSHAKE", "_", true);
+                
+                // Usamos el Mutex para enviar el mensaje de forma segura
+                let mut stream_guard = stream.lock()?;
+                send_message(&mut stream_guard, &message)?;
+                node_guard.partitioner.add_node(seed_ip)?;
+                
             }
-        }
+        } 
+    }
 
-        let listener = TcpListener::bind(address)?;
+    let socket = SocketAddrV4::new(self_ip, INTERNODE_PORT);
+    let listener = TcpListener::bind(socket)?;
+
+    for stream in listener.incoming() {
         
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    let mut connections_guard = connections.lock()?;
-                    connections_guard.push(stream.try_clone()?);
+        match stream {
+            Ok(stream) => {
+                let node_clone = Arc::clone(&node);
+                let stream = Arc::new(Mutex::new(stream)); // Encapsulamos el stream en Arc<Mutex<TcpStream>>
+                let connections_clone = Arc::clone(&connections);
 
-                    let node_clone = Arc::clone(&node);
-                    let stream_clone = stream.try_clone()?;
-                    let connections_clone = Arc::clone(&connections);
-
-                    thread::spawn(move || {
-                        if let Err(e) = Node::handle_incoming_messages(node_clone, stream_clone, connections_clone, is_seed) {
-                            eprintln!("Error handling incoming message: {:?}", e);
-                        }
-                    });
-                }
-                Err(e) => {
-                    eprintln!("Error al aceptar conexión: {:?}", e);
-                }
+                thread::spawn(move || {
+                    if let Err(e) = Node::handle_incoming_messages(node_clone, stream, connections_clone, is_seed) {
+                        eprintln!("Error handling incoming message: {:?}", e);
+                    }
+                });
+            }
+            
+            Err(e) => {
+                eprintln!("Error al aceptar conexión: {:?}", e);
             }
         }
+    }
+    Ok(())
+}
+
+    fn forward_message(
+        &self,
+        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+        sent_ip: Ipv4Addr,
+        target_ip: Ipv4Addr,
+    ) -> Result<(), NodeError> {
+        // Primero intentamos reutilizar o establecer una conexión
+        let mut tcp = connect(target_ip, INTERNODE_PORT,Arc::clone(&connections))?;
+
+        let message = InternodeProtocolHandler::create_protocol_message(
+            &sent_ip.to_string(),
+            0,
+            "HANDSHAKE",
+            "_",
+            true,
+        );
+       
+        send_message(&mut tcp, &message)?;
         Ok(())
     }
 
-    pub fn connect(&self, peer_ip: Ipv4Addr, connections: Arc<Mutex<Vec<TcpStream>>>) -> Result<TcpStream, NodeError> {
-        let address = SocketAddrV4::new(peer_ip, self.port);
-        let stream = TcpStream::connect(address)?;
-        {
-            let mut connections_guard = connections.lock()?;
-            connections_guard.push(stream.try_clone()?);
-        }
-        Ok(stream)
-    }
 
-    pub fn send_message(&self, stream: &mut TcpStream, message: &str) -> Result<(), NodeError> {
-        stream.write_all(message.as_bytes())?;
-        stream.write_all(b"\n")?;
-        Ok(())
-    }
 
     pub fn handle_incoming_messages(
         node: Arc<Mutex<Node>>,
-        stream: TcpStream,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
+        mut stream: Arc<Mutex<TcpStream>>,
+        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
     ) -> Result<(), NodeError> {
-        let mut reader = BufReader::new(stream.try_clone().map_err(NodeError::IoError)?);
-        let mut buffer = String::new();
-
-        loop {
-           
-            Node::execute_initial_insert(node.clone(), connections.clone())?;
+    
+        // Clona el stream bajo protección Mutex y crea el lector
+        let mut reader = {
+            let stream_guard = stream.lock()?;    
+            BufReader::new(stream_guard.try_clone().map_err(NodeError::IoError)?)
+        };
+    
+        let internode_protocol_handler = InternodeProtocolHandler::new();
+    
+        loop {    
+            // Limpiamos el buffer
+            let mut buffer = String::new();
+    
+            // Ejecuta inserciones iniciales si es necesario
             
-            buffer.clear();
-            let bytes_read = reader.read_line(&mut buffer).map_err(NodeError::IoError)?;
-            if bytes_read == 0 {
-                println!("Conexión cerrada por el peer.");
-                break;
-            }
+            Self::execute_querys(&node, connections.clone())?;
+                
 
-            let tokens: Vec<&str> = buffer.trim().split_whitespace().collect();
-            if tokens.is_empty() {
-                continue;
-            }
+            // Intentamos leer una línea
+            let bytes_read = reader.read_line(&mut buffer);
+    
+            match bytes_read {
+                Ok(0) => {
+                    // Conexión cerrada
+                    break;
+                }
+                Ok(_) => {
 
-            let command = tokens[0];
-            println!("Recibi {:?}", command);
-            match command {
-                "IP" => Node::handle_ip_command(&node, tokens, connections.clone(), is_seed)?,
-                "CREATE_TABLE" => Node::handle_create_table_command(&node, tokens, connections.clone(),false)?,
-                "CREATE_TABLE_INTERNODE" => Node::handle_create_table_command(&node, tokens, connections.clone(),true)?,
-                "DROP_TABLE" => Node::handle_drop_table_command(&node, tokens, connections.clone(),false)?,
-                "DROP_TABLE_INTERNODE" => Node::handle_drop_table_command(&node, tokens, connections.clone(),true)?,
-                "ALTER_TABLE" => Node::handle_alter_table_command(&node, tokens, connections.clone(),false)?,
-                "ALTER_TABLE_INTERNODE" => Node::handle_alter_table_command(&node, tokens, connections.clone(),true)?,
-                "CREATE_KEYSPACE" => Node::handle_create_keyspace_command(&node, tokens, connections.clone(),false)?,
-                "CREATE_KEYSPACE_INTERNODE" => Node::handle_create_keyspace_command(&node, tokens, connections.clone(),true)?,
-                "DROP_KEYSPACE" => Node::handle_drop_keyspace_command(&node, tokens, connections.clone(),false)?,
-                "DROP_KEYSPACE_INTERNODE" => Node::handle_drop_keyspace_command(&node, tokens, connections.clone(),true)?,
-                "ALTER_KEYSPACE" => Node::handle_alter_keyspace_command(&node, tokens, connections.clone(),false)?,
-                "ALTER_KEYSPACE_INTERNODE" => Node::handle_alter_keyspace_command(&node, tokens, connections.clone(),true)?,
-                "INSERT" => Node::handle_insert_command(&node, tokens, connections.clone(), false)?,
-                "INSERT_INTERNODE" => Node::handle_insert_command(&node, tokens, connections.clone(), true)?,
-                "UPDATE" => Node::handle_update_command(&node, tokens, connections.clone(), false)?,
-                "UPDATE_INTERNODE" => Node::handle_update_command(&node, tokens, connections.clone(), true)?,
-                _ => println!("Comando desconocido: {}", command),
+                    // Procesa el comando con el protocolo, pasándole el buffer y los parámetros necesarios
+                    let buffer_cop = buffer.clone();
+                    let result = internode_protocol_handler.handle_command(
+                        &node,
+                        &buffer.trim().to_string(),
+                        &mut stream,
+                        connections.clone(),
+                        is_seed,
+                    );
+                    
+                    // Si hay un error al manejar el comando, salimos del bucle
+                    if let Err(e) = result {
+                        eprintln!("Error handling command: {:?} cuando le pase {:?}", e, buffer_cop);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    // Otro tipo de error
+                    eprintln!("Error de lectura en handle_incoming_messages: {:?}", e);
+                    break;
+                }
             }
-        
-            // let node = node.lock()?;
-            // // Imprimir un string vacío si `node.actual_keyspace` es `None`
-            // println!(
-            //     "El actual keyspace es {:?}",
-            //     node.actual_keyspace.as_ref().map(|ks| format!("{:?}", ks)).unwrap_or_else(|| "".to_string())
-            // );
-    
-            // // Imprimir las tablas, mostrando un string vacío si `node.actual_keyspace` es `None`
-            // println!(
-            //     "Las tablas que tiene son {:?}",
-            //     node.actual_keyspace.as_ref().map(|ks| format!("{:?}", ks.tables)).unwrap_or_else(|| "".to_string())
-            // );
-    
-        
         }
+    
         Ok(())
-        
     }
-
+        
     // Función para verificar si el particionador está lleno y el nodo es una semilla
-    fn initial_condition(node: &Arc<Mutex<Node>>) -> Result<bool, NodeError> {
-        let lock_node = node.lock().map_err(|_| NodeError::LockError)?;
-        Ok(lock_node.get_partitioner().get_nodes().len() == 4 && lock_node.is_seed())
+    fn condition(node: &Arc<Mutex<Node>>) -> Result<bool, NodeError> {
+        let mut lock_node = node.lock().map_err(|_| NodeError::LockError)?;
+        let a =lock_node.get_partitioner().get_nodes().len() == 4 && lock_node.is_seed() && lock_node.aux == true;
+        if a {lock_node.aux = false;}
+        Ok(a)
     }
 
     // Función para ejecutar múltiples inserciones iniciales cuando el particionador está lleno
-    fn execute_initial_insert(node: Arc<Mutex<Node>>, connections: Arc<Mutex<Vec<TcpStream>>>) -> Result<(), NodeError> {
-        if !Node::initial_condition(&node)? {
+    fn execute_querys(node: &Arc<Mutex<Node>>, connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>) -> Result<(), NodeError> {
+
+        if !Node::condition(&node)? {
             return Ok(());
         }
 
@@ -326,171 +363,56 @@ impl Node {
             "INSERT INTO people (id, name, weight) VALUES (2,'Lorenzo', 67)",
             "INSERT INTO people (id, name, weight) VALUES (3,'Lorenzo',32)",
             "INSERT INTO people (id, name, weight) VALUES (4,'Maggie', 39)",
-            "INSERT INTO people (id, name, weight) VALUES (5,'Maggie', 67)",
+            "INSERT INTO people (id, name, weight) VALUES (5,'parafresco', 67)",
             "INSERT INTO people (id, name, weight) VALUES (6,'Maggie',32)",
             "INSERT INTO people (id, name, weight) VALUES (7,'Maggie', 39)",
             "INSERT INTO people (id, name, weight) VALUES (8,'Maggie', 67)",
             "INSERT INTO people (id, name, weight) VALUES (9,'Maggie',32)",
-            "UPDATE people SET name = 'ESA', weight = 'papallo' WHERE id = 2"
-
+            "UPDATE people SET name = 'Pablo', weight = 8  WHERE id = 11",
+            "UPDATE people SET name = 'Nestum' WHERE id = 8",
+            "DELETE FROM people WHERE id = 5",
+            //"SELECT id,name FROM people WHERE id = 3",
         ];
 
         for query_str in queries {
+            sleep(Duration::from_millis(50));
             let query = QueryCoordinator::new()
                 .handle_query(query_str.to_string())
                 .map_err(NodeError::CQLError)?;
-            QueryExecution::new(node.clone(), connections.clone()).execute(query, false)?;
-        }
-
-        Ok(())
-    }
 
 
-   
-    // Función para manejar el comando "IP"
-    fn handle_ip_command(
-        node: &Arc<Mutex<Node>>,
-        tokens: Vec<&str>,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-        is_seed: bool,
-    ) -> Result<(), NodeError> {
-
-        let new_ip = Ipv4Addr::from_str(tokens.get(1).ok_or(NodeError::OtherError)?)
-            .map_err(|_| NodeError::OtherError)?;
-        let mut lock_node = node.lock().map_err(|_| NodeError::LockError)?;
-        let self_ip = lock_node.get_ip();
-
-        if self_ip != new_ip && !lock_node.partitioner.contains_node(&new_ip) {
-            lock_node.partitioner.add_node(new_ip)?;
-        }
-
-        if is_seed {
-            for ip in lock_node.get_partitioner().get_nodes() {
-                if new_ip != ip && self_ip != ip {
-                    lock_node.forward_message(connections.clone(), new_ip, ip)?;
-                    lock_node.forward_message(connections.clone(), ip, new_ip)?;
-                }
+            let query_id;
+            {
+                let mut guard_node = node.lock()?;
+                        let all_nodes = guard_node.get_how_many_nodes_i_know();
+                        let needed_responses;
+                        match  query.needed_responses(){
+                            query_coordinator::NeededResponseCount::AllNodes => {
+                                needed_responses = all_nodes
+                            }
+                            query_coordinator::NeededResponseCount::Specific(specific_value) => {
+                                needed_responses = specific_value as usize
+                            }
+                        };
+                        query_id = guard_node.add_open_query(needed_responses as i32);
             }
+
+                let result = QueryExecution::new(node.clone(), connections.clone()).execute(query.clone(), false, query_id)?;
+                
+
+                // // Maneja el resultado
+                // match result {
+                //     Ok(message) => {
+                        
+                //         println!("{}", message); // Imprime el mensaje si es exitoso
+                //     }
+                //     Err(e) => {
+                //         let mut guard_node = node.lock()?;
+                //         guard_node.remove_open_query(query_id);
+                //         println!("{:?} in {:?}", e, query_str)}, // Retorna el error si ocurrió uno
+                // }
         }
-
         Ok(())
     }
 
-    // Función para manejar el comando "INSERT"
-    fn handle_insert_command(
-        node: &Arc<Mutex<Node>>,
-        tokens: Vec<&str>,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-        internode: bool
-    ) -> Result<(), NodeError> {
-        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
-        let query = Insert::deserialize(&query_str).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(Query::Insert(query),internode)
-    }
-
-     // Función para manejar el comando "IP"
-     fn handle_create_table_command(
-        node: &Arc<Mutex<Node>>,
-        tokens: Vec<&str>,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-        internode: bool,
-    ) -> Result<(), NodeError> {
-        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
-        let query = CreateTable::deserialize(&query_str).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(Query::CreateTable(query),internode)
-    }
-
-
-     // Función para manejar el comando "IP"
-     fn handle_drop_table_command(
-        node: &Arc<Mutex<Node>>,
-        tokens: Vec<&str>,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-        internode: bool,
-    ) -> Result<(), NodeError> {
-        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
-        let query = DropTable::deserialize(&query_str).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(Query::DropTable(query),internode)
-    }
-
-
-    // Función para manejar el comando "IP"
-    fn handle_alter_table_command(
-        node: &Arc<Mutex<Node>>,
-        tokens: Vec<&str>,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-        internode: bool,
-    ) -> Result<(), NodeError> {
-        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
-        let query = AlterTable::deserialize(&query_str).map_err(NodeError::CQLError)?;
-        
-        QueryExecution::new(node.clone(), connections).execute(Query::AlterTable(query),internode)
-    }
-
-    // Función para manejar el comando "IP"
-    fn handle_create_keyspace_command(
-        node: &Arc<Mutex<Node>>,
-        tokens: Vec<&str>,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-        internode: bool,
-    ) -> Result<(), NodeError> {
-        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
-        let query = CreateKeyspace::deserialize(&query_str).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(Query::CreateKeyspace(query),internode)
-    }
-
-
-     // Función para manejar el comando "IP"
-     fn handle_drop_keyspace_command(
-        node: &Arc<Mutex<Node>>,
-        tokens: Vec<&str>,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-        internode: bool,
-    ) -> Result<(), NodeError> {
-
-        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
-        let query = DropKeyspace::deserialize(&query_str).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(Query::DropKeyspace(query),internode)
-    }
-
-
-    // Función para manejar el comando "IP"
-    fn handle_alter_keyspace_command(
-        node: &Arc<Mutex<Node>>,
-        tokens: Vec<&str>,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-        internode: bool,
-    ) -> Result<(), NodeError> {
-        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
-        let query = AlterKeyspace::deserialize(&query_str).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(Query::AlterKeyspace(query),internode)
-        
-        
-    }
-
-    // Función para manejar el comando "IP"
-    fn handle_update_command(
-        node: &Arc<Mutex<Node>>,
-        tokens: Vec<&str>,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-        internode: bool,
-    ) -> Result<(), NodeError> {
-        let query_str = tokens.get(1..).ok_or(NodeError::OtherError)?.join(" ");
-        let query = Update::deserialize(&query_str).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(Query::Update(query),internode)
-        
-        
-    }
-
-    fn forward_message(
-        &self,
-        connections: Arc<Mutex<Vec<TcpStream>>>,
-        new_ip: Ipv4Addr,
-        target_ip: Ipv4Addr,
-    ) -> Result<(), NodeError> {
-        let mut tcp = self.connect(target_ip, Arc::clone(&connections))?;
-        let message = format!("IP {}", new_ip);
-        self.send_message(&mut tcp, &message)?;
-        Ok(())
-    }
 }

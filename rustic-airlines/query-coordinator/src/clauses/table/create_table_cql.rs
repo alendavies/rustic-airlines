@@ -1,3 +1,4 @@
+
 use crate::clauses::types::column::Column;
 use crate::clauses::types::datatype::DataType;
 use crate::errors::CQLError;
@@ -6,7 +7,7 @@ use std::cmp::PartialEq;
 #[derive(Debug, Clone)]
 pub struct CreateTable {
     name: String,
-    columns: Vec<Column>,
+    columns: Vec<Column>
 }
 
 impl CreateTable {
@@ -67,26 +68,29 @@ impl CreateTable {
         self.columns.clone()
     }
 
-        // Constructor
+    // Constructor
     pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
-        
         if query.len() < 4 || query[0].to_uppercase() != "CREATE" || query[1].to_uppercase() != "TABLE" {
             return Err(CQLError::InvalidSyntax);
         }
-
         let table_name = query[2].to_string();
-        
+    
         // Eliminar paréntesis de apertura y cierre de columns_str
         let columns_str = query[3].trim_matches(|c| c == '(' || c == ')');
-
         let mut columns: Vec<Column> = Vec::new();
-
+        let mut primary_key_def: Option<String> = None;
+    
         for col_def in columns_str.split(',') {
             let col_parts: Vec<&str> = col_def.trim().split_whitespace().collect();
             if col_parts.len() < 2 {
                 return Err(CQLError::InvalidSyntax);
             }
-
+        
+            if col_parts[0].to_uppercase() == "PRIMARY" && col_parts[1].to_uppercase() == "KEY" {
+                primary_key_def = Some(col_parts[2..].join(" "));
+                continue;
+            }
+        
             let col_name = col_parts[0].to_string();
             let col_type = match col_parts[1].to_uppercase().as_str() {
                 "INT" => DataType::Int,
@@ -94,7 +98,7 @@ impl CreateTable {
                 "BOOLEAN" => DataType::Boolean,
                 _ => return Err(CQLError::Error),
             };
-        
+    
             let mut is_primary_key = false;
             let mut allows_null = true;
             if col_parts.len() > 2 {
@@ -107,17 +111,25 @@ impl CreateTable {
                     }
                 }
             }
-
-            columns.push(Column::new(&col_name, col_type, is_primary_key, allows_null));
+            columns.push(Column::new(&col_name, col_type, is_primary_key, allows_null)); 
         }
-
+    
+        if let Some(pk_def) = primary_key_def {
+            process_primary_key(&mut columns, &pk_def)?;
+        } else {
+            // IF NO EXPLICIT DEFINITION OF PRIMARY KEY, SEARCH COLUMN DEFINITION.
+            if !columns.iter().any(|c| c.is_primary_key) {
+                return Err(CQLError::InvalidSyntax);
+            }
+        }
+    
         Ok(Self {
             name: table_name,
             columns,
         })
     }
 
-    // Método para serializar la estructura `CreateTable` a una cadena de texto
+    // MÃ©todo para serializar la estructura `CreateTable` a una cadena de texto
     pub fn serialize(&self) -> String {
         let columns_str: Vec<String> = self.columns.iter().map(|col| {
             let mut col_def = format!("{} {}", col.name, col.data_type.to_string());
@@ -133,7 +145,7 @@ impl CreateTable {
         format!("CREATE TABLE {} ({})", self.name, columns_str.join(", "))
     }
 
-    // Método para deserializar una cadena de texto a una instancia de `CreateTable`
+    // MÃ©todo para deserializar una cadena de texto a una instancia de `CreateTable`
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
         let mut tokens: Vec<String> = Vec::new();
         let mut current = String::new();
@@ -162,6 +174,34 @@ impl CreateTable {
 
   
 }
+
+fn process_primary_key(columns: &mut Vec<Column>, pk_def: &str) -> Result<(), CQLError> {
+        let pk_parts: Vec<&str> = pk_def.trim_matches(|c| c == '(' || c == ')').split(',').map(|s| s.trim()).collect();
+    
+        let partition_key_end = pk_parts.iter().position(|&s| !s.starts_with('(')).unwrap_or(pk_parts.len());
+    
+        // Mark partition key columns
+        for pk_col in &pk_parts[0..partition_key_end] {
+            let col_name = pk_col.trim_matches(|c| c == '(' || c == ')');
+            if let Some(col) = columns.iter_mut().find(|c| c.name == col_name) {
+                col.is_primary_key = true;
+            } else {
+                return Err(CQLError::InvalidSyntax);
+            }
+        }
+    
+        // Mark clustering columns
+        for pk_col in &pk_parts[partition_key_end..] {
+            if let Some(col) = columns.iter_mut().find(|c| c.name == *pk_col) {
+                col.is_primary_key = true;
+                col.is_clustering_column = true;
+            } else {
+                return Err(CQLError::InvalidSyntax);
+            }
+        }
+    
+        Ok(())
+    }
 
 impl PartialEq for CreateTable {
     fn eq(&self, other: &Self) -> bool {

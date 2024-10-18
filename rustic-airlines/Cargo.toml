@@ -7,4 +7,7 @@ members = [
     "testing",
 ]
 
+[package]
+name = "rustic-airlines"  # Asegúrate de que este nombre sea "rustic-airlines"
+version = "0.1.0"
 
