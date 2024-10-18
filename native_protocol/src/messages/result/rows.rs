@@ -408,12 +408,10 @@ impl ColumnValue {
                 ColumnValue::Bigint(bigint)
             }
             ColumnType::Blob => {
-                let blob = Bytes::from_bytes(cursor).unwrap();
-                if let Bytes::Vec(blob) = blob {
-                    ColumnValue::Blob(blob)
-                } else {
-                    ColumnValue::Blob(vec![])
-                }
+                let mut bytes = vec![];
+                cursor.read_to_end(&mut bytes).unwrap();
+
+                ColumnValue::Blob(bytes)
             }
             ColumnType::Boolean => {
                 let mut boolean_byte = [0u8; 1];
@@ -551,9 +549,9 @@ fn list_from_cursor(
                 vec![]
             };
 
-            let mut cursor = Cursor::new(inner_bytes.as_slice());
+            let mut in_cursor = Cursor::new(inner_bytes.as_slice());
 
-            ColumnValue::from_bytes(&mut cursor, col_type)
+            ColumnValue::from_bytes(&mut in_cursor, col_type)
         })
         .collect();
 
@@ -567,7 +565,7 @@ type Row = HashMap<String, ColumnValue>;
 /// Indicates a set of rows.
 pub struct Rows {
     metadata: Metadata,
-    rows_count: i32,
+    rows_count: Int,
     rows_content: Vec<Row>,
 }
 
@@ -625,8 +623,44 @@ impl Serializable for Rows {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
+    use crate::types::{Bytes, Int};
+
+    use super::{list_from_cursor, ColumnType, ColumnValue};
+
     #[test]
-    fn bytes_to_list() {
-        todo!()
+    fn blob_to_column_value() {
+        let blob = vec![0x01, 0x02, 0x03, 0x04];
+
+        let value = ColumnValue::Blob(blob.clone()).to_bytes();
+
+        assert_eq!(blob, value)
+    }
+
+    #[test]
+    fn column_value_list_from_bytes() {
+        let blob_1 = Bytes::Vec(vec![0x01, 0x02, 0x03, 0x04]);
+        let blob_2 = Bytes::Vec(vec![0x02, 0x01]);
+
+        let bytes = vec![
+            Int::from(2).to_be_bytes().to_vec(), // number of elements
+            blob_1.to_bytes(),
+            blob_2.to_bytes(),
+        ]
+        .concat();
+
+        let mut cursor = Cursor::new(bytes.as_slice());
+
+        let list =
+            ColumnValue::from_bytes(&mut cursor, &ColumnType::List(Box::new(ColumnType::Blob)));
+
+        assert_eq!(
+            ColumnValue::List(vec![
+                ColumnValue::Blob(vec![0x01u8, 0x02, 0x03, 0x04]),
+                ColumnValue::Blob(vec![0x02, 0x01])
+            ]),
+            list
+        )
     }
 }

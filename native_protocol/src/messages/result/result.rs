@@ -240,3 +240,4 @@ mod tests {
         assert_eq!(result, Result::SetKeyspace(keyspace.to_string()));
     }
 }
+
