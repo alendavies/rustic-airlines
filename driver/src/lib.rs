@@ -2,6 +2,7 @@ use std::{
     io::{Read, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
 };
+pub mod server;
 
 use native_protocol::{
     self,
@@ -17,11 +18,13 @@ pub struct CassandraClient {
     stream: TcpStream,
 }
 
-const NATIVE_PORT: u16 = 12000;
+const NATIVE_PORT: u16 = 17989;
 
-struct ClientError;
+#[derive(Debug)]
+pub struct ClientError;
 
-enum QueryResult {
+#[derive(Debug)]
+pub enum QueryResult {
     Result(messages::result::result::Result),
     Error(messages::error::Error),
 }
@@ -37,8 +40,6 @@ impl CassandraClient {
 
     /// Execute a query.
     pub fn execute(&mut self, query: &str) -> Result<QueryResult, ClientError> {
-        self.startup()?;
-
         let result = self.send_query(query)?;
 
         match result {
@@ -48,7 +49,7 @@ impl CassandraClient {
         }
     }
 
-    fn startup(&mut self) -> Result<(), ClientError> {
+    pub fn startup(&mut self) -> Result<(), ClientError> {
         let startup = Frame::Startup;
 
         self.stream
@@ -56,14 +57,15 @@ impl CassandraClient {
             .map_err(|_| ClientError)?;
 
         let mut result = [0u8; 2048];
-        self.stream
-            .read_exact(&mut result)
-            .map_err(|_| ClientError)?;
+        let _ = self.stream.read(&mut result).map_err(|_| ClientError)?;
 
         let ready = Frame::from_bytes(&result).map_err(|_| ClientError)?;
 
         match ready {
-            Frame::Ready => Ok(()),
+            Frame::Ready => {
+                dbg!("READY :)");
+                Ok(())
+            }
             _ => Err(ClientError),
         }
     }
@@ -79,14 +81,10 @@ impl CassandraClient {
 
         let mut result = [0u8; 2048];
         self.stream.read(&mut result).map_err(|_| ClientError)?;
+        // dbg!(&String::from_utf8(result.to_vec()).unwrap());
 
         let result = Frame::from_bytes(&result).map_err(|_| ClientError)?;
 
         Ok(result)
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 }
