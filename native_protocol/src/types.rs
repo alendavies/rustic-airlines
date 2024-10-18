@@ -133,7 +133,7 @@ impl Bytes {
             return Ok(Self::None);
         }
 
-        let mut bytes_bytes = [0u8; 4];
+        let mut bytes_bytes = vec![0u8; bytes_len.try_into().unwrap()];
         cursor.read_exact(&mut bytes_bytes).unwrap();
         let bytes = bytes_bytes.to_vec();
 
