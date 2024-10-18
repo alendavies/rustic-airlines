@@ -48,9 +48,12 @@ impl ErrorCode {
     }
 }
 
+#[derive(Debug)]
 struct WriteTimeout;
+#[derive(Debug)]
 struct UnavailableException;
 
+#[derive(Debug)]
 pub enum Error {
     /// Something unexpected happened. This indicates a server-side bug.
     ServerError(String),

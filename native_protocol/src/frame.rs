@@ -10,6 +10,7 @@ use crate::{
     ByteSerializable, Serializable, SerializationError,
 };
 
+#[derive(Debug)]
 pub enum Frame {
     /// Initialize the connection.
     Startup,
