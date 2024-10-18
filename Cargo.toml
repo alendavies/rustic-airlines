@@ -8,6 +8,9 @@ edition = "2021"
 [workspace]
 members = [
     "driver",
-    "gossip",
+    "node",
+    "partitioner",
+    "query-coordinator",
+    "testing",
     "native_protocol"
 ]

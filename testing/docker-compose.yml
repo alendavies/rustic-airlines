@@ -1,0 +1,29 @@
+version: '3'
+services:
+  server1:
+    build:
+      context: ../  # Cambia esto según tu estructura; debería ser el directorio raíz de `rustic-airlines`
+      dockerfile: testing/Dockerfile  # Asegúrate de que apunte al Dockerfile en `testing`
+    environment:
+      - IP=127.0.0.2
+    ports:
+      - "8081:8080"
+
+  server2:
+    build:
+      context: ../
+      dockerfile: testing/Dockerfile
+    environment:
+      - IP=127.0.0.3
+    ports:
+      - "8082:8080"
+
+  server3:
+    build:
+      context: ../
+      dockerfile: testing/Dockerfile
+    environment:
+      - IP=127.0.0.4
+    ports:
+      - "8083:8080"
+
