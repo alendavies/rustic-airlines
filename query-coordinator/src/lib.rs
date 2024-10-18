@@ -4,9 +4,14 @@ mod logical_operator;
 mod operator;
 mod utils;
 
+use clauses::keyspace::{
+    alter_keyspace_cql::AlterKeyspace, create_keyspace_cql::CreateKeyspace,
+    drop_keyspace_cql::DropKeyspace,
+};
+use clauses::table::{
+    alter_table_cql::AlterTable, create_table_cql::CreateTable, drop_table_cql::DropTable,
+};
 use clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update};
-use clauses::table::{create_table_cql::CreateTable, drop_table_cql::DropTable, alter_table_cql::AlterTable};
-use clauses::keyspace::{create_keyspace_cql::CreateKeyspace, drop_keyspace_cql::DropKeyspace, alter_keyspace_cql::AlterKeyspace};
 use errors::CQLError;
 use std::{clone, fmt};
 
@@ -21,7 +26,7 @@ pub enum NeededResponseCount {
     Specific(u32),
 }
 
-#[derive(Debug, Clone)]  // Derivar Debug para Query
+#[derive(Debug, Clone)] // Derivar Debug para Query
 pub enum Query {
     Select(Select),
     Insert(Insert),
@@ -142,13 +147,13 @@ impl QueryCoordinator {
         let mut tokens = Vec::new();
         let mut current = String::new();
         let mut in_braces = false;
-    
+
         let string = string.replace(";", "");
         let length = string.len();
-    
+
         while index < length {
             let char = string.chars().nth(index).unwrap_or('0');
-    
+
             if char == '{' {
                 tokens.push("{".to_string());
                 in_braces = true;
@@ -172,7 +177,7 @@ impl QueryCoordinator {
                         tokens.push(current.clone());
                         current.clear();
                     }
-                    index += 1;  // Saltar separadores ':' y ','
+                    index += 1; // Saltar separadores ':' y ','
                 } else {
                     index += 1;
                 }
@@ -190,13 +195,11 @@ impl QueryCoordinator {
                 index = Self::process_other(&string, index, &mut current, &mut tokens);
             }
         }
-    
+
         tokens.retain(|s| !s.is_empty());
         tokens
     }
-    
-    
-    
+
     fn process_alphabetic(
         string: &str,
         mut index: usize,
@@ -216,7 +219,7 @@ impl QueryCoordinator {
         current.clear();
         index
     }
-    
+
     fn process_numeric(
         string: &str,
         mut index: usize,
@@ -236,7 +239,7 @@ impl QueryCoordinator {
         current.clear();
         index
     }
-    
+
     fn process_quotes(
         string: &str,
         mut index: usize,
@@ -257,7 +260,7 @@ impl QueryCoordinator {
         current.clear();
         index
     }
-    
+
     fn process_paren(
         string: &str,
         mut index: usize,
@@ -278,7 +281,7 @@ impl QueryCoordinator {
         current.clear();
         index
     }
-    
+
     fn process_other(
         string: &str,
         mut index: usize,
@@ -297,8 +300,6 @@ impl QueryCoordinator {
         current.clear();
         index
     }
-    
-
 }
 
 #[cfg(test)]
@@ -313,7 +314,10 @@ mod tests {
         assert!(matches!(result, Ok(Query::Select(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(query.needed_responses(), NeededResponseCount::AllNodes));
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::AllNodes
+            ));
         }
     }
 
@@ -325,7 +329,10 @@ mod tests {
         assert!(matches!(result, Ok(Query::Insert(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(query.needed_responses(), NeededResponseCount::Specific(1)));
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::Specific(1)
+            ));
         }
     }
 
@@ -337,7 +344,10 @@ mod tests {
         assert!(matches!(result, Ok(Query::Update(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(query.needed_responses(), NeededResponseCount::Specific(1)));
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::Specific(1)
+            ));
         }
     }
 
@@ -349,7 +359,10 @@ mod tests {
         assert!(matches!(result, Ok(Query::Delete(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(query.needed_responses(), NeededResponseCount::Specific(1)));
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::Specific(1)
+            ));
         }
     }
 
@@ -361,7 +374,10 @@ mod tests {
         assert!(matches!(result, Ok(Query::CreateTable(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(query.needed_responses(), NeededResponseCount::AllNodes));
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::AllNodes
+            ));
         }
     }
 
@@ -373,7 +389,10 @@ mod tests {
         assert!(matches!(result, Ok(Query::CreateKeyspace(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(query.needed_responses(), NeededResponseCount::AllNodes));
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::AllNodes
+            ));
         }
     }
 
@@ -385,7 +404,10 @@ mod tests {
         assert!(matches!(result, Ok(Query::DropKeyspace(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(query.needed_responses(), NeededResponseCount::AllNodes));
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::AllNodes
+            ));
         }
     }
 
@@ -397,7 +419,10 @@ mod tests {
         assert!(matches!(result, Ok(Query::AlterKeyspace(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(query.needed_responses(), NeededResponseCount::AllNodes));
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::AllNodes
+            ));
         }
     }
 }
