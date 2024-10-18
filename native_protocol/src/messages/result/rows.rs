@@ -787,10 +787,10 @@ mod tests {
                 }],
             },
             rows_count: Int::from(2),
-            rows_content: vec![BTreeMap::from([(
-                "test_column".to_string(),
-                ColumnValue::Int(1),
-            )])],
+            rows_content: vec![
+                BTreeMap::from([("test_column".to_string(), ColumnValue::Int(1))]),
+                BTreeMap::from([("test_column".to_string(), ColumnValue::Int(2))]),
+            ],
         };
 
         let bytes = expected_rows.to_bytes();
