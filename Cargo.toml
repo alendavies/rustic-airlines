@@ -12,5 +12,5 @@ members = [
     "partitioner",
     "query-coordinator",
     "testing",
-    "native-protocol"
+    "native_protocol"
 ]
