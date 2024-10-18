@@ -6,8 +6,12 @@ edition = "2021"
 [dependencies]
 
 [workspace]
-members = [ 
-    "flight-sim",
-    "gossip",
-    "native_protocol"
+members = [
+    "driver",
+    "node",
+    "partitioner",
+    "query-coordinator",
+    "testing",
+    "native_protocol",
+	"flight-sim"
 ]

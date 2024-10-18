@@ -1,1 +1,0 @@
-The native protocol defines the format of the binary messages exchanged between the driver and Cassandra over TCP.
