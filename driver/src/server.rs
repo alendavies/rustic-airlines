@@ -4,6 +4,7 @@ use native_protocol::{
     Serializable,
 };
 
+#[derive(Debug)]
 pub enum Request {
     Startup,
     Query(Query),
