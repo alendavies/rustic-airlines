@@ -24,12 +24,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
 use crate::utils::{send_message, connect};
 
-
-
-
 pub struct QueryExecution {
     node_that_execute: Arc<Mutex<Node>>,
     connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+}
+
+enum ExecutionResult {
+    
 }
 
 impl QueryExecution {
@@ -42,14 +43,14 @@ impl QueryExecution {
     }
 
     // Método para ejecutar la query según su tipo
-    pub fn execute(&self, query: Query, internode: bool, open_query_id: i32) -> Result<String, NodeError> {
+    pub fn execute(&self, query: Query, internode: bool, open_query_id: i32) -> Result<Option<String>, NodeError> {
 
-        let mut response: Result<String, NodeError> = Ok(String::from("_"));
+        let mut response : Result<Option<String>, NodeError>= Ok(None);
 
         match query {
             Query::Select(select_query) => {
                 if let Ok(select_querys) = self.execute_select(select_query, internode, open_query_id){
-                   response = Ok(select_querys.join("\n"));
+                   response = Ok(Some(select_querys.join("\n")));
                 } else {
                     return Err(NodeError::OtherError);
                 }
@@ -88,7 +89,14 @@ impl QueryExecution {
             }
             
         }
-        Ok(InternodeProtocolHandler::create_protocol_response("OK", &response?, open_query_id))
+
+        if internode{
+            let protocol_response = InternodeProtocolHandler::create_protocol_response("OK", &response?.unwrap_or_default(), open_query_id);
+            Ok(Some(protocol_response))
+        } else {
+            Ok(None)
+        }
+        
         
     }
 
@@ -849,6 +857,10 @@ impl QueryExecution {
         Ok(results)
     }
 
+
+
+        
+        // acá habría que devolver un array de hash maps con los key -> column
     fn line_matches_where_clause(&self, line: &str, table: &Table, select_query: &Select) -> Result<bool, NodeError> {
         // Convierte la línea en un mapa de columna a valor
         let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();

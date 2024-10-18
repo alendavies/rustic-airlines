@@ -2,6 +2,7 @@ use std::{
     io::{Read, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
 };
+pub mod server;
 
 use native_protocol::{
     self,
@@ -21,7 +22,7 @@ const NATIVE_PORT: u16 = 12000;
 
 struct ClientError;
 
-enum QueryResult {
+pub enum QueryResult {
     Result(messages::result::result::Result),
     Error(messages::error::Error),
 }

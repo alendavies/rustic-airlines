@@ -28,7 +28,7 @@ impl InternodeProtocolHandler {
         &self,
         node: &Arc<Mutex<Node>>,
         message: &str,
-        stream: &mut Arc<Mutex<TcpStream>>,
+        _stream: &mut Arc<Mutex<TcpStream>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
     ) -> Result<(), NodeError> {
@@ -74,7 +74,7 @@ impl InternodeProtocolHandler {
 
         
         let result = match query_type {
-            "HANDSHAKE" => Self::handle_introduction_command(node, nodo_id, connections.clone(), is_seed, open_query_id),
+            "HANDSHAKE" => Self::handle_introduction_command(node, nodo_id, connections.clone(), is_seed),
             "CREATE_TABLE" => Self::handle_create_table_command(node, structure, connections.clone(), internode, open_query_id),
             "DROP_TABLE" => Self::handle_drop_table_command(node, structure, connections.clone(), internode, open_query_id),
             "ALTER_TABLE" => Self::handle_alter_table_command(node, structure, connections.clone(), internode, open_query_id),
@@ -88,13 +88,13 @@ impl InternodeProtocolHandler {
             _ => Err(NodeError::OtherError),
         };
 
-        let response = result?;
-        if response != ""{
+        if let Some(value) = result?{
             let peer_id :Ipv4Addr = nodo_id.parse().map_err(|_| NodeError::OtherError)?; 
             let stream = connect(peer_id, INTERNODE_PORT, connections)?;
-            send_message(&stream, &response)?;   
+            send_message(&stream, &value)?;
         }
 
+        
         Ok(())
     }
 
@@ -118,6 +118,7 @@ impl InternodeProtocolHandler {
         if query_close{
             println!("La Query se termino de ejecutar completamente");
             println!("El contenido acumulado es {:?}", responses )
+
         }
         // Implementar lógica para manejar las respuestas según sea necesario
         Ok(())
@@ -128,8 +129,7 @@ impl InternodeProtocolHandler {
         nodo_id: &str,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
-        open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let mut lock_node = node.lock().map_err(|_| NodeError::LockError)?;
         let self_ip = lock_node.get_ip();
 
@@ -147,7 +147,7 @@ impl InternodeProtocolHandler {
                 }
             }
         }
-        Ok("".to_string())
+        Ok(None)
     }
 
     fn handle_insert_command(
@@ -156,7 +156,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String,  Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let query = Insert::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::Insert(query), internode, open_query_id)
     }
@@ -167,7 +167,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String,  Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let query = CreateTable::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::CreateTable(query), internode, open_query_id)
     }
@@ -178,7 +178,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String,  Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let query = DropTable::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::DropTable(query), internode, open_query_id)
     }
@@ -189,7 +189,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String,  Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let query = AlterTable::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::AlterTable(query), internode, open_query_id)
     }
@@ -200,7 +200,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String,  Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let query = CreateKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::CreateKeyspace(query), internode, open_query_id)
     }
@@ -211,7 +211,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String,  Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let query = DropKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::DropKeyspace(query), internode, open_query_id)
     }
@@ -222,7 +222,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String,  Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let query = AlterKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::AlterKeyspace(query), internode, open_query_id)
     }
@@ -233,7 +233,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String,  Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let query = Update::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::Update(query), internode, open_query_id)
     }
@@ -244,7 +244,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String,  Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let query = Delete::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::Delete(query), internode, open_query_id)
     }
@@ -255,7 +255,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String,  Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32
-    ) -> Result<String, NodeError> {
+    ) -> Result<Option<String>, NodeError> {
         let query = Select::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(Query::Select(query), internode, open_query_id)
     }

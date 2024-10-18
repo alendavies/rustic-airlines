@@ -1,9 +1,11 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use keyspace::Keyspace;
+use native_protocol::frame::Frame;
+use native_protocol::Serializable;
 use open_query_handler::OpenQueryHandler;
 use partitioner::Partitioner;
 use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
@@ -23,12 +25,9 @@ mod utils;
 mod open_query_handler;
 use crate::utils::{send_message, connect};
 use crate::table::Table;
-use std::thread::sleep;
-use std::time::Duration;
+use driver::server::{Request, handle_client_request};
 
-
-
-const  _CLIENT_NODE_PORT_1: u16 = 0x4645; // Hexadecimal de "FE" (FERRUM) = 17989
+const  CLIENT_NODE_PORT_1: u16 = 0x4645; // Hexadecimal de "FE" (FERRUM) = 17989
 const  INTERNODE_PORT: u16 = 0x554D; // Hexadecimal de "UM" (FERRUM) = 21837
 
 pub struct Node {
@@ -38,7 +37,7 @@ pub struct Node {
     open_query_handler: OpenQueryHandler,
     keyspaces: Vec<Keyspace>,
     actual_keyspace: Option<Keyspace>,
-    aux: bool
+    //aux: bool
 }
 
 impl Node {
@@ -52,7 +51,7 @@ impl Node {
             open_query_handler: OpenQueryHandler::new(),
             keyspaces: vec![],
             actual_keyspace: None,
-            aux: true,
+            //aux: true,
         })
     }
 
@@ -60,8 +59,8 @@ impl Node {
     //     self.open_query_handler.add_response(open_query_id, response)
     // }
 
-    pub fn add_open_query(&mut self, needed_responses: i32) -> i32{
-        self.open_query_handler.new_open_query(needed_responses)
+    pub fn add_open_query(&mut self, needed_responses: i32, connection: TcpStream) -> i32{
+        self.open_query_handler.new_open_query(needed_responses, connection)
     }
 
     pub fn remove_open_query(&mut self, id: i32) {
@@ -200,62 +199,125 @@ impl Node {
     
         Ok(false)
     }
-
-pub fn start(
-    node: Arc<Mutex<Node>>,
-    connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>, // Modificación aquí
-) -> Result<(), NodeError> {
+  
+    pub fn start(
+        node: Arc<Mutex<Node>>,
+        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+    ) -> Result<(), NodeError> {
+        let is_seed;
+        let seed_ip;
+        let self_ip;
+        {
+            let mut node_guard = node.lock()?;
+            is_seed = node_guard.is_seed();
+            seed_ip = node_guard.seeds_nodes[0];
+            self_ip = node_guard.get_ip();
     
-    let is_seed;
-    let seed_ip;
-    let self_ip;
-    {
-        let mut node_guard = node.lock()?;
-        is_seed = node_guard.is_seed();
-        seed_ip = node_guard.seeds_nodes[0];
-        self_ip = node_guard.get_ip();
-
-        if !is_seed {
-            
-            if let Ok(stream) = connect(seed_ip, INTERNODE_PORT, Arc::clone(&connections)) {
-
-                let stream = Arc::new(Mutex::new(stream)); // Encapsulamos en Arc<Mutex<TcpStream>>
-                let message = InternodeProtocolHandler::create_protocol_message(&node_guard.get_ip_string(), 0,"HANDSHAKE", "_", true);
-                
-                // Usamos el Mutex para enviar el mensaje de forma segura
-                let mut stream_guard = stream.lock()?;
-                send_message(&mut stream_guard, &message)?;
-                node_guard.partitioner.add_node(seed_ip)?;
-                
-            }
-        } 
-    }
-
-    let socket = SocketAddrV4::new(self_ip, INTERNODE_PORT);
-    let listener = TcpListener::bind(socket)?;
-
-    for stream in listener.incoming() {
-        
-        match stream {
-            Ok(stream) => {
-                let node_clone = Arc::clone(&node);
-                let stream = Arc::new(Mutex::new(stream)); // Encapsulamos el stream en Arc<Mutex<TcpStream>>
-                let connections_clone = Arc::clone(&connections);
-
-                thread::spawn(move || {
-                    if let Err(e) = Node::handle_incoming_messages(node_clone, stream, connections_clone, is_seed) {
-                        eprintln!("Error handling incoming message: {:?}", e);
-                    }
-                });
-            }
-            
-            Err(e) => {
-                eprintln!("Error al aceptar conexión: {:?}", e);
+            if !is_seed {
+                if let Ok(stream) = connect(seed_ip, INTERNODE_PORT, Arc::clone(&connections)) {
+                    let stream = Arc::new(Mutex::new(stream)); // Encapsulamos en Arc<Mutex<TcpStream>>
+                    let message = InternodeProtocolHandler::create_protocol_message(
+                        &node_guard.get_ip_string(),
+                        0,
+                        "HANDSHAKE",
+                        "_",
+                        true,
+                    );
+    
+                    let mut stream_guard = stream.lock()?;
+                    send_message(&mut stream_guard, &message)?;
+                    node_guard.partitioner.add_node(seed_ip)?;
+                }
             }
         }
+    
+        // Crea un hilo para manejar las conexiones de nodos
+        let node_connections_node = Arc::clone(&node);
+        let node_connections = Arc::clone(&connections);
+        let self_ip_node = self_ip.clone();
+        thread::spawn(move || {
+            Self::handle_node_connections(node_connections_node, node_connections, self_ip_node)
+                .unwrap_or_else(|e| eprintln!("Error in node connection handler: {:?}", e));
+        });
+    
+        // Crea un hilo para manejar las conexiones de clientes
+        let client_connections_node = Arc::clone(&node);
+        let client_connections = Arc::clone(&connections);
+        let self_ip_client = self_ip;
+        thread::spawn(move || {
+            Self::handle_client_connections(client_connections_node, client_connections, self_ip_client)
+                .unwrap_or_else(|e| eprintln!("Error in client connection handler: {:?}", e));
+        });
+    
+        Ok(())
     }
-    Ok(())
-}
+    
+    fn handle_node_connections(
+        node: Arc<Mutex<Node>>,
+        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+        self_ip: std::net::Ipv4Addr,
+    ) -> Result<(), NodeError> {
+        let socket = SocketAddrV4::new(self_ip, INTERNODE_PORT);
+        let listener = TcpListener::bind(socket)?;
+    
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    let node_clone = Arc::clone(&node);
+                    let stream = Arc::new(Mutex::new(stream)); // Encapsulamos el stream en Arc<Mutex<TcpStream>>
+                    let connections_clone = Arc::clone(&connections);
+    
+                    thread::spawn(move || {
+                        if let Err(e) = Node::handle_incoming_internode_messages(node_clone, stream, connections_clone, true) {
+                            eprintln!("Error handling incoming node message: {:?}", e);
+                        }
+                    });
+                }
+                Err(e) => {
+                    eprintln!("Error accepting node connection: {:?}", e);
+                }
+            }
+        }
+    
+        Ok(())
+    }
+    
+    fn handle_client_connections(
+        node: Arc<Mutex<Node>>,
+        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+        self_ip: std::net::Ipv4Addr,
+    ) -> Result<(), NodeError> {
+        let socket = SocketAddrV4::new(self_ip, CLIENT_NODE_PORT_1); // Puerto específico para clientes
+        let listener = TcpListener::bind(socket)?;
+    
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+
+                    let node_clone = Arc::clone(&node);
+                    let stream = Arc::new(Mutex::new(stream)); 
+                    let connections_clone = Arc::clone(&connections);
+                    thread::spawn(move || {
+                        
+                        match Node::handle_incoming_internode_messages(node_clone, stream, connections_clone, true) {
+                            Ok(_) => {
+                                
+                            }
+                            Err(e) => {
+                                eprintln!("Error handling client connection: {:?}", e);
+                        }
+                    }
+                    });
+                }
+                Err(e) => {
+                    eprintln!("Error accepting client connection: {:?}", e);
+                }
+            }
+        }
+    
+        Ok(())
+    }
+    
 
     fn forward_message(
         &self,
@@ -278,9 +340,68 @@ pub fn start(
         Ok(())
     }
 
+    // recibe los paquetes desde el cliente
+    pub fn handle_incoming_client_messages(
+        node: Arc<Mutex<Node>>,
+        stream: Arc<Mutex<TcpStream>>,
+        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+    ) -> Result<(), NodeError> {
+    
+        // Clona el stream bajo protección Mutex y crea el lector
+        let mut reader = {
+            let stream_guard = stream.lock()?;    
+            BufReader::new(stream_guard.try_clone().map_err(NodeError::IoError)?)
+        };
+    
 
+        loop {    
+            // Limpiamos el buffer
+            let mut buffer = String::new();
+    
+            // Ejecuta inserciones iniciales si es necesario
+        
+            // Intentamos leer una línea
+            let bytes_read = reader.read_line(&mut buffer);
+    
+            match bytes_read {
+                Ok(0) => {
+                    // Conexión cerrada
+                    break;
+                }
+                Ok(_) => {
 
-    pub fn handle_incoming_messages(
+                    let query = handle_client_request(buffer.as_bytes());
+                   
+                    match query  {
+                        Request::Startup => {
+                            let mut stream_guard = stream.lock()?;
+                            stream_guard.write(Frame::Ready.to_bytes().as_slice())?;
+                            stream_guard.flush()?;
+                        },
+                        Request::Query(query) => {
+                            // handle la query
+                            let query_str = &query.query;
+                            let client_stream = stream.lock()?.try_clone()?;
+
+                            Node::handle_query_execution(query_str, &node, connections.clone(), client_stream)?; 
+                               
+                                                      
+                        },
+                    };
+
+                }
+                Err(e) => {
+                    // Otro tipo de error
+                    eprintln!("Error de lectura en handle_incoming_messages: {:?}", e);
+                    break;
+                }
+            }
+        }
+    
+        Ok(())
+    }
+
+    pub fn handle_incoming_internode_messages(
         node: Arc<Mutex<Node>>,
         mut stream: Arc<Mutex<TcpStream>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
@@ -301,7 +422,7 @@ pub fn start(
     
             // Ejecuta inserciones iniciales si es necesario
             
-            Self::execute_querys(&node, connections.clone())?;
+            // Self::execute_querys(&node, connections.clone())?;
                 
 
             // Intentamos leer una línea
@@ -341,78 +462,86 @@ pub fn start(
         Ok(())
     }
         
-    // Función para verificar si el particionador está lleno y el nodo es una semilla
-    fn condition(node: &Arc<Mutex<Node>>) -> Result<bool, NodeError> {
-        let mut lock_node = node.lock().map_err(|_| NodeError::LockError)?;
-        let a =lock_node.get_partitioner().get_nodes().len() == 4 && lock_node.is_seed() && lock_node.aux == true;
-        if a {lock_node.aux = false;}
-        Ok(a)
-    }
+    // // Función para verificar si el particionador está lleno y el nodo es una semilla
+    // fn condition(node: &Arc<Mutex<Node>>) -> Result<bool, NodeError> {
+    //     let mut lock_node = node.lock().map_err(|_| NodeError::LockError)?;
+    //     let a =lock_node.get_partitioner().get_nodes().len() == 4 && lock_node.is_seed() && lock_node.aux == true;
+    //     if a {lock_node.aux = false;}
+    //     Ok(a)
+    // }
 
-    // Función para ejecutar múltiples inserciones iniciales cuando el particionador está lleno
-    fn execute_querys(node: &Arc<Mutex<Node>>, connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>) -> Result<(), NodeError> {
+    // // Función para ejecutar múltiples inserciones iniciales cuando el particionador está lleno
+    // fn execute_querys(node: &Arc<Mutex<Node>>, connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>) -> Result<(), NodeError> {
 
-        if !Node::condition(&node)? {
-            return Ok(());
-        }
+    //     if !Node::condition(&node)? {
+    //         return Ok(());
+    //     }
 
-        let queries = vec![
-            "CREATE KEYSPACE world WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
-            "CREATE TABLE people (id INT PRIMARY KEY, name TEXT, weight INT)",
-            "INSERT INTO people (id, name, weight) VALUES (1,'Lorenzo', 39)",
-            "INSERT INTO people (id, name, weight) VALUES (2,'Lorenzo', 67)",
-            "INSERT INTO people (id, name, weight) VALUES (3,'Lorenzo',32)",
-            "INSERT INTO people (id, name, weight) VALUES (4,'Maggie', 39)",
-            "INSERT INTO people (id, name, weight) VALUES (5,'parafresco', 67)",
-            "INSERT INTO people (id, name, weight) VALUES (6,'Maggie',32)",
-            "INSERT INTO people (id, name, weight) VALUES (7,'Maggie', 39)",
-            "INSERT INTO people (id, name, weight) VALUES (8,'Maggie', 67)",
-            "INSERT INTO people (id, name, weight) VALUES (9,'Maggie',32)",
-            "UPDATE people SET name = 'Pablo', weight = 8  WHERE id = 11",
-            "UPDATE people SET name = 'Nestum' WHERE id = 8",
-            "DELETE FROM people WHERE id = 5",
-            //"SELECT id,name FROM people WHERE id = 3",
-        ];
+    //     let queries = vec![
+    //         "CREATE KEYSPACE world WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
+    //         "CREATE TABLE people (id INT PRIMARY KEY, name TEXT, weight INT)",
+    //         "INSERT INTO people (id, name, weight) VALUES (1,'Lorenzo', 39)",
+    //         "INSERT INTO people (id, name, weight) VALUES (2,'Lorenzo', 67)",
+    //         "INSERT INTO people (id, name, weight) VALUES (3,'Lorenzo',32)",
+    //         "INSERT INTO people (id, name, weight) VALUES (4,'Maggie', 39)",
+    //         "INSERT INTO people (id, name, weight) VALUES (5,'parafresco', 67)",
+    //         "INSERT INTO people (id, name, weight) VALUES (6,'Maggie',32)",
+    //         "INSERT INTO people (id, name, weight) VALUES (7,'Maggie', 39)",
+    //         "INSERT INTO people (id, name, weight) VALUES (8,'Maggie', 67)",
+    //         "INSERT INTO people (id, name, weight) VALUES (9,'Maggie',32)",
+    //         "UPDATE people SET name = 'Pablo', weight = 8  WHERE id = 11",
+    //         "UPDATE people SET name = 'Nestum' WHERE id = 8",
+    //         "DELETE FROM people WHERE id = 5",
+    //         //"SELECT id,name FROM people WHERE id = 3",
+    //     ];
 
-        for query_str in queries {
-            sleep(Duration::from_millis(50));
-            let query = QueryCoordinator::new()
-                .handle_query(query_str.to_string())
-                .map_err(NodeError::CQLError)?;
-
-
-            let query_id;
-            {
-                let mut guard_node = node.lock()?;
-                        let all_nodes = guard_node.get_how_many_nodes_i_know();
-                        let needed_responses;
-                        match  query.needed_responses(){
-                            query_coordinator::NeededResponseCount::AllNodes => {
-                                needed_responses = all_nodes
-                            }
-                            query_coordinator::NeededResponseCount::Specific(specific_value) => {
-                                needed_responses = specific_value as usize
-                            }
-                        };
-                        query_id = guard_node.add_open_query(needed_responses as i32);
-            }
-
-                let result = QueryExecution::new(node.clone(), connections.clone()).execute(query.clone(), false, query_id)?;
+    //     for query_str in queries {
+    //         sleep(Duration::from_millis(50));
+    //         match Node::handle_query_execution(query_str, &node.clone(), connections.clone()) {
+    //             Ok(_) => {}
+    //             Err(e) => {
+    //                 eprintln!("{:?}", e);
+    //             }
+    //         }
                 
+    //     }
+    //     Ok(())
+    // }
 
-                // // Maneja el resultado
-                // match result {
-                //     Ok(message) => {
-                        
-                //         println!("{}", message); // Imprime el mensaje si es exitoso
-                //     }
-                //     Err(e) => {
-                //         let mut guard_node = node.lock()?;
-                //         guard_node.remove_open_query(query_id);
-                //         println!("{:?} in {:?}", e, query_str)}, // Retorna el error si ocurrió uno
-                // }
-        }
-        Ok(())
+    fn handle_query_execution(
+    query_str: &str, 
+    node: &Arc<Mutex<Node>>, 
+    connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+    mut client_connection: TcpStream
+) -> Result<(), NodeError> {
+
+    let query = QueryCoordinator::new()
+        .handle_query(query_str.to_string())
+        .map_err(NodeError::CQLError)?;
+
+    let query_id;
+    {
+        let mut guard_node = node.lock()?;
+        let all_nodes = guard_node.get_how_many_nodes_i_know();
+        let needed_responses = match query.needed_responses() {
+            query_coordinator::NeededResponseCount::AllNodes => all_nodes,
+            query_coordinator::NeededResponseCount::Specific(specific_value) => specific_value as usize,
+        };
+        query_id = guard_node.add_open_query(needed_responses as i32, client_connection.try_clone()?);
     }
+
+    let response = QueryExecution::new(node.clone(), connections.clone()).execute(query.clone(), false, query_id)?;
+
+    if let Some(value) = response {
+        //creamos mensaje de respuesta del native
+        client_connection.write(value.as_bytes())?;
+        client_connection.flush()?;
+    }
+
+    Ok(())
+
+}
+
+
 
 }
