@@ -675,11 +675,6 @@ mod tests {
     }
 
     #[test]
-    fn column_value_bigint_to_bytes() {
-        todo!()
-    }
-
-    #[test]
     fn column_value_list_to_bytes() {
         let blob_1 = vec![0x01u8, 0x02, 0x03, 0x04];
         let blob_2 = vec![0x02, 0x01];
