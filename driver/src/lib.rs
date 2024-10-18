@@ -22,7 +22,7 @@ const NATIVE_PORT: u16 = 12000;
 struct ClientError;
 
 enum QueryResult {
-    Result(messages::result::Result),
+    Result(messages::result::result::Result),
     Error(messages::error::Error),
 }
 

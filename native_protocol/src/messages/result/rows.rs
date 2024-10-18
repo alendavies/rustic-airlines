@@ -52,13 +52,13 @@ pub enum ColumnType {
     Timeuuid,
     Inet,
     List(Box<ColumnType>),
-    Map(Box<ColumnType>, Box<ColumnType>),
+    // Map(Box<ColumnType>, Box<ColumnType>),
     Set(Box<ColumnType>),
-    UDT {
+    /* UDT {
         keyspace: String,
-        name: String,
+        udt_name: String,
         fields: Vec<(String, ColumnType)>,
-    },
+    }, */
     Tuple(Vec<ColumnType>),
 }
 
@@ -72,6 +72,7 @@ impl OptionSerializable for ColumnType {
 
     fn serialize_option(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
+
         match self {
             ColumnType::Custom(custom) => {
                 bytes.extend_from_slice(&(ColumnTypeCode::Custom as u16).to_be_bytes());
@@ -146,37 +147,10 @@ impl OptionSerializable for ColumnType {
 
                 bytes
             }
-            ColumnType::Map(key_type, value_type) => {
-                bytes.extend_from_slice(&(ColumnTypeCode::Map as u16).to_be_bytes());
-                let key_type_bytes = key_type.to_option_bytes();
-                bytes.extend_from_slice(key_type_bytes.as_slice());
-                let value_type_bytes = value_type.to_option_bytes();
-                bytes.extend_from_slice(value_type_bytes.as_slice());
-
-                bytes
-            }
             ColumnType::Set(inner_type) => {
                 bytes.extend_from_slice(&(ColumnTypeCode::Set as u16).to_be_bytes());
                 let inner_type_bytes = inner_type.to_option_bytes();
                 bytes.extend_from_slice(inner_type_bytes.as_slice());
-
-                bytes
-            }
-            ColumnType::UDT {
-                keyspace,
-                name,
-                fields,
-            } => {
-                bytes.extend_from_slice(&(ColumnTypeCode::UDT as u16).to_be_bytes());
-                bytes.extend_from_slice(keyspace.to_string_bytes().as_slice());
-                bytes.extend_from_slice(name.to_string_bytes().as_slice());
-                let fields_len = fields.len() as u16;
-                bytes.extend_from_slice(&fields_len.to_be_bytes());
-                for (field_name, field_type) in fields {
-                    bytes.extend_from_slice(field_name.to_string_bytes().as_slice());
-                    let field_type_bytes = field_type.to_option_bytes();
-                    bytes.extend_from_slice(field_type_bytes.as_slice());
-                }
 
                 bytes
             }
@@ -223,16 +197,17 @@ impl OptionSerializable for ColumnType {
                 Ok(ColumnType::List(Box::new(inner_type)))
             }
             0x0021 => {
-                let key_type = ColumnType::from_option_bytes(cursor).unwrap();
-                let value_type = ColumnType::from_option_bytes(cursor).unwrap();
-                Ok(ColumnType::Map(Box::new(key_type), Box::new(value_type)))
+                todo!()
+                // let key_type = ColumnType::from_option_bytes(cursor).unwrap();
+                // let value_type = ColumnType::from_option_bytes(cursor).unwrap();
+                // Ok(ColumnType::Map(Box::new(key_type), Box::new(value_type)))
             }
             0x0022 => {
                 let inner_type = ColumnType::from_option_bytes(cursor).unwrap();
                 Ok(ColumnType::Set(Box::new(inner_type)))
             }
             0x0030 => {
-                let keyspace = String::from_string_bytes(cursor);
+                /* let keyspace = String::from_string_bytes(cursor);
                 let name = String::from_string_bytes(cursor);
 
                 let mut fields_len_bytes = [0u8; 2];
@@ -248,7 +223,8 @@ impl OptionSerializable for ColumnType {
                     keyspace,
                     name,
                     fields,
-                })
+                }) */
+                todo!()
             }
             0x0031 => {
                 let mut inner_type_len_bytes = [0u8; 2];
@@ -290,13 +266,13 @@ enum ColumnValue {
     Timeuuid(Uuid),
     Inet(IpAddr),
     List(Vec<ColumnValue>),
-    Map(Box<ColumnValue>, Box<ColumnValue>),
-    Set(Box<ColumnValue>),
-    UDT {
+    // Map(HashMap<ColumnValue, ColumnValue>),
+    Set(Vec<ColumnValue>),
+    /* UDT {
         keyspace: String,
-        name: String,
-        fields: Vec<(String, ColumnValue)>,
-    },
+        udt_name: String,
+        fields: Vec<(String, ColumnType)>,
+    }, */
     Tuple(Vec<ColumnValue>),
 }
 
@@ -371,21 +347,35 @@ impl ColumnValue {
                     bytes.extend_from_slice(&value_bytes);
                 }
             }
-            ColumnValue::Map(key_value, value_value) => {
+            /* ColumnValue::Map(key_value, value_value) => {
                 todo!()
-            }
+            } */
+            // A [int] n indicating the number of elements in the set, followed by n
+            // elements. Each element is [bytes] representing the serialized value.
             ColumnValue::Set(inner_value) => {
-                todo!()
+                let number_of_elements = Int::from(inner_value.len() as i32);
+                bytes.extend_from_slice(number_of_elements.to_be_bytes().as_slice());
+
+                for value in inner_value {
+                    let value_bytes = Bytes::Vec(value.to_bytes()).to_bytes();
+                    bytes.extend_from_slice(&value_bytes);
+                }
             }
-            ColumnValue::UDT {
-                keyspace,
-                name,
-                fields,
-            } => {
-                todo!()
-            }
-            ColumnValue::Tuple(inner_values) => {
-                todo!()
+            // A UDT value is composed of successive [bytes] values, one for each field of the UDT
+            // value (in the order defined by the type).
+            // ColumnValue::UDT { .. } => {
+            //     todo!()
+            // }
+            // A sequence of [bytes] values representing the items in a tuple. The encoding
+            // of each element depends on the data type for that position in the tuple.
+            ColumnValue::Tuple(inner_value) => {
+                let number_of_elements = Int::from(inner_value.len() as i32);
+                bytes.extend_from_slice(number_of_elements.to_be_bytes().as_slice());
+
+                for value in inner_value {
+                    let value_bytes = Bytes::Vec(value.to_bytes()).to_bytes();
+                    bytes.extend_from_slice(&value_bytes);
+                }
             }
         }
         bytes
@@ -511,13 +501,7 @@ impl ColumnValue {
                 let list = list_from_cursor(cursor, inner_type);
                 ColumnValue::List(list)
             }
-            ColumnType::Map(_, _) => {
-                todo!()
-            }
             ColumnType::Set(_) => {
-                todo!()
-            }
-            ColumnType::UDT { .. } => {
                 todo!()
             }
             ColumnType::Tuple(_) => {
@@ -556,6 +540,38 @@ fn list_from_cursor(
         .collect();
 
     elements
+}
+
+#[derive(Debug, PartialEq)]
+struct UserDefinedType {
+    keyspace: String,
+    udt_name: String,
+    num_fields: u16,
+    fields: Vec<(String, ColumnType)>,
+}
+
+fn udt_from_cursor(cursor: &mut std::io::Cursor<&[u8]>) -> UserDefinedType {
+    let keyspace = String::from_string_bytes(cursor);
+    let udt_name = String::from_string_bytes(cursor);
+
+    let mut num_fields_bytes = [0u8; 2];
+    cursor.read_exact(&mut num_fields_bytes).unwrap();
+
+    let num_fields: u16 = u16::from_be_bytes(num_fields_bytes);
+
+    let mut fields = Vec::new();
+    for _ in 0..num_fields {
+        let field_name = String::from_string_bytes(cursor);
+        let field_type = ColumnType::from_option_bytes(cursor).unwrap();
+        fields.push((field_name, field_type));
+    }
+
+    UserDefinedType {
+        keyspace,
+        udt_name,
+        num_fields,
+        fields,
+    }
 }
 
 // key: column name, value: column value
@@ -625,9 +641,9 @@ impl Serializable for Rows {
 mod tests {
     use std::io::Cursor;
 
-    use crate::types::{Bytes, Int};
+    use crate::types::{Bytes, CassandraString, Int};
 
-    use super::{list_from_cursor, ColumnType, ColumnValue};
+    use super::{ColumnType, ColumnValue};
 
     #[test]
     fn blob_to_column_value() {
@@ -639,28 +655,63 @@ mod tests {
     }
 
     #[test]
-    fn column_value_list_from_bytes() {
-        let blob_1 = Bytes::Vec(vec![0x01, 0x02, 0x03, 0x04]);
-        let blob_2 = Bytes::Vec(vec![0x02, 0x01]);
+    fn column_value_custom_to_bytes() {
+        let col = ColumnValue::Custom("custom".to_string()).to_bytes();
 
+        assert_eq!(col, "custom".to_string().to_string_bytes())
+    }
+
+    #[test]
+    fn column_value_ascii_to_bytes() {
+        let col = ColumnValue::Ascii("ascii".to_string()).to_bytes();
+
+        assert_eq!(col, "ascii".to_string().to_string_bytes())
+    }
+
+    #[test]
+    fn column_value_bigint_to_bytes() {
+        todo!()
+    }
+
+    #[test]
+    fn column_value_list_to_bytes() {
+        let blob_1 = vec![0x01u8, 0x02, 0x03, 0x04];
+        let blob_2 = vec![0x02, 0x01];
+
+        let col = ColumnValue::List(vec![
+            ColumnValue::Blob(blob_1.clone()),
+            ColumnValue::Blob(blob_2.clone()),
+        ]);
+
+        // expected bytes: length + bytes blob1 + bytes blob2
         let bytes = vec![
             Int::from(2).to_be_bytes().to_vec(), // number of elements
-            blob_1.to_bytes(),
-            blob_2.to_bytes(),
+            Bytes::Vec(blob_1).to_bytes(),
+            Bytes::Vec(blob_2).to_bytes(),
         ]
         .concat();
 
-        let mut cursor = Cursor::new(bytes.as_slice());
+        assert_eq!(col.to_bytes(), bytes)
+    }
 
-        let list =
-            ColumnValue::from_bytes(&mut cursor, &ColumnType::List(Box::new(ColumnType::Blob)));
+    #[test]
+    fn column_value_list_from_bytes() {
+        let blob_1 = vec![0x01u8, 0x02, 0x03, 0x04];
+        let blob_2 = vec![0x02, 0x01];
+
+        let col = ColumnValue::List(vec![
+            ColumnValue::Blob(blob_1.clone()),
+            ColumnValue::Blob(blob_2.clone()),
+        ]);
+
+        let bytes = col.to_bytes();
 
         assert_eq!(
-            ColumnValue::List(vec![
-                ColumnValue::Blob(vec![0x01u8, 0x02, 0x03, 0x04]),
-                ColumnValue::Blob(vec![0x02, 0x01])
-            ]),
-            list
+            ColumnValue::from_bytes(
+                &mut Cursor::new(&bytes),
+                &ColumnType::List(Box::new(ColumnType::Blob))
+            ),
+            col,
         )
     }
 }
