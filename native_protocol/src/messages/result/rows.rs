@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::{collections::HashMap, io::Read, net::IpAddr};
 
@@ -63,12 +64,9 @@ pub enum ColumnType {
 }
 
 impl OptionSerializable for ColumnType {
-    fn get_option_code(&self) -> u16 {
-        match self {
-            ColumnType::Custom(_) => 0x0000,
-            _ => todo!(),
-        }
-    }
+    /* fn get_option_code(&self) -> u16 {
+        todo!()
+    } */
 
     fn serialize_option(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
@@ -575,7 +573,7 @@ fn udt_from_cursor(cursor: &mut std::io::Cursor<&[u8]>) -> UserDefinedType {
 }
 
 // key: column name, value: column value
-type Row = HashMap<String, ColumnValue>;
+type Row = BTreeMap<String, ColumnValue>;
 
 #[derive(Debug, PartialEq)]
 /// Indicates a set of rows.
@@ -612,18 +610,19 @@ impl Serializable for Rows {
 
         let mut rows_content = Vec::new();
         for _ in 0..rows_count {
-            let mut row = HashMap::new();
+            let mut row = BTreeMap::new();
             for col_spec in &metadata.col_spec_i {
                 let value_bytes = Bytes::from_bytes(&mut cursor).unwrap();
 
-                let bytes = if let Bytes::Vec(bytes) = value_bytes {
+                let bytes_ = if let Bytes::Vec(bytes) = value_bytes {
                     bytes
                 } else {
                     vec![]
                 };
 
-                let mut cursor = &mut Cursor::new(bytes.as_slice());
-                let value = ColumnValue::from_bytes(&mut cursor, &col_spec.type_);
+                let mut cursor2 = Cursor::new(bytes_.as_slice());
+
+                let value = ColumnValue::from_bytes(&mut cursor2, &col_spec.type_);
                 row.insert(col_spec.name.clone(), value);
             }
             rows_content.push(row);
@@ -639,9 +638,16 @@ impl Serializable for Rows {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::io::Cursor;
 
-    use crate::types::{Bytes, CassandraString, Int};
+    use crate::messages::result::metadata::{ColumnSpec, MetadataFlags, TableSpec};
+    use crate::messages::result::rows::Rows;
+    use crate::Serializable;
+    use crate::{
+        messages::result::metadata::Metadata,
+        types::{Bytes, CassandraString, Int},
+    };
 
     use super::{ColumnType, ColumnValue};
 
@@ -713,5 +719,84 @@ mod tests {
             ),
             col,
         )
+    }
+
+    #[test]
+    fn rows_to_bytes() {
+        let rows = Rows {
+            metadata: Metadata {
+                flags: MetadataFlags {
+                    global_tables_spec: true,
+                    has_more_pages: false,
+                    no_metadata: false,
+                },
+                columns_count: 1,
+                global_table_spec: Some(TableSpec {
+                    keyspace: "test_keyspace".to_string(),
+                    table_name: "test_table".to_string(),
+                }),
+                col_spec_i: vec![ColumnSpec {
+                    keyspace: Some("test_keyspace".to_string()),
+                    table_name: Some("test_table".to_string()),
+                    name: "test_column".to_string(),
+                    type_: ColumnType::Int,
+                }],
+            },
+            rows_count: Int::from(2),
+            rows_content: vec![BTreeMap::from([(
+                "test_column".to_string(),
+                ColumnValue::Int(1),
+            )])],
+        };
+
+        let bytes = rows.to_bytes();
+
+        let mut expected_bytes = Vec::new();
+        let metadata_bytes = rows.metadata.to_bytes();
+        let rows_count_bytes = rows.rows_count.to_be_bytes();
+
+        let row_content_bytes =
+            vec![Bytes::Vec(ColumnValue::Int(1).to_bytes()).to_bytes()].concat();
+
+        expected_bytes.extend_from_slice(&metadata_bytes);
+        expected_bytes.extend_from_slice(&rows_count_bytes);
+        expected_bytes.extend_from_slice(&row_content_bytes);
+
+        assert_eq!(bytes, expected_bytes)
+    }
+
+    #[test]
+    fn rows_from_bytes() {
+        let expected_rows = Rows {
+            metadata: Metadata {
+                flags: MetadataFlags {
+                    global_tables_spec: true,
+                    has_more_pages: false,
+                    no_metadata: false,
+                },
+                columns_count: 1,
+                global_table_spec: Some(TableSpec {
+                    keyspace: "test_keyspace".to_string(),
+                    table_name: "test_table".to_string(),
+                }),
+                col_spec_i: vec![ColumnSpec {
+                    keyspace: Some("test_keyspace".to_string()),
+                    table_name: Some("test_table".to_string()),
+                    name: "test_column".to_string(),
+                    type_: ColumnType::Int,
+                }],
+            },
+            rows_count: Int::from(2),
+            rows_content: vec![BTreeMap::from([(
+                "test_column".to_string(),
+                ColumnValue::Int(1),
+            )])],
+        };
+
+        let bytes = expected_rows.to_bytes();
+
+        let rows = Rows::from_bytes(&bytes).unwrap();
+
+        assert_eq!(rows, expected_rows)
     }
 }

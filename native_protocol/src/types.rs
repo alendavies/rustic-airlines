@@ -29,7 +29,7 @@ pub trait OptionSerializable {
         Self: Sized;
 
     fn serialize_option(&self) -> Vec<u8>;
-    fn get_option_code(&self) -> u16;
+    //fn get_option_code(&self) -> u16;
 }
 
 pub trait OptionBytes: Sized {
@@ -39,7 +39,7 @@ pub trait OptionBytes: Sized {
 
 impl<T: OptionSerializable> OptionBytes for T {
     fn to_option_bytes(&self) -> Vec<u8> {
-        let code = self.get_option_code();
+        //let code = self.get_option_code();
         self.serialize_option()
     }
 
@@ -133,11 +133,10 @@ impl Bytes {
             return Ok(Self::None);
         }
 
-        let mut bytes_bytes = vec![0u8; bytes_len.try_into().unwrap()];
+        let mut bytes_bytes = vec![0u8; bytes_len as usize];
         cursor.read_exact(&mut bytes_bytes).unwrap();
-        let bytes = bytes_bytes.to_vec();
 
-        Ok(Self::Vec(bytes))
+        Ok(Self::Vec(bytes_bytes))
     }
 }
 
@@ -240,9 +239,9 @@ mod tests {
                 todo!()
             }
 
-            fn get_option_code(&self) -> u16 {
+            /* fn get_option_code(&self) -> u16 {
                 todo!()
-            }
+            } */
         }
 
         let input = [0x00, 0x02, 0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8];
@@ -288,12 +287,12 @@ mod tests {
                 }
             }
 
-            fn get_option_code(&self) -> u16 {
+            /* fn get_option_code(&self) -> u16 {
                 match self {
                     Options::Something => 0x0001,
                     Options::SomethinElse(_) => 0x0002,
                 }
-            }
+            } */
         }
 
         let option = Options::SomethinElse("abc".to_string());
