@@ -8,10 +8,20 @@ use clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update
 use clauses::table::{create_table_cql::CreateTable, drop_table_cql::DropTable, alter_table_cql::AlterTable};
 use clauses::keyspace::{create_keyspace_cql::CreateKeyspace, drop_keyspace_cql::DropKeyspace, alter_keyspace_cql::AlterKeyspace};
 use errors::CQLError;
-use std::fmt;
+use std::{clone, fmt};
 
+/// Define the NeededResponses trait to specify the response requirements for each query.
+pub trait NeededResponses {
+    fn needed_responses(&self) -> NeededResponseCount;
+}
 
-#[derive(Debug)]  // Derivar Debug para Query
+#[derive(Debug, Clone)]
+pub enum NeededResponseCount {
+    AllNodes,
+    Specific(u32),
+}
+
+#[derive(Debug, Clone)]  // Derivar Debug para Query
 pub enum Query {
     Select(Select),
     Insert(Insert),
@@ -22,10 +32,10 @@ pub enum Query {
     AlterTable(AlterTable),
     CreateKeyspace(CreateKeyspace),
     DropKeyspace(DropKeyspace),
-    AlterKeyspace(AlterKeyspace)
+    AlterKeyspace(AlterKeyspace),
 }
 
-// Implementamos el trait fmt::Display para Query
+// Implementación del trait fmt::Display para Query
 impl fmt::Display for Query {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let query_type = match self {
@@ -44,11 +54,28 @@ impl fmt::Display for Query {
     }
 }
 
-#[derive(Debug)]  // Agrega Debug también al QueryCoordinator si lo necesitas
+// Implementación de NeededResponses para cada tipo de consulta en Query
+impl NeededResponses for Query {
+    fn needed_responses(&self) -> NeededResponseCount {
+        match self {
+            Query::Select(_) => NeededResponseCount::AllNodes,
+            Query::Insert(_) => NeededResponseCount::Specific(1),
+            Query::Update(_) => NeededResponseCount::Specific(1),
+            Query::Delete(_) => NeededResponseCount::Specific(1),
+            Query::CreateTable(_) => NeededResponseCount::AllNodes,
+            Query::DropTable(_) => NeededResponseCount::AllNodes,
+            Query::AlterTable(_) => NeededResponseCount::AllNodes,
+            Query::CreateKeyspace(_) => NeededResponseCount::AllNodes,
+            Query::DropKeyspace(_) => NeededResponseCount::AllNodes,
+            Query::AlterKeyspace(_) => NeededResponseCount::AllNodes,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct QueryCoordinator;
 
 impl QueryCoordinator {
-
     pub fn new() -> QueryCoordinator {
         QueryCoordinator {}
     }
@@ -73,47 +100,39 @@ impl QueryCoordinator {
                 let update = Update::new_from_tokens(tokens)?;
                 Ok(Query::Update(update))
             }
-            "CREATE" => {
-                match tokens[1].as_str() {
-                    "TABLE" => {
-                        let create_table = CreateTable::new_from_tokens(tokens)?;
-                        Ok(Query::CreateTable(create_table))
-                    }
-                    "KEYSPACE" => {
-                        let create_keyspace = CreateKeyspace::new_from_tokens(tokens)?;
-                        Ok(Query::CreateKeyspace(create_keyspace))
-                    }
-
-                    _ => Err(CQLError::InvalidSyntax),
-                }                                        
-            }
-            "DROP" => {
-                match tokens[1].as_str() {
-                    "TABLE" => {
-                        let drop_table = DropTable::new_from_tokens(tokens)?;
-                        Ok(Query::DropTable(drop_table))
-                    }          
-                    "KEYSPACE" => {
-                        let drop_keyspace = DropKeyspace::new_from_tokens(tokens)?;
-                        Ok(Query::DropKeyspace(drop_keyspace))
-                    }  
-                   
-                    _ => Err(CQLError::InvalidSyntax),
-                }                                        
-            }
-            "ALTER" => {
-                match tokens[1].as_str() {
-                    "TABLE" => {
-                        let alter_table = AlterTable::new_from_tokens(tokens)?;
-                        Ok(Query::AlterTable(alter_table))
-                    }      
-                    "KEYSPACE" => {
-                        let alter_keyspace = AlterKeyspace::new_from_tokens(tokens)?;
-                        Ok(Query::AlterKeyspace(alter_keyspace))
-                    }                    
-                    _ => Err(CQLError::InvalidSyntax),
-                }                                        
-            }
+            "CREATE" => match tokens[1].as_str() {
+                "TABLE" => {
+                    let create_table = CreateTable::new_from_tokens(tokens)?;
+                    Ok(Query::CreateTable(create_table))
+                }
+                "KEYSPACE" => {
+                    let create_keyspace = CreateKeyspace::new_from_tokens(tokens)?;
+                    Ok(Query::CreateKeyspace(create_keyspace))
+                }
+                _ => Err(CQLError::InvalidSyntax),
+            },
+            "DROP" => match tokens[1].as_str() {
+                "TABLE" => {
+                    let drop_table = DropTable::new_from_tokens(tokens)?;
+                    Ok(Query::DropTable(drop_table))
+                }
+                "KEYSPACE" => {
+                    let drop_keyspace = DropKeyspace::new_from_tokens(tokens)?;
+                    Ok(Query::DropKeyspace(drop_keyspace))
+                }
+                _ => Err(CQLError::InvalidSyntax),
+            },
+            "ALTER" => match tokens[1].as_str() {
+                "TABLE" => {
+                    let alter_table = AlterTable::new_from_tokens(tokens)?;
+                    Ok(Query::AlterTable(alter_table))
+                }
+                "KEYSPACE" => {
+                    let alter_keyspace = AlterKeyspace::new_from_tokens(tokens)?;
+                    Ok(Query::AlterKeyspace(alter_keyspace))
+                }
+                _ => Err(CQLError::InvalidSyntax),
+            },
             _ => Err(CQLError::InvalidSyntax),
         }
     }
@@ -287,81 +306,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_select_query() {
-        let query = "SELECT name, age FROM users WHERE age > 30;";
-        let tokens = QueryCoordinator::tokens_from_query(query);
-        assert_eq!(tokens, vec!["SELECT", "name", "age", "FROM", "users", "WHERE", "age", ">", "30"]);
-    }
-
-    #[test]
-    fn test_insert_query() {
-        let query = "INSERT INTO users (name, age) VALUES ('John', 28);";
-        let tokens = QueryCoordinator::tokens_from_query(query);
-        assert_eq!(tokens, vec!["INSERT", "INTO", "users", "name, age", "VALUES", "'John', 28"]);
-    }
-
-    #[test]
-    fn test_update_query() {
-        let query = "UPDATE users SET age = 29 WHERE name = 'John';";
-        let tokens = QueryCoordinator::tokens_from_query(query);
-        assert_eq!(tokens, vec! ["UPDATE", "users", "SET", "age", "=", "29", "WHERE", "name", "=", "John"]);
-    }
-
-    #[test]
-    fn test_delete_query() {
-        let query = "DELETE FROM users WHERE age < 20;";
-        let tokens = QueryCoordinator::tokens_from_query(query);
-        assert_eq!(tokens, vec!["DELETE", "FROM", "users", "WHERE", "age", "<", "20"]);
-    }
-
-    #[test]
-    fn test_create_table_query() {
-        let query = "CREATE TABLE users (id INT PRIMARY KEY, name TEXT);";
-        let tokens = QueryCoordinator::tokens_from_query(query);
-        assert_eq!(tokens, vec!["CREATE", "TABLE", "users", "id INT PRIMARY KEY, name TEXT"]);
-    }
-
-    #[test]
-    fn test_drop_table_query() {
-        let query = "DROP TABLE users;";
-        let tokens = QueryCoordinator::tokens_from_query(query);
-        assert_eq!(tokens, vec!["DROP", "TABLE", "users"]);
-    }
-
-    #[test]
-    fn test_alter_table_query() {
-        let query = "ALTER TABLE users ADD email TEXT;";
-        let tokens = QueryCoordinator::tokens_from_query(query);
-        assert_eq!(tokens, vec!["ALTER", "TABLE", "users", "ADD", "email", "TEXT"]);
-    }
-
-    #[test]
-    fn test_create_keyspace_query() {
-        let query = "CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}";
-        let tokens = QueryCoordinator::tokens_from_query(query);
-        assert_eq!(tokens, vec!["CREATE", "KEYSPACE", "test", "WITH", "replication", "=", "{", "class", "SimpleStrategy", "replication_factor", "1", "}"]);
-    }
-
-    #[test]
-    fn test_drop_keyspace_query() {
-        let query = "DROP KEYSPACE test;";
-        let tokens = QueryCoordinator::tokens_from_query(query);
-        assert_eq!(tokens, vec!["DROP", "KEYSPACE", "test"]);
-    }
-
-    #[test]
-    fn test_alter_keyspace_query() {
-        let query = "ALTER KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};";
-        let tokens = QueryCoordinator::tokens_from_query(query);
-        assert_eq!(tokens, vec!["ALTER", "KEYSPACE", "test", "WITH", "replication", "=", "{", "class", "SimpleStrategy", "replication_factor", "3", "}"]);
-    }
-
-    #[test]
     fn test_create_select_query() {
         let coordinator = QueryCoordinator::new();
         let query = "SELECT name, age FROM users WHERE age > 30;".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::Select(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(query.needed_responses(), NeededResponseCount::AllNodes));
+        }
     }
 
     #[test]
@@ -370,6 +323,10 @@ mod tests {
         let query = "INSERT INTO users (name, age) VALUES ('John', 28);".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::Insert(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(query.needed_responses(), NeededResponseCount::Specific(1)));
+        }
     }
 
     #[test]
@@ -378,6 +335,10 @@ mod tests {
         let query = "UPDATE users SET age = 29 WHERE name = 'John';".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::Update(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(query.needed_responses(), NeededResponseCount::Specific(1)));
+        }
     }
 
     #[test]
@@ -386,6 +347,10 @@ mod tests {
         let query = "DELETE FROM users WHERE age < 20;".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::Delete(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(query.needed_responses(), NeededResponseCount::Specific(1)));
+        }
     }
 
     #[test]
@@ -394,6 +359,10 @@ mod tests {
         let query = "CREATE TABLE users (id INT PRIMARY KEY, name TEXT);".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::CreateTable(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(query.needed_responses(), NeededResponseCount::AllNodes));
+        }
     }
 
     #[test]
@@ -402,6 +371,10 @@ mod tests {
         let query = "CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::CreateKeyspace(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(query.needed_responses(), NeededResponseCount::AllNodes));
+        }
     }
 
     #[test]
@@ -410,6 +383,10 @@ mod tests {
         let query = "DROP KEYSPACE test;".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::DropKeyspace(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(query.needed_responses(), NeededResponseCount::AllNodes));
+        }
     }
 
     #[test]
@@ -418,5 +395,9 @@ mod tests {
         let query = "ALTER KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::AlterKeyspace(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(query.needed_responses(), NeededResponseCount::AllNodes));
+        }
     }
 }

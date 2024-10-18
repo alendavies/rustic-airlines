@@ -12,7 +12,7 @@ use crate::QueryCoordinator;
 /// * `columns` - The columns to sort the result set by.
 /// * `order` - The order to sort the result set by. It can be either `ASC` or `DESC`.
 ///
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct OrderBy {
     pub columns: Vec<String>,
     pub order: String,

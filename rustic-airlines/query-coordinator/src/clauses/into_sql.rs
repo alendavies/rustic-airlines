@@ -8,7 +8,7 @@ use crate::{errors::CQLError, utils::is_into};
 /// * `table_name` - The name of the table to insert data into.
 /// * `columns` - The columns of the table to insert data into.
 ///
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Into {
     pub table_name: String,
     pub columns: Vec<String>,

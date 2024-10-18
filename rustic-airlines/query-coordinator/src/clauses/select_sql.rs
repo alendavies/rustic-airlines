@@ -15,7 +15,7 @@ use crate::QueryCoordinator;
 /// * `where_clause` - The `WHERE` clause to filter the result set.
 /// * `orderby_clause` - The `ORDER BY` clause to sort the result set.
 ///
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Select {
     pub table_name: String,
     pub columns: Vec<String>,

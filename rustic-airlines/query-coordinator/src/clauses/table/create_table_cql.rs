@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 use crate::clauses::types::column::Column;
 use crate::clauses::types::datatype::DataType;

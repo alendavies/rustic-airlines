@@ -42,13 +42,13 @@ impl QueryExecution {
     }
 
     // Método para ejecutar la query según su tipo
-    pub fn execute(&self, query: Query, internode: bool) -> Result<String, NodeError> {
+    pub fn execute(&self, query: Query, internode: bool, open_query_id: i32) -> Result<String, NodeError> {
 
-        let mut response = Ok(format!("OK {:?}", query.to_string()));
+        let mut response: Result<String, NodeError> = Ok(String::from("_"));
 
         match query {
             Query::Select(select_query) => {
-                if let Ok(select_querys) = self.execute_select(select_query, internode){
+                if let Ok(select_querys) = self.execute_select(select_query, internode, open_query_id){
                    response = Ok(select_querys.join("\n"));
                 } else {
                     return Err(NodeError::OtherError);
@@ -57,42 +57,42 @@ impl QueryExecution {
             Query::Insert(insert_query) => {
                 let table_name = insert_query.into_clause.table_name.clone();
                 let table = self.node_that_execute.lock()?.get_table(table_name)?;
-                self.execute_insert(insert_query, table, internode)?;
+                self.execute_insert(insert_query, table, internode, open_query_id)?;
             }
             Query::Update(update_query) => {
-                self.execute_update(update_query, internode)?;
+                self.execute_update(update_query, internode, open_query_id)?;
             }
             Query::Delete(delete_query) => {
-                self.execute_delete(delete_query, internode)?;
+                self.execute_delete(delete_query, internode, open_query_id)?;
             }
             Query::CreateTable(create_table) => {
                 if self.node_that_execute.lock()?.table_already_exist(create_table.get_name())?{
                     return Err(NodeError::CQLError(CQLError::InvalidTable));
                 }
-                self.execute_create_table(create_table, internode)?;
+                self.execute_create_table(create_table, internode, open_query_id)?;
             }
             Query::DropTable(drop_table) => {
-                self.execute_drop_table(drop_table, internode)?;
+                self.execute_drop_table(drop_table, internode, open_query_id)?;
             }
             Query::AlterTable(alter_table) => {
-                self.execute_alter_table(alter_table, internode)?;
+                self.execute_alter_table(alter_table, internode, open_query_id)?;
             }
             Query::CreateKeyspace(create_keyspace) => {
-                self.execute_create_keyspace(create_keyspace, internode)?;
+                self.execute_create_keyspace(create_keyspace, internode, open_query_id)?;
             }
             Query::DropKeyspace(drop_keyspace) => {
-                self.execute_drop_keyspace(drop_keyspace, internode)?;
+                self.execute_drop_keyspace(drop_keyspace, internode, open_query_id)?;
             }
             Query::AlterKeyspace(alter_keyspace) => {
-                self.execute_alter_keyspace(alter_keyspace, internode)?;
+                self.execute_alter_keyspace(alter_keyspace, internode, open_query_id)?;
             }
             
         }
-        response
+        Ok(InternodeProtocolHandler::create_protocol_response("OK", &response?, open_query_id))
         
     }
 
-    pub fn execute_create_keyspace(&self, create_keyspace: CreateKeyspace, internode: bool) -> Result<(), NodeError> {
+    pub fn execute_create_keyspace(&self, create_keyspace: CreateKeyspace, internode: bool, open_query_id: i32) -> Result<(), NodeError> {
         
         let mut node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
         node.add_keyspace(create_keyspace.clone())?;
@@ -114,14 +114,14 @@ impl QueryExecution {
         if !internode {
             // Serializa la estructura `CreateKeyspace`
             let serialized_create_keyspace = create_keyspace.serialize();
-            self.send_to_other_nodes(node,"CREATE_KEYSPACE", &serialized_create_keyspace, true)?;
+            self.send_to_other_nodes(node,"CREATE_KEYSPACE", &serialized_create_keyspace, true, open_query_id)?;
             
         }
     
         Ok(())
     }
 
-    pub fn execute_drop_keyspace(&self, drop_keyspace: DropKeyspace, internode: bool) -> Result<(), NodeError> {
+    pub fn execute_drop_keyspace(&self, drop_keyspace: DropKeyspace, internode: bool, open_query_id: i32) -> Result<(), NodeError> {
 
         // Obtiene el nombre del keyspace a eliminar
         let keyspace_name = drop_keyspace.get_name().clone();
@@ -144,7 +144,7 @@ impl QueryExecution {
         if !internode {
             // Serializa la estructura `DropKeyspace`
             let serialized_drop_keyspace = drop_keyspace.serialize();
-            self.send_to_other_nodes(node,"DROP_KEYSPACE", &serialized_drop_keyspace, true)?;
+            self.send_to_other_nodes(node,"DROP_KEYSPACE", &serialized_drop_keyspace, true, open_query_id)?;
         }
     
         Ok(())
@@ -154,7 +154,8 @@ impl QueryExecution {
     pub fn execute_alter_keyspace(
         &self, 
         alter_keyspace: AlterKeyspace, 
-        internode: bool
+        internode: bool,
+        open_query_id: i32
     ) -> Result<(), NodeError> {
 
         // Buscar el keyspace en la lista de keyspaces
@@ -174,14 +175,14 @@ impl QueryExecution {
              // Si no es internode, comunicar a otros nodos
         if !internode {
             let serialized_alter_keyspace = alter_keyspace.serialize();
-            self.send_to_other_nodes(node,"ALTER_KEYSPACE", &serialized_alter_keyspace, true)?;
+            self.send_to_other_nodes(node,"ALTER_KEYSPACE", &serialized_alter_keyspace, true, open_query_id)?;
         }
     
         Ok(())
     }
     
     
-    pub fn execute_create_table(&self, create_table: CreateTable, internode: bool) -> Result<(), NodeError> {
+    pub fn execute_create_table(&self, create_table: CreateTable, internode: bool, open_query_id: i32) -> Result<(), NodeError> {
         // Agrega la tabla al nodo
 
         let mut node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
@@ -220,14 +221,14 @@ impl QueryExecution {
         if !internode {
             // Serializa la estructura `CreateTable`
             let serialized_create_table = create_table.serialize();
-            self.send_to_other_nodes(node,"CREATE_TABLE", &serialized_create_table, true)?;
+            self.send_to_other_nodes(node,"CREATE_TABLE", &serialized_create_table, true,open_query_id)?;
         }
 
         Ok(())
     }
 
 
-    pub fn execute_drop_table(&self, drop_table: DropTable, internode: bool) -> Result<(), NodeError> {
+    pub fn execute_drop_table(&self, drop_table: DropTable, internode: bool, open_query_id: i32) -> Result<(), NodeError> {
         
         let mut node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
 
@@ -254,13 +255,13 @@ impl QueryExecution {
         if !internode {
             // Serializa el `DropTable` a un mensaje simple
             let serialized_drop_table = drop_table.serialize();
-            self.send_to_other_nodes(node,"DROP_TABLE", &serialized_drop_table, true)?;
+            self.send_to_other_nodes(node,"DROP_TABLE", &serialized_drop_table, true,open_query_id)?;
         }
     
         Ok(())
     }
     
-    pub fn execute_alter_table(&self, alter_table: AlterTable, internode: bool) -> Result<(), NodeError> {
+    pub fn execute_alter_table(&self, alter_table: AlterTable, internode: bool, open_query_id: i32) -> Result<(), NodeError> {
         
         let mut node = self.node_that_execute.lock().map_err(|_| NodeError::LockError)?;
 
@@ -320,7 +321,7 @@ impl QueryExecution {
         // Comunica a otros nodos si no es internode
         if !internode {
             let serialized_alter_table = alter_table.serialize();
-            self.send_to_other_nodes(node,"ALTER_TABLE", &serialized_alter_table, true)?;
+            self.send_to_other_nodes(node,"ALTER_TABLE", &serialized_alter_table, true, open_query_id)?;
         }
     
         Ok(())
@@ -402,7 +403,7 @@ impl QueryExecution {
         fs::rename(temp_path, file_path).map_err(NodeError::IoError)
     }
 
-    fn execute_insert(&self, insert_query: Insert, table_to_insert: Table, internode: bool) -> Result<(), NodeError> {
+    fn execute_insert(&self, insert_query: Insert, table_to_insert: Table, internode: bool, open_query_id: i32) -> Result<(), NodeError> {
 
 
         let node = self.node_that_execute.lock()?;
@@ -431,7 +432,7 @@ impl QueryExecution {
 
         if !internode && ip != node.get_ip() {
             let serialized_insert = insert_query.serialize();
-            self.send_to_single_node(node.get_ip(),ip, "INSERT", &serialized_insert, internode)?;
+            self.send_to_single_node(node.get_ip(),ip, "INSERT", &serialized_insert, internode, open_query_id )?;
             return  Ok(());
         } 
         QueryExecution::insert_in_this_node(values, node.get_ip(), insert_query.into_clause.table_name, pos, node.actual_keyspace_name()? )
@@ -492,9 +493,9 @@ impl QueryExecution {
 
 
      // Función auxiliar para enviar un mensaje a todos los nodos en el partitioner
-     fn send_to_other_nodes(&self, local_node: MutexGuard<'_, Node>,header: &str, serialized_message: &str, internode: bool)-> Result<(), NodeError> {
+     fn send_to_other_nodes(&self, local_node: MutexGuard<'_, Node>,header: &str, serialized_message: &str, internode: bool, open_query_id: i32)-> Result<(), NodeError> {
         // Serializa el objeto que se quiere enviar
-        let message = InternodeProtocolHandler::create_protocol_message(&&local_node.get_ip_string(), header, &serialized_message, internode);
+        let message = InternodeProtocolHandler::create_protocol_message(&&local_node.get_ip_string(),open_query_id, header, &serialized_message, internode);
 
         // Bloquea el nodo para obtener el partitioner y la IP
         let current_ip = local_node.get_ip();
@@ -517,9 +518,10 @@ impl QueryExecution {
         header: &str,
         serialized_message: &str,
         internode: bool,
+        open_query_id: i32
     ) -> Result<(), NodeError> {
         // Serializa el objeto que se quiere enviar
-        let message = InternodeProtocolHandler::create_protocol_message(&self_ip.to_string(), header, serialized_message, internode);
+        let message = InternodeProtocolHandler::create_protocol_message(&self_ip.to_string(), open_query_id,header, serialized_message, internode);
 
         // Conecta y envía el mensaje al nodo específico
         let stream = connect(target_ip,INTERNODE_PORT,self.connections.clone())?;
@@ -556,7 +558,7 @@ impl QueryExecution {
         Ok(())
     }
 
-    pub fn execute_update(&self, update_query: Update, internode: bool) -> Result<(), NodeError> {
+    pub fn execute_update(&self, update_query: Update, internode: bool, open_query_id: i32) -> Result<(), NodeError> {
        
        let table;
        {
@@ -573,7 +575,7 @@ impl QueryExecution {
         
         if !internode && node_to_update != node.get_ip(){
             let serialized_update = update_query.serialize();
-            self.send_to_single_node(node.get_ip(),node_to_update, "UPDATE", &serialized_update, internode)?;
+            self.send_to_single_node(node.get_ip(),node_to_update, "UPDATE", &serialized_update, internode, open_query_id)?;
             return Ok(());
         }
         }
@@ -733,7 +735,7 @@ impl QueryExecution {
         std::fs::rename(temp_file_path, file_path).map_err(NodeError::from)
     }
     
-    pub fn execute_delete(&self, delete_query: Delete, internode: bool) -> Result<(), NodeError> {
+    pub fn execute_delete(&self, delete_query: Delete, internode: bool, open_query_id: i32) -> Result<(), NodeError> {
         let table;
         {
             // Obtiene el nombre de la tabla y genera la ruta del archivo
@@ -749,7 +751,7 @@ impl QueryExecution {
             
             if !internode && node_to_delete != node.get_ip() {
                 let serialized_delete = delete_query.serialize();
-                self.send_to_single_node(node.get_ip(),node_to_delete, "DELETE", &serialized_delete, internode)?;
+                self.send_to_single_node(node.get_ip(),node_to_delete, "DELETE", &serialized_delete, internode, open_query_id)?;
                 return Ok(());
             }
         }
@@ -798,7 +800,7 @@ impl QueryExecution {
         Err(NodeError::OtherError)
     }
     
-    pub fn execute_select(&self, select_query: Select, internode: bool) -> Result<Vec<String>, NodeError> {
+    pub fn execute_select(&self, select_query: Select, internode: bool, open_query_id: i32) -> Result<Vec<String>, NodeError> {
         
         let table;
         {
@@ -821,7 +823,7 @@ impl QueryExecution {
         // Si es `internode`, enviamos la consulta al nodo correspondiente y esperamos la respuesta
         if !internode && node_to_query != node.get_ip() {
             let serialized_query = select_query.serialize();
-            self.send_to_single_node(node.get_ip(),node_to_query, "SELECT", &serialized_query,true)?;
+            self.send_to_single_node(node.get_ip(),node_to_query, "SELECT", &serialized_query,true, open_query_id)?;
         }
         }
         // Ejecutamos el `SELECT` localmente si no es `internode`
@@ -843,7 +845,7 @@ impl QueryExecution {
                 results.push(selected_columns);
             }
         }
-        println!("{:?}", results);
+        //println!("{:?}", results);
         Ok(results)
     }
 
