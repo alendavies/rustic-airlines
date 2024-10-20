@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self};
 mod query_execution;
 use query_execution::QueryExecution;
 mod internode_protocol_handler;
@@ -27,7 +27,7 @@ use crate::table::Table;
 use crate::utils::{connect, send_message};
 use driver::server::{handle_client_request, Request};
 
-const CLIENT_NODE_PORT_1: u16 = 0x4645; // Hexadecimal de "FE" (FERRUM) = 17989
+const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal de "FE" (FERRUM) = 17989
 const INTERNODE_PORT: u16 = 0x554D; // Hexadecimal de "UM" (FERRUM) = 21837
 
 pub struct Node {
@@ -223,7 +223,6 @@ impl Node {
                         "_",
                         true,
                     );
-
                     let mut stream_guard = stream.lock()?;
                     send_message(&mut stream_guard, &message)?;
                     node_guard.partitioner.add_node(seed_ip)?;
@@ -236,8 +235,13 @@ impl Node {
         let node_connections = Arc::clone(&connections);
         let self_ip_node = self_ip.clone();
         let handle_node_thread = thread::spawn(move || {
-            Self::handle_node_connections(node_connections_node, node_connections, self_ip_node)
-                .unwrap_or_else(|e| eprintln!("Error in node connection handler: {:?}", e));
+            Self::handle_node_connections(
+                node_connections_node,
+                node_connections,
+                self_ip_node,
+                is_seed,
+            )
+            .unwrap_or_else(|e| eprintln!("Error in node connection handler: {:?}", e));
         });
 
         // Crea un hilo para manejar las conexiones de clientes
@@ -254,8 +258,12 @@ impl Node {
             .unwrap_or_else(|e| eprintln!("Error in client connection handler: {:?}", e));
         });
 
-        handle_node_thread.join().unwrap();
-        handle_client_thread.join().unwrap();
+        handle_node_thread
+            .join()
+            .map_err(|_| NodeError::OtherError)?;
+        handle_client_thread
+            .join()
+            .map_err(|_| NodeError::OtherError)?;
 
         Ok(())
     }
@@ -264,6 +272,7 @@ impl Node {
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         self_ip: std::net::Ipv4Addr,
+        is_seed: bool,
     ) -> Result<(), NodeError> {
         let socket = SocketAddrV4::new(self_ip, INTERNODE_PORT);
         let listener = TcpListener::bind(socket)?;
@@ -280,7 +289,7 @@ impl Node {
                             node_clone,
                             stream,
                             connections_clone,
-                            true,
+                            is_seed,
                         ) {
                             eprintln!("Error handling incoming node message: {:?}", e);
                         }
@@ -300,7 +309,7 @@ impl Node {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         self_ip: std::net::Ipv4Addr,
     ) -> Result<(), NodeError> {
-        let socket = SocketAddrV4::new(self_ip, CLIENT_NODE_PORT_1); // Puerto específico para clientes
+        let socket = SocketAddrV4::new(self_ip, CLIENT_NODE_PORT); // Puerto específico para clientes
         let listener = TcpListener::bind(socket)?;
 
         for stream in listener.incoming() {
@@ -310,20 +319,16 @@ impl Node {
                     let stream = Arc::new(Mutex::new(stream));
                     let connections_clone = Arc::clone(&connections);
 
-                    let handle = thread::spawn(move || {
+                    thread::spawn(move || {
                         match Node::handle_incoming_client_messages(
                             node_clone,
                             stream,
                             connections_clone,
                         ) {
-                            Ok(res) => {
-                                dbg!(&res);
-                            }
+                            Ok(_) => {}
                             Err(_) => todo!(),
                         };
                     });
-
-                    handle.join().unwrap();
                 }
                 Err(e) => {
                     eprintln!("Error accepting client connection: {:?}", e);
@@ -386,8 +391,6 @@ impl Node {
                 Ok(_) => {
                     let query = handle_client_request(&buffer);
 
-                    dbg!(&query);
-
                     match query {
                         Request::Startup => {
                             // let mut stream_guard = stream.lock()?;
@@ -443,8 +446,6 @@ impl Node {
 
             // Intentamos leer una línea
             let bytes_read = reader.read_line(&mut buffer);
-
-            dbg!(&buffer);
 
             match bytes_read {
                 Ok(0) => {
@@ -511,8 +512,6 @@ impl Node {
             false,
             query_id,
         )?;
-
-        dbg!("query", &response);
 
         if let Some(value) = response {
             //creamos mensaje de respuesta del native

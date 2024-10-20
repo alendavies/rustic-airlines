@@ -13,7 +13,7 @@ use clauses::table::{
 };
 use clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update};
 use errors::CQLError;
-use std::{clone, fmt};
+use std::fmt;
 
 /// Define the NeededResponses trait to specify the response requirements for each query.
 pub trait NeededResponses {

@@ -13,6 +13,7 @@ use query_coordinator::clauses::table::{
 use query_coordinator::clauses::{
     delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update,
 };
+use std::collections::btree_map::Values;
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
@@ -62,7 +63,6 @@ impl InternodeProtocolHandler {
                 self.handle_query_command(node, parts[1], connections, is_seed)?;
                 Ok(())
             }
-
             "RESPONSE" => self.handle_response_command(node, parts[1]),
             _ => Err(NodeError::OtherError),
         }
@@ -77,7 +77,7 @@ impl InternodeProtocolHandler {
     ) -> Result<(), NodeError> {
         let parts: Vec<&str> = message.splitn(5, " - ").collect();
 
-        if parts.len() < 4 {
+        if parts.len() < 5 {
             return Err(NodeError::OtherError);
         }
 
@@ -164,12 +164,14 @@ impl InternodeProtocolHandler {
             _ => Err(NodeError::OtherError),
         };
 
-        if let Some(value) = result? {
-            let peer_id: Ipv4Addr = nodo_id.parse().map_err(|_| NodeError::OtherError)?;
-            let stream = connect(peer_id, INTERNODE_PORT, connections)?;
-            send_message(&stream, &value)?;
+        let response = result?;
+        if let Some(value) = response {
+            if value != "" {
+                let peer_id: Ipv4Addr = nodo_id.parse().map_err(|_| NodeError::OtherError)?;
+                let stream = connect(peer_id, INTERNODE_PORT, connections)?;
+                send_message(&stream, &value)?
+            };
         }
-
         Ok(())
     }
 
@@ -181,8 +183,6 @@ impl InternodeProtocolHandler {
         let mut guard_node = node.lock()?;
         let query_handler = guard_node.get_open_hanlde_query();
         let parts: Vec<&str> = message.splitn(3, " - ").collect();
-
-        dbg!(&parts);
 
         if parts.len() < 3 {
             return Err(NodeError::OtherError);
@@ -202,10 +202,7 @@ impl InternodeProtocolHandler {
         {
             // let mut connection = query_handler.get_connection_mut(open_query_id)?;
             let mut connection = open_query.get_connection();
-            let frame = Frame::Result(result::Result::SetKeyspace("LAPAPA".to_string())).to_bytes();
-
-            dbg!(&connection);
-
+            let frame = Frame::Result(result::Result::SetKeyspace("OK".to_string())).to_bytes();
             connection.write(&frame)?;
         }
 
@@ -229,10 +226,11 @@ impl InternodeProtocolHandler {
         }
 
         if is_seed {
-            for socket in lock_node.get_partitioner().get_nodes() {
-                if new_ip != socket && self_ip != socket {
-                    lock_node.forward_message(connections.clone(), socket, new_ip)?;
-                    lock_node.forward_message(connections.clone(), new_ip, socket)?;
+            for ip in lock_node.get_partitioner().get_nodes() {
+                if new_ip != ip && self_ip != ip && is_seed {
+                    println!("soy semilla y voy a reenviar handshakes");
+                    lock_node.forward_message(connections.clone(), ip, new_ip)?;
+                    lock_node.forward_message(connections.clone(), new_ip, ip)?;
                 }
             }
         }

@@ -81,7 +81,6 @@ impl OpenQueryHandler {
     }
 
     pub fn get_connection_mut(&mut self, id: i32) -> Result<TcpStream, NodeError> {
-        dbg!(&self);
         let connection = self
             .get_query_mut(&id)
             .ok_or(NodeError::OtherError)?

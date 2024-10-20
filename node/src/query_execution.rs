@@ -108,7 +108,6 @@ impl QueryExecution {
                 &response?.unwrap_or("_".to_string()),
                 open_query_id,
             );
-            dbg!(&protocol_response);
             Ok(Some(protocol_response))
         } else {
             Ok(None)
