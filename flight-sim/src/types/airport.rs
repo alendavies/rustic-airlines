@@ -1,9 +1,9 @@
 #[derive(Clone, Debug)]
 pub struct Airport {
-    iata_code: String,
-    name: String,
-    latitude: f64,
-    longitude: f64,
+    pub iata_code: String,
+    pub name: String,
+    pub latitude: f64,
+    pub longitude: f64,
 }
 
 impl Airport {
@@ -15,14 +15,6 @@ impl Airport {
             latitude,
             longitude
         }
-    }
-
-    pub fn latitude(&self) -> f64 {
-        self.latitude
-    }
-
-    pub fn longitude(&self) -> f64 {
-        self.longitude
     }
 
 }
