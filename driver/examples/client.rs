@@ -23,14 +23,18 @@ fn main() {
             email text,
             age int
         )",
-        
         // Insertar algunos elementos
         "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (1, 'John', 'Doe', 'john.doe@example.com', 30)",
-        "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (2, 'Jane', 'Smith', 'jane.smith@example.com', 25)",
-        "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (3, 'Alice', 'Johnson', 'alice.johnson@example.com', 35)",
+        "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (7, 'Jane', 'Smith', 'jane.smith@example.com', 25)",
+        "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (16, 'Alice', 'Johnson', 'alice.johnson@example.com', 35)",
+        "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (16, 'Alice2', 'Johnson', 'alice.johnson@example.com', 35)",
+        "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (16, 'Alice3', 'Johnson', 'alice.johnson@example.com', 35)",
+        "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (16, 'Alice4', 'Johnson', 'alice.johnson@example.com', 35)",
 
-        // Borrar algunos elementos
-        "DELETE FROM users WHERE user_id = 2",
+        // // Borrar algunos elementos
+        "DELETE FROM users WHERE user_id = 7",
+        "DELETE FROM users WHERE user_id = 7",
+        "SELECT email, user_id, age FROM users WHERE user_id = 16"
     ];
 
     // Ejecutar cada consulta en un loop

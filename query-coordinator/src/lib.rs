@@ -63,7 +63,7 @@ impl fmt::Display for Query {
 impl NeededResponses for Query {
     fn needed_responses(&self) -> NeededResponseCount {
         match self {
-            Query::Select(_) => NeededResponseCount::AllNodes,
+            Query::Select(_) => NeededResponseCount::Specific(1),
             Query::Insert(_) => NeededResponseCount::Specific(1),
             Query::Update(_) => NeededResponseCount::Specific(1),
             Query::Delete(_) => NeededResponseCount::Specific(1),

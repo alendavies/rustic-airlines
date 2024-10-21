@@ -446,7 +446,6 @@ impl Node {
 
             // Intentamos leer una línea
             let bytes_read = reader.read_line(&mut buffer);
-
             match bytes_read {
                 Ok(0) => {
                     // Conexión cerrada

@@ -79,11 +79,6 @@ impl CassandraClient {
         let mut result = [0u8; 2048];
         self.stream.read(&mut result).map_err(|_| ClientError)?;
         // dbg!(&String::from_utf8(result.to_vec()).unwrap());
-        println!(
-            "RECIBI {:?} de la query {:?}",
-            String::from_utf8(result.to_vec()[0..2].to_vec()).map_err(|_| ClientError),
-            cql_query
-        );
         let result = Frame::from_bytes(&result).map_err(|_| ClientError)?;
 
         Ok(result)

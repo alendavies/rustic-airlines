@@ -166,11 +166,9 @@ impl InternodeProtocolHandler {
 
         let response = result?;
         if let Some(value) = response {
-            if value != "" {
-                let peer_id: Ipv4Addr = nodo_id.parse().map_err(|_| NodeError::OtherError)?;
-                let stream = connect(peer_id, INTERNODE_PORT, connections)?;
-                send_message(&stream, &value)?
-            };
+            let peer_id: Ipv4Addr = nodo_id.parse().map_err(|_| NodeError::OtherError)?;
+            let stream = connect(peer_id, INTERNODE_PORT, connections)?;
+            send_message(&stream, &value)?;
         }
         Ok(())
     }
@@ -200,6 +198,10 @@ impl InternodeProtocolHandler {
         if let Some(open_query) =
             query_handler.add_response_and_get_if_closed(open_query_id, content.to_string())
         {
+            println!(
+                "cerro la query y el contendio es {:?}",
+                content.replace("/", "\n")
+            );
             // let mut connection = query_handler.get_connection_mut(open_query_id)?;
             let mut connection = open_query.get_connection();
             let frame = Frame::Result(result::Result::SetKeyspace("OK".to_string())).to_bytes();
@@ -228,7 +230,6 @@ impl InternodeProtocolHandler {
         if is_seed {
             for ip in lock_node.get_partitioner().get_nodes() {
                 if new_ip != ip && self_ip != ip && is_seed {
-                    println!("soy semilla y voy a reenviar handshakes");
                     lock_node.forward_message(connections.clone(), ip, new_ip)?;
                     lock_node.forward_message(connections.clone(), new_ip, ip)?;
                 }

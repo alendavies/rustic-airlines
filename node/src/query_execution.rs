@@ -52,14 +52,14 @@ impl QueryExecution {
         internode: bool,
         open_query_id: i32,
     ) -> Result<Option<String>, NodeError> {
-        let mut response: Result<Option<String>, NodeError> = Ok(None);
+        let mut content: Result<Option<String>, NodeError> = Ok(None);
 
         match query {
             Query::Select(select_query) => {
                 if let Ok(select_querys) =
                     self.execute_select(select_query, internode, open_query_id)
                 {
-                    response = Ok(Some(select_querys.join("\n")));
+                    content = Ok(Some(select_querys.join("/")));
                 } else {
                     return Err(NodeError::OtherError);
                 }
@@ -105,9 +105,10 @@ impl QueryExecution {
         if internode {
             let protocol_response = InternodeProtocolHandler::create_protocol_response(
                 "OK",
-                &response?.unwrap_or("_".to_string()),
+                &content?.unwrap_or("_".to_string()),
                 open_query_id,
             );
+            println!("estoy por responder {:?}", protocol_response);
             Ok(Some(protocol_response))
         } else {
             Ok(None)
@@ -554,7 +555,7 @@ impl QueryExecution {
                 ip,
                 "INSERT",
                 &serialized_insert,
-                internode,
+                true,
                 open_query_id,
             )?;
             return Ok(());
@@ -688,7 +689,6 @@ impl QueryExecution {
         // Conecta y envía el mensaje al nodo específico
         let stream = connect(target_ip, INTERNODE_PORT, self.connections.clone())?;
         send_message(&stream, &message)?;
-
         Ok(())
     }
 
@@ -752,7 +752,7 @@ impl QueryExecution {
                     node_to_update,
                     "UPDATE",
                     &serialized_update,
-                    internode,
+                    true,
                     open_query_id,
                 )?;
                 return Ok(());
@@ -979,7 +979,7 @@ impl QueryExecution {
                     node_to_delete,
                     "DELETE",
                     &serialized_delete,
-                    internode,
+                    true,
                     open_query_id,
                 )?;
                 return Ok(());
