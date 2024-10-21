@@ -11,7 +11,7 @@ use std::thread;
 use client::Client;
 use threadpool::ThreadPool;
 use std::collections::HashMap;
-use std::time::{SystemTime, Duration};
+use std::time::Duration;
 use std::error::Error;
 
 
@@ -27,11 +27,7 @@ fn list_flights(flights: &Vec<Arc<Mutex<Flight>>>) {
     for flight in flights {
         let flight_data = flight.lock().unwrap();
 
-        let status = match flight_data.status {
-            FlightStatus::Pending => "Pending",
-            FlightStatus::InFlight => "In Flight",
-            FlightStatus::Finished => "Finished",
-        };
+        let status = flight_data.status.as_str();
 
         println!(
             "{:<15} {:<10} {:<10} {:<10} {:<15.5} {:<15.5}", 
@@ -48,9 +44,7 @@ fn list_flights(flights: &Vec<Arc<Mutex<Flight>>>) {
 fn simulate_flight(flight: Arc<Mutex<Flight>>) {
     loop {
         let mut flight_data = flight.lock().unwrap();
-        
-        flight_data.check_status();
-        
+       
         match flight_data.status {
             FlightStatus::Pending => {
                 println!("Flight {} pending, waiting for departure...", flight_data.flight_number);
@@ -64,6 +58,7 @@ fn simulate_flight(flight: Arc<Mutex<Flight>>) {
                     flight_data.flight_number, flight_data.latitude, flight_data.longitude,
                     flight_data.distance_traveled
                 );
+
             }
             FlightStatus::Finished => {
                 println!("Flight {} has landed.", flight_data.flight_number);
@@ -71,21 +66,12 @@ fn simulate_flight(flight: Arc<Mutex<Flight>>) {
             }
         }
 
+        flight_data.check_status();
+
         thread::sleep(Duration::from_secs(1));
     }
 }
 
-fn add_airport(airports: &mut HashMap<String, Airport>, iata_code: &str, name: &str, latitude: f64, longitude: f64) -> Result<&Airport, Box<dyn Error>> {
-    let airport = Airport::new (
-        iata_code.to_string(),
-        name.to_string(),
-        latitude,
-        longitude,
-    );
-
-    airports.insert(iata_code.to_string(), airport);
-    Ok(&airport)
-}
 
 fn add_flight(
     airports: &HashMap<String, Airport>, 
@@ -124,6 +110,8 @@ fn print_help() {
     println!("    Add a new flight with the specified parameters.");
     println!("  add-airport <IATA_code> <name> <latitude> <longitude>");
     println!("    Add a new airport with the specified parameters.");
+    println!("  list-flights");
+    println!("    Prints all recorded flights.");
     println!("  -h or --help");
     println!("    Show this help message.");
 }
@@ -131,11 +119,12 @@ fn print_help() {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
-    let pool = ThreadPool::new(4); // Create a thread pool with 4 threads (arbitrary)
+    let pool = ThreadPool::new(4); // Create a thread pool with 4 threads (arbitrary number)
     let mut flights = vec![];
     let mut airports: HashMap<String, Airport> = HashMap::new();
 
-    
+    let ip = "127.0.0.1".parse().unwrap();  // Replace with actual IP
+    let mut flight_sim_client = Client::new(ip)?;
 
     if args.len() < 2 {
         print_help();
@@ -154,6 +143,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let average_speed: f64 = args[5].parse()?;
 
             add_flight(&airports, &pool, &mut flights, flight_number, origin_code, destination_code, average_speed)?;
+
         }
         "add-airport" => {
             if args.len() < 5 {
@@ -165,7 +155,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             let latitude: f64 = args[4].parse()?;
             let longitude: f64 = args[5].parse()?;
 
-            let airport = add_airport(&mut airports, iata_code, name, latitude, longitude)?;
+            let airport = Airport::new (
+                iata_code.to_string(),
+                name.to_string(),
+                latitude,
+                longitude,
+            );
+
+            airports.insert(iata_code.to_string(), airport);
+            flight_sim_client.insert_airport(airport)?;
             
         }
         "list-flights" => {
