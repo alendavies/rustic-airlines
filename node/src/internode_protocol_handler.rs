@@ -1,9 +1,10 @@
-use crate::open_query_handler::OpenQuery;
+use crate::open_query_handler::{OpenQuery, OpenQueryHandler};
 use crate::utils::{connect, send_message};
 use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
 use native_protocol::frame::Frame;
 use native_protocol::messages::result::result;
 use native_protocol::Serializable;
+use query_coordinator::clauses::keyspace;
 use query_coordinator::clauses::keyspace::{
     alter_keyspace_cql::AlterKeyspace, create_keyspace_cql::CreateKeyspace,
     drop_keyspace_cql::DropKeyspace,
@@ -18,7 +19,7 @@ use query_coordinator::CreateClientResponse;
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Struct that represents the handler for internode communication protocol.
 pub struct InternodeProtocolHandler {}
@@ -219,9 +220,12 @@ impl InternodeProtocolHandler {
         message: &str,
     ) -> Result<(), NodeError> {
         let mut guard_node = node.lock()?;
+        let mut keyspace_name = guard_node
+            .actual_keyspace_name()
+            .ok_or(NodeError::KeyspaceError)?
+            .clone();
         let query_handler = guard_node.get_open_hanlde_query();
         let parts: Vec<&str> = message.splitn(3, " - ").collect();
-
         if parts.len() < 3 {
             return Err(NodeError::InternodeProtocolError);
         }
@@ -236,6 +240,18 @@ impl InternodeProtocolHandler {
             return Err(NodeError::OtherError);
         }
 
+        self.add_response_to_open_query(query_handler, content, open_query_id, keyspace_name)?;
+
+        Ok(())
+    }
+
+    fn add_response_to_open_query(
+        &self,
+        query_handler: &mut OpenQueryHandler,
+        content: &str,
+        open_query_id: i32,
+        keyspace_name: String,
+    ) -> Result<(), NodeError> {
         if let Some(open_query) =
             query_handler.add_response_and_get_if_closed(open_query_id, content.to_string())
         {
@@ -247,20 +263,20 @@ impl InternodeProtocolHandler {
             let mut connection = open_query.get_connection();
             //OpenQuery va a tener un atributo que es que tipo de QUERY ES
             let query = open_query.get_query();
-            let table_name = ""; //aca hay que codear como conseguir la tabla
-            let keyspace_name = guard_node
-                .actual_keyspace_name()
-                .ok_or(NodeError::KeyspaceError)?;
+            let table_name = "";
+            let keyspace_name = keyspace_name;
 
-            let frame =
-                open_query
-                    .get_query()
-                    .create_client_response(table_name, Ok(keyspace_name), rows);
+            let frame = open_query.get_query().create_client_response(
+                Some(table_name.to_string()),
+                Some(keyspace_name),
+                None,
+            )?;
 
-            connection.write(&frame)?;
+            connection.write(&frame.to_bytes())?;
+            Ok(())
+        } else {
+            Ok(())
         }
-
-        Ok(())
     }
 
     /// Handles the introduction command, which is used for the "HANDSHAKE" protocol.

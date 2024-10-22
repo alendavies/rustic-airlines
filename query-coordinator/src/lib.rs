@@ -32,7 +32,7 @@ pub trait CreateClientResponse {
         &self,
         table: Option<String>,
         keyspace: Option<String>,
-        rows: Option<Rows>,
+        rows: Option<Vec<(String, String)>>,
     ) -> Result<Frame, CQLError>;
 }
 
@@ -86,7 +86,7 @@ impl CreateClientResponse for Query {
         &self,
         table: Option<String>,
         keyspace: Option<String>,
-        rows: Option<Vec<String, String>>,
+        rows: Option<Vec<(String, String)>>,
     ) -> Result<Frame, CQLError> {
         let query_type = match self {
             Query::Select(_) => Frame::Ready,

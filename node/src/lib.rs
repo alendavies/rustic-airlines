@@ -559,8 +559,6 @@ impl Node {
             .handle_query(query_str.to_string())
             .map_err(NodeError::CQLError)?;
 
-        println!("{:?}", query);
-
         let query_id;
         {
             let mut guard_node = node.lock()?;
