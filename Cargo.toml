@@ -1,0 +1,16 @@
+[package]
+name = "aerolineas-rusticas"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[workspace]
+members = [
+    "driver",
+    "node",
+    "partitioner",
+    "query-coordinator",
+    "testing",
+    "native_protocol"
+]
