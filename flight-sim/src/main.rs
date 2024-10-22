@@ -41,10 +41,10 @@ fn list_flights(flights: &Vec<Arc<Mutex<Flight>>>) {
     }
 }
 
-fn simulate_flight(flight: Arc<Mutex<Flight>>) {
+fn simulate_flight(flight: Arc<Mutex<Flight>>, client: Arc<Mutex<Client>>) {
     loop {
         let mut flight_data = flight.lock().unwrap();
-       
+
         match flight_data.status {
             FlightStatus::Pending => {
                 println!("Flight {} pending, waiting for departure...", flight_data.flight_number);
@@ -59,28 +59,38 @@ fn simulate_flight(flight: Arc<Mutex<Flight>>) {
                     flight_data.distance_traveled
                 );
 
+                let mut client_locked = client.lock().unwrap();
+                if let Err(e) = client_locked.update_flight(&*flight_data) {
+                    eprintln!("Failed to update flight {}: {}", flight_data.flight_number, e);
+                }
             }
             FlightStatus::Finished => {
                 println!("Flight {} has landed.", flight_data.flight_number);
+
+                let mut client_locked = client.lock().unwrap();
+                if let Err(e) = client_locked.update_flight(&*flight_data) {
+                    eprintln!("Failed to update flight {}: {}", flight_data.flight_number, e);
+                }
+
                 break;
             }
         }
 
         flight_data.check_status();
-
         thread::sleep(Duration::from_secs(1));
     }
 }
 
 
 fn add_flight(
-    airports: &HashMap<String, Airport>, 
-    pool: &ThreadPool, 
-    flights: &mut Vec<Arc<Mutex<Flight>>>, 
-    flight_number: &str, 
-    origin_code: &str, 
-    destination_code: &str, 
-    average_speed: f64
+    airports: &HashMap<String, Airport>,
+    pool: &ThreadPool,
+    flights: &mut Vec<Arc<Mutex<Flight>>>,
+    flight_number: &str,
+    origin_code: &str,
+    destination_code: &str,
+    average_speed: f64,
+    client: Arc<Mutex<Client>>,
 ) -> Result<(), Box<dyn Error>> {
     let origin = airports.get(origin_code)
         .ok_or(format!("Origin airport with IATA code '{}' not found.", origin_code))?
@@ -91,13 +101,22 @@ fn add_flight(
         .clone();
 
     let flight = Flight::new(flight_number.to_string(), origin, destination, average_speed);
-    
+
     let flight_arc = Arc::new(Mutex::new(flight));
+    {
+        // Insert the new flight into Cassandra
+        let mut client_locked = client.lock().unwrap();
+        client_locked.insert_flight(&flight_arc.lock().unwrap())?;
+    }
 
     flights.push(Arc::clone(&flight_arc));
 
-    pool.execute(move || {
-        simulate_flight(flight_arc);
+    pool.execute({
+        let client = Arc::clone(&client);
+        let flight_arc = Arc::clone(&flight_arc);
+        move || {
+            simulate_flight(flight_arc, client);
+        }
     });
 
     println!("Flight added and started simulation.");
@@ -124,7 +143,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut airports: HashMap<String, Airport> = HashMap::new();
 
     let ip = "127.0.0.1".parse().unwrap();  // Replace with actual IP
-    let mut flight_sim_client = Client::new(ip)?;
+    let flight_sim_client = Arc::new(Mutex::new(Client::new(ip)?));
 
     if args.len() < 2 {
         print_help();
@@ -132,8 +151,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     match args[1].as_str() {
+
         "add-flight" => {
-            if args.len() < 6 {
+            if args.len() < 5 {
                 eprintln!("Usage: add-flight <flight_number> <origin> <destination> <average_speed>");
                 return Ok(());
             }
@@ -142,9 +162,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             let destination_code = &args[4];
             let average_speed: f64 = args[5].parse()?;
 
-            add_flight(&airports, &pool, &mut flights, flight_number, origin_code, destination_code, average_speed)?;
-
+            add_flight(&airports, &pool, &mut flights, flight_number, origin_code, destination_code, average_speed, Arc::clone(&flight_sim_client))?;
         }
+
         "add-airport" => {
             if args.len() < 5 {
                 eprintln!("Usage: add-airport <IATA_code> <name> <latitude> <longitude>");
@@ -162,8 +182,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 longitude,
             );
 
-            airports.insert(iata_code.to_string(), airport);
-            flight_sim_client.insert_airport(airport)?;
+            airports.insert(iata_code.to_string(), airport.clone());
+            {
+                let mut client_locked = flight_sim_client.lock().unwrap();
+                client_locked.insert_airport(&airport)?;
+            }
             
         }
         "list-flights" => {
