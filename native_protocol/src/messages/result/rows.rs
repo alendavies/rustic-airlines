@@ -584,19 +584,13 @@ pub struct Rows {
 }
 
 impl Rows {
-    pub fn new(cols: Vec<(String, ColumnType)>, rows: Vec<(String, ColumnValue)>) -> Rows {
+    pub fn new(cols: Vec<(String, ColumnType)>, rows: Vec<Row>) -> Rows {
         let metadata = Metadata::new(cols.len() as u32, cols);
-        let mut rows_content: Vec<BTreeMap<String, ColumnValue>> = Vec::new();
 
-        for row in rows {
-            let row_ = BTreeMap::from([(row.0, row.1)]);
-            rows_content.push(row_);
-        }
-
-        Rows {
+        Self {
             metadata,
-            rows_count: Int::from(rows_content.len() as i32),
-            rows_content,
+            rows_count: Int::from(rows.len() as i32),
+            rows_content: rows,
         }
     }
 }

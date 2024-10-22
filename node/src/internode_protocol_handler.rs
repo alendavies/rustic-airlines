@@ -267,9 +267,10 @@ impl InternodeProtocolHandler {
             let keyspace_name = keyspace_name;
 
             let frame = open_query.get_query().create_client_response(
-                Some(table_name.to_string()),
-                Some(keyspace_name),
-                None,
+                table_name.to_string(),
+                Vec::new(),
+                keyspace_name,
+                content.split("/").map(|s| s.to_string()).collect(),
             )?;
 
             connection.write(&frame.to_bytes())?;

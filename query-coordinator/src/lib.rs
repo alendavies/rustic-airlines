@@ -11,14 +11,18 @@ use clauses::keyspace::{
 use clauses::table::{
     alter_table_cql::AlterTable, create_table_cql::CreateTable, drop_table_cql::DropTable,
 };
+use clauses::types::column::Column;
+use clauses::types::datatype::DataType;
 use clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update};
 use errors::CQLError;
 use native_protocol::frame::Frame;
 use native_protocol::messages::result::result;
-use native_protocol::messages::result::rows::Rows;
+use native_protocol::messages::result::rows::{ColumnType, ColumnValue, Rows};
 use native_protocol::messages::result::schema_change;
 use native_protocol::messages::result::schema_change::SchemaChange;
+use std::collections::BTreeMap;
 use std::fmt;
+use std::mem::uninitialized;
 use std::option;
 /// The `NeededResponses` trait defines how many responses are required for a given query.
 /// Queries like `CREATE` and `DROP` often require responses from all nodes in a distributed system,
@@ -30,9 +34,10 @@ pub trait NeededResponses {
 pub trait CreateClientResponse {
     fn create_client_response(
         &self,
-        table: Option<String>,
-        keyspace: Option<String>,
-        rows: Option<Vec<(String, String)>>,
+        table: String,
+        columns: Vec<Column>,
+        keyspace: String,
+        rows: Vec<String>,
     ) -> Result<Frame, CQLError>;
 }
 
@@ -80,84 +85,115 @@ impl fmt::Display for Query {
     }
 }
 
+impl From<DataType> for ColumnType {
+    fn from(value: DataType) -> Self {
+        match value {
+            DataType::Int => ColumnType::Int,
+            DataType::String => todo!(),
+            DataType::Boolean => todo!(),
+            _ => todo!(),
+        }
+    }
+}
+
+fn create_column_value_from_type(col_type: &ColumnType, value: &str) -> ColumnValue {
+    match col_type {
+        ColumnType::Ascii => todo!(),
+        ColumnType::Bigint => todo!(),
+        ColumnType::Blob => todo!(),
+        ColumnType::Boolean => todo!(),
+        _ => unimplemented!(),
+    }
+}
+
 /// Implements the `fmt::Display` trait for `Query`. This allows the enum to be printed in a human-readable format.
 impl CreateClientResponse for Query {
     fn create_client_response(
         &self,
-        table: Option<String>,
-        keyspace: Option<String>,
-        rows: Option<Vec<(String, String)>>,
+        table: String,
+        columns: Vec<Column>,
+        keyspace: String,
+        rows: Vec<String>,
     ) -> Result<Frame, CQLError> {
         let query_type = match self {
-            Query::Select(_) => Frame::Ready,
+            Query::Select(select) => {
+                let necessary_columns: Vec<_> = rows
+                    .get(0)
+                    .ok_or(CQLError::InvalidSyntax)?
+                    .split(",")
+                    .collect();
+
+                let col_types = necessary_columns
+                    .iter()
+                    .map(|&name| {
+                        let a = columns
+                            .iter()
+                            .find(|col| col.name == *name)
+                            .ok_or(CQLError::Error)
+                            .unwrap();
+                        let b = ColumnType::from(a.data_type.clone());
+
+                        (name.to_string(), b)
+                    })
+                    .collect::<Vec<_>>();
+
+                let mut records = Vec::new();
+
+                for row in rows {
+                    let mut record = BTreeMap::new();
+
+                    for (idx, value) in row.split(",").enumerate() {
+                        let (name, r#type) = col_types.get(idx).ok_or(CQLError::Error)?;
+                        let col_value = create_column_value_from_type(r#type, value);
+
+                        record.insert(name.to_string(), col_value);
+                    }
+
+                    records.push(record);
+                }
+
+                Frame::Result(result::Result::Rows(Rows::new(col_types, records)))
+            }
             Query::Insert(_) => Frame::Result(result::Result::Void),
             Query::Update(_) => Frame::Result(result::Result::Void),
             Query::Delete(_) => Frame::Result(result::Result::Void),
             Query::CreateTable(_) => {
-                if let Some(keyspace_string) = keyspace {
-                    Frame::Result(result::Result::SchemaChange(SchemaChange::new(
-                        schema_change::ChangeType::Created,
-                        schema_change::Target::Table,
-                        schema_change::Options::new(keyspace_string, table),
-                    )))
-                } else {
-                    return Err(CQLError::Error);
-                }
+                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                    schema_change::ChangeType::Created,
+                    schema_change::Target::Table,
+                    schema_change::Options::new(keyspace, Some(table)),
+                )))
             }
-            Query::DropTable(_) => {
-                if let Some(keyspace_string) = keyspace {
-                    Frame::Result(result::Result::SchemaChange(SchemaChange::new(
-                        schema_change::ChangeType::Dropped,
-                        schema_change::Target::Table,
-                        schema_change::Options::new(keyspace_string, table),
-                    )))
-                } else {
-                    return Err(CQLError::Error);
-                }
-            }
-            Query::AlterTable(_) => {
-                if let Some(keyspace_string) = keyspace {
-                    Frame::Result(result::Result::SchemaChange(SchemaChange::new(
-                        schema_change::ChangeType::Updated,
-                        schema_change::Target::Table,
-                        schema_change::Options::new(keyspace_string, table),
-                    )))
-                } else {
-                    return Err(CQLError::Error);
-                }
-            }
+            Query::DropTable(_) => Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                schema_change::ChangeType::Dropped,
+                schema_change::Target::Table,
+                schema_change::Options::new(keyspace, Some(table)),
+            ))),
+            Query::AlterTable(_) => Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                schema_change::ChangeType::Updated,
+                schema_change::Target::Table,
+                schema_change::Options::new(keyspace, Some(table)),
+            ))),
             Query::CreateKeyspace(_) => {
-                if let Some(keyspace_string) = keyspace {
-                    Frame::Result(result::Result::SchemaChange(SchemaChange::new(
-                        schema_change::ChangeType::Created,
-                        schema_change::Target::Keyspace,
-                        schema_change::Options::new(keyspace_string, None),
-                    )))
-                } else {
-                    return Err(CQLError::Error);
-                }
+                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                    schema_change::ChangeType::Created,
+                    schema_change::Target::Keyspace,
+                    schema_change::Options::new(keyspace, None),
+                )))
             }
             Query::DropKeyspace(_) => {
-                if let Some(keyspace_string) = keyspace {
-                    Frame::Result(result::Result::SchemaChange(SchemaChange::new(
-                        schema_change::ChangeType::Dropped,
-                        schema_change::Target::Keyspace,
-                        schema_change::Options::new(keyspace_string, None),
-                    )))
-                } else {
-                    return Err(CQLError::Error);
-                }
+                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                    schema_change::ChangeType::Dropped,
+                    schema_change::Target::Keyspace,
+                    schema_change::Options::new(keyspace, None),
+                )))
             }
             Query::AlterKeyspace(_) => {
-                if let Some(keyspace_string) = keyspace {
-                    Frame::Result(result::Result::SchemaChange(SchemaChange::new(
-                        schema_change::ChangeType::Updated,
-                        schema_change::Target::Keyspace,
-                        schema_change::Options::new(keyspace_string, None),
-                    )))
-                } else {
-                    return Err(CQLError::Error);
-                }
+                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                    schema_change::ChangeType::Updated,
+                    schema_change::Target::Keyspace,
+                    schema_change::Options::new(keyspace, None),
+                )))
             }
         };
 
