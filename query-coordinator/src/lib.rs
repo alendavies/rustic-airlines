@@ -267,16 +267,28 @@ impl QueryCoordinator {
         current: &mut String,
         tokens: &mut Vec<String>,
     ) -> usize {
+        let mut paren_count = 1; 
+
+        current.push('('); 
         index += 1;
+
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            if char == ')' {
-                break;
+            if char == '(' {
+                paren_count += 1; 
+            } else if char == ')' {
+                paren_count -= 1; 
+                if paren_count == 0 {
+                    current.push(')'); 
+                    index += 1;
+                    break;
+                }
             }
+            
             current.push(char);
             index += 1;
         }
-        index += 1;
+
         tokens.push(current.clone());
         current.clear();
         index
@@ -369,7 +381,7 @@ mod tests {
     #[test]
     fn test_create_table_query_success() {
         let coordinator = QueryCoordinator::new();
-        let query = "CREATE TABLE users (id INT PRIMARY KEY, name TEXT);".to_string();
+        let query = "CREATE TABLE t (a int, b int, c int, d int, PRIMARY KEY ((a, b), c, d));".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::CreateTable(_))));
 
