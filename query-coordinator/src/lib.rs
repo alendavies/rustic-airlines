@@ -22,8 +22,7 @@ use native_protocol::messages::result::schema_change;
 use native_protocol::messages::result::schema_change::SchemaChange;
 use std::collections::BTreeMap;
 use std::fmt;
-use std::mem::uninitialized;
-use std::option;
+
 /// The `NeededResponses` trait defines how many responses are required for a given query.
 /// Queries like `CREATE` and `DROP` often require responses from all nodes in a distributed system,
 /// while `SELECT`, `INSERT`, etc., may only need specific responses from certain nodes.
@@ -34,7 +33,6 @@ pub trait NeededResponses {
 pub trait CreateClientResponse {
     fn create_client_response(
         &self,
-        table: String,
         columns: Vec<Column>,
         keyspace: String,
         rows: Vec<String>,
@@ -106,17 +104,16 @@ fn create_column_value_from_type(col_type: &ColumnType, value: &str) -> ColumnVa
     }
 }
 
-/// Implements the `fmt::Display` trait for `Query`. This allows the enum to be printed in a human-readable format.
+/// Implements the CreateClientResponse that return the Frame to respond to the client depending of what Query is.
 impl CreateClientResponse for Query {
     fn create_client_response(
         &self,
-        table: String,
         columns: Vec<Column>,
         keyspace: String,
         rows: Vec<String>,
     ) -> Result<Frame, CQLError> {
         let query_type = match self {
-            Query::Select(select) => {
+            Query::Select(_) => {
                 let necessary_columns: Vec<_> = rows
                     .get(0)
                     .ok_or(CQLError::InvalidSyntax)?
@@ -157,23 +154,27 @@ impl CreateClientResponse for Query {
             Query::Insert(_) => Frame::Result(result::Result::Void),
             Query::Update(_) => Frame::Result(result::Result::Void),
             Query::Delete(_) => Frame::Result(result::Result::Void),
-            Query::CreateTable(_) => {
+            Query::CreateTable(create_table) => {
                 Frame::Result(result::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Created,
                     schema_change::Target::Table,
-                    schema_change::Options::new(keyspace, Some(table)),
+                    schema_change::Options::new(keyspace, Some(create_table.get_name())),
                 )))
             }
-            Query::DropTable(_) => Frame::Result(result::Result::SchemaChange(SchemaChange::new(
-                schema_change::ChangeType::Dropped,
-                schema_change::Target::Table,
-                schema_change::Options::new(keyspace, Some(table)),
-            ))),
-            Query::AlterTable(_) => Frame::Result(result::Result::SchemaChange(SchemaChange::new(
-                schema_change::ChangeType::Updated,
-                schema_change::Target::Table,
-                schema_change::Options::new(keyspace, Some(table)),
-            ))),
+            Query::DropTable(create_table) => {
+                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                    schema_change::ChangeType::Dropped,
+                    schema_change::Target::Table,
+                    schema_change::Options::new(keyspace, Some(create_table.get_table_name())),
+                )))
+            }
+            Query::AlterTable(create_table) => {
+                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                    schema_change::ChangeType::Updated,
+                    schema_change::Target::Table,
+                    schema_change::Options::new(keyspace, Some(create_table.get_table_name())),
+                )))
+            }
             Query::CreateKeyspace(_) => {
                 Frame::Result(result::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Created,

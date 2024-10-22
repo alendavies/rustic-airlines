@@ -46,7 +46,10 @@ fn main() {
     // Ejecutar cada consulta en un loop
     for query in queries {
         match client.execute(&query) {
-            Ok(_) => println!("Consulta ejecutada exitosamente: {}", query),
+            Ok(query_result) => println!(
+                "Consulta ejecutada exitosamente: {} y el resultado fue {:?}",
+                query, query_result
+            ),
             Err(e) => eprintln!("Error al ejecutar la consulta: {}\nError: {:?}", query, e),
         }
     }
