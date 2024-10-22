@@ -1,5 +1,5 @@
-mod metadata;
-mod prepared;
+pub mod metadata;
+pub mod prepared;
 pub mod result;
-mod rows;
-mod schema_change;
+pub mod rows;
+pub mod schema_change;

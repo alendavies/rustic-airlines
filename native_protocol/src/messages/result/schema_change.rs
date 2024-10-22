@@ -26,6 +26,14 @@ pub struct Options {
     name: Option<String>,
 }
 
+impl Options {
+    pub fn new(keyspace: String, table: Option<String>) -> Self {
+        Options {
+            keyspace,
+            name: table,
+        }
+    }
+}
 #[derive(Debug, PartialEq)]
 ///  The result to a schema altering query
 /// (creation/update/drop of a keyspace/table/index).
@@ -35,6 +43,15 @@ pub struct SchemaChange {
     options: Options,
 }
 
+impl SchemaChange {
+    pub fn new(change_type: ChangeType, target: Target, options: Options) -> Self {
+        SchemaChange {
+            change_type,
+            target,
+            options,
+        }
+    }
+}
 impl Serializable for SchemaChange {
     /// Serializes the schema change to bytes.
     fn to_bytes(&self) -> Vec<u8> {
