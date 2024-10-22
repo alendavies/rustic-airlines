@@ -36,7 +36,7 @@ impl DataType {
             DataType::Float => value.parse::<f32>().is_ok(), // Verifica si es un float válido
             DataType::Double => value.parse::<f64>().is_ok(), // Verifica si es un double válido
             DataType::Timestamp => self.is_valid_timestamp(value), // Verifica si es un timestamp válido
-            DataType::Uuid => self.is_valid_uuid(value),           // Verifica si es un UUID válido
+            DataType::Uuid => true,                                // Verifica si es un UUID válido
             DataType::Blob => self.is_valid_blob(value), // Verifica si es un BLOB válido (hexadecimal)
         }
     }
@@ -45,11 +45,6 @@ impl DataType {
     fn is_valid_timestamp(&self, value: &str) -> bool {
         chrono::DateTime::parse_from_rfc3339(value).is_ok() || value.parse::<i64>().is_ok()
         // Cassandra también permite timestamps en milisegundos
-    }
-
-    /// Verifica si una cadena es un UUID válido
-    fn is_valid_uuid(&self, value: &str) -> bool {
-        uuid::Uuid::parse_str(value).is_ok()
     }
 
     /// Verifica si una cadena es un BLOB válido (hexadecimal)

@@ -130,7 +130,7 @@ impl OpenQueryHandler {
     ///
     /// # Returns
     /// A mutable reference to the query, or `None` if it does not exist.
-    fn get_query_mut(&mut self, id: &i32) -> Option<&mut OpenQuery> {
+    pub fn get_query_mut(&mut self, id: &i32) -> Option<&mut OpenQuery> {
         self.queries.get_mut(id)
     }
 

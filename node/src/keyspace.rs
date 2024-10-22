@@ -1,7 +1,7 @@
 // keyspace.rs
 
 // Ordered imports
-use std::fmt;
+use std::{clone, fmt};
 
 use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
 use query_coordinator::errors::CQLError;

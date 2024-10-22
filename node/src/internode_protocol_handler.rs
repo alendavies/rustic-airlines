@@ -9,10 +9,11 @@ use query_coordinator::clauses::keyspace::{
 use query_coordinator::clauses::table::{
     alter_table_cql::AlterTable, create_table_cql::CreateTable, drop_table_cql::DropTable,
 };
+use query_coordinator::clauses::types::column::Column;
 use query_coordinator::clauses::{
     delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update,
 };
-use query_coordinator::CreateClientResponse;
+use query_coordinator::{CreateClientResponse, GetTableName};
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
@@ -222,7 +223,8 @@ impl InternodeProtocolHandler {
             .ok_or(NodeError::KeyspaceError)?
             .clone();
 
-        let query_handler = guard_node.get_open_hanlde_query();
+        let query_handler = guard_node.get_open_handle_query();
+
         let parts: Vec<&str> = message.splitn(3, " - ").collect();
         if parts.len() < 3 {
             return Err(NodeError::InternodeProtocolError);
@@ -238,7 +240,27 @@ impl InternodeProtocolHandler {
             return Err(NodeError::OtherError);
         }
 
-        self.add_response_to_open_query(query_handler, content, open_query_id, keyspace_name)?;
+        let open_query = query_handler
+            .get_query_mut(&open_query_id)
+            .ok_or(NodeError::OtherError)?;
+
+        let table_name = open_query.get_query().get_table_name();
+        // let columns;
+
+        // if let Some(table_name) = table_name {
+        //     let table = guard_node.get_table(table_name)?;
+        //     columns = table.get_columns();
+        // } else {
+        //     columns = Vec::new();
+        // }
+
+        self.add_response_to_open_query(
+            query_handler,
+            content,
+            open_query_id,
+            keyspace_name,
+            vec![],
+        )?;
 
         Ok(())
     }
@@ -249,6 +271,7 @@ impl InternodeProtocolHandler {
         content: &str,
         open_query_id: i32,
         keyspace_name: String,
+        columns: Vec<Column>,
     ) -> Result<(), NodeError> {
         if let Some(open_query) =
             query_handler.add_response_and_get_if_closed(open_query_id, content.to_string())
@@ -263,7 +286,7 @@ impl InternodeProtocolHandler {
             let keyspace_name = keyspace_name;
 
             let frame = open_query.get_query().create_client_response(
-                Vec::new(),
+                columns,
                 keyspace_name,
                 content.split("/").map(|s| s.to_string()).collect(),
             )?;

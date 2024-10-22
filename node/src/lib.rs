@@ -131,7 +131,7 @@ impl Node {
             .map(|keyspace| keyspace.get_name()) // Gets the name if it exists // If None, returns an error
     }
 
-    fn get_open_hanlde_query(&mut self) -> &mut OpenQueryHandler {
+    fn get_open_handle_query(&mut self) -> &mut OpenQueryHandler {
         &mut self.open_query_handler
     }
 

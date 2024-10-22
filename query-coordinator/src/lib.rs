@@ -30,6 +30,9 @@ pub trait NeededResponses {
     fn needed_responses(&self) -> NeededResponseCount;
 }
 
+pub trait GetTableName {
+    fn get_table_name(&self) -> Option<String>;
+}
 pub trait CreateClientResponse {
     fn create_client_response(
         &self,
@@ -87,20 +90,59 @@ impl From<DataType> for ColumnType {
     fn from(value: DataType) -> Self {
         match value {
             DataType::Int => ColumnType::Int,
-            DataType::String => todo!(),
-            DataType::Boolean => todo!(),
-            _ => todo!(),
+            DataType::String => ColumnType::Ascii,
+            DataType::Boolean => ColumnType::Boolean,
+            DataType::Blob => ColumnType::Blob,
+            DataType::Double => ColumnType::Double,
+            DataType::Float => ColumnType::Float,
+            DataType::Timestamp => ColumnType::Timestamp,
+            DataType::Uuid => ColumnType::Uuid,
         }
     }
 }
 
-fn create_column_value_from_type(col_type: &ColumnType, value: &str) -> ColumnValue {
+fn create_column_value_from_type(
+    col_type: &ColumnType,
+    value: &str,
+) -> Result<ColumnValue, CQLError> {
     match col_type {
-        ColumnType::Ascii => todo!(),
-        ColumnType::Bigint => todo!(),
-        ColumnType::Blob => todo!(),
-        ColumnType::Boolean => todo!(),
-        _ => unimplemented!(),
+        ColumnType::Ascii => Ok(ColumnValue::Ascii(value.to_string())),
+        ColumnType::Bigint => Ok(ColumnValue::Bigint(
+            value.parse::<i64>().map_err(|_| CQLError::Error)?,
+        )),
+        ColumnType::Blob => Ok(ColumnValue::Blob(
+            hex::decode(value).map_err(|_| CQLError::Error)?,
+        )),
+        ColumnType::Boolean => Ok(ColumnValue::Boolean(
+            value.parse::<bool>().map_err(|_| CQLError::Error)?,
+        )),
+        ColumnType::Counter => Ok(ColumnValue::Counter(
+            value.parse::<i64>().map_err(|_| CQLError::Error)?,
+        )),
+        ColumnType::Decimal => Ok(ColumnValue::Decimal {
+            scale: value.parse::<i32>().map_err(|_| CQLError::Error)?,
+            unscaled: value.as_bytes().to_vec(),
+        }),
+        ColumnType::Double => Ok(ColumnValue::Double(
+            value.parse::<f64>().map_err(|_| CQLError::Error)?,
+        )),
+        ColumnType::Float => Ok(ColumnValue::Float(
+            value.parse::<f32>().map_err(|_| CQLError::Error)?,
+        )),
+        ColumnType::Int => Ok(ColumnValue::Int(
+            value.parse::<i32>().map_err(|_| CQLError::Error)?,
+        )),
+        ColumnType::Timestamp => Ok(ColumnValue::Timestamp(
+            value.parse::<i64>().map_err(|_| CQLError::Error)?,
+        )),
+        ColumnType::Uuid => {
+            let bytes = value.as_bytes();
+            let uuid: [u8; 16] = bytes.try_into().map_err(|_| CQLError::Error)?;
+            Ok(ColumnValue::Uuid(uuid))
+        }
+        ColumnType::Varchar => Ok(ColumnValue::Varchar(value.to_string())),
+        ColumnType::Varint => Ok(ColumnValue::Varint(value.as_bytes().to_vec())),
+        _ => Err(CQLError::Error),
     }
 }
 
@@ -114,25 +156,28 @@ impl CreateClientResponse for Query {
     ) -> Result<Frame, CQLError> {
         let query_type = match self {
             Query::Select(_) => {
+                println!("las columnas son {:?} y las rows son {:?}", columns, rows);
                 let necessary_columns: Vec<_> = rows
                     .get(0)
                     .ok_or(CQLError::InvalidSyntax)?
                     .split(",")
                     .collect();
 
-                let col_types = necessary_columns
+                let col_types: Result<Vec<_>, CQLError> = necessary_columns
                     .iter()
                     .map(|&name| {
                         let a = columns
                             .iter()
                             .find(|col| col.name == *name)
-                            .ok_or(CQLError::Error)
-                            .unwrap();
+                            .ok_or(CQLError::Error)?;
+
                         let b = ColumnType::from(a.data_type.clone());
 
-                        (name.to_string(), b)
+                        Ok((name.to_string(), b))
                     })
-                    .collect::<Vec<_>>();
+                    .collect();
+
+                let col_types = col_types?;
 
                 let mut records = Vec::new();
 
@@ -141,7 +186,8 @@ impl CreateClientResponse for Query {
 
                     for (idx, value) in row.split(",").enumerate() {
                         let (name, r#type) = col_types.get(idx).ok_or(CQLError::Error)?;
-                        let col_value = create_column_value_from_type(r#type, value);
+                        let col_value = create_column_value_from_type(r#type, value)
+                            .map_err(|_| CQLError::Error)?;
 
                         record.insert(name.to_string(), col_value);
                     }
@@ -149,7 +195,9 @@ impl CreateClientResponse for Query {
                     records.push(record);
                 }
 
-                Frame::Result(result::Result::Rows(Rows::new(col_types, records)))
+                let rows = Rows::new(col_types, records);
+
+                Frame::Result(result::Result::Rows(rows))
             }
             Query::Insert(_) => Frame::Result(result::Result::Void),
             Query::Update(_) => Frame::Result(result::Result::Void),
@@ -176,11 +224,12 @@ impl CreateClientResponse for Query {
                 )))
             }
             Query::CreateKeyspace(_) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                let schema_change = SchemaChange::new(
                     schema_change::ChangeType::Created,
                     schema_change::Target::Keyspace,
                     schema_change::Options::new(keyspace, None),
-                )))
+                );
+                Frame::Result(result::Result::SchemaChange(schema_change))
             }
             Query::DropKeyspace(_) => {
                 Frame::Result(result::Result::SchemaChange(SchemaChange::new(
@@ -217,6 +266,27 @@ impl NeededResponses for Query {
             Query::CreateKeyspace(_) => NeededResponseCount::AllNodes,
             Query::DropKeyspace(_) => NeededResponseCount::AllNodes,
             Query::AlterKeyspace(_) => NeededResponseCount::AllNodes,
+        }
+    }
+}
+
+/// Implements the `NeededResponses` trait for each type of query. Queries like `SELECT` and `INSERT`
+/// require a specific number of responses, while `CREATE` and `DROP` require responses from all nodes.
+impl GetTableName for Query {
+    fn get_table_name(&self) -> Option<String> {
+        {
+            match self {
+                Query::Select(select) => Some(select.table_name.clone()),
+                Query::Insert(insert) => Some(insert.into_clause.table_name.clone()),
+                Query::Update(update) => Some(update.table_name.clone()),
+                Query::Delete(delete) => Some(delete.table_name.clone()),
+                Query::CreateTable(create_table) => Some(create_table.get_name().clone()),
+                Query::DropTable(drop_table) => Some(drop_table.get_table_name().clone()),
+                Query::AlterTable(alter_table) => Some(alter_table.get_table_name().clone()),
+                Query::CreateKeyspace(_) => None,
+                Query::DropKeyspace(_) => None,
+                Query::AlterKeyspace(_) => None,
+            }
         }
     }
 }

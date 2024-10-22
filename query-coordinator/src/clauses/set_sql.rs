@@ -30,7 +30,7 @@ impl Set {
     /// assert_eq!(set_from_tokens, set_clause);
     /// ```
     ///
-    /// 
+    ///
     // Método para obtener una referencia al vector interno
     pub fn get_pairs(&self) -> &Vec<(String, String)> {
         &self.0
@@ -54,7 +54,8 @@ impl Set {
         Ok(Self(set))
     }
     pub fn serialize(&self) -> String {
-        self.0.iter()
+        self.0
+            .iter()
             .map(|(col, val)| {
                 let formatted_value = if val.parse::<f64>().is_ok() {
                     val.clone() // Es un número, se deja sin comillas
@@ -66,6 +67,4 @@ impl Set {
             .collect::<Vec<String>>()
             .join(", ")
     }
-    
-
 }
