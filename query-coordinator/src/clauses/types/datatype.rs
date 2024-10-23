@@ -1,3 +1,5 @@
+use crate::errors::CQLError;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataType {
     Int,
@@ -38,6 +40,22 @@ impl DataType {
             DataType::Timestamp => self.is_valid_timestamp(value), // Verifica si es un timestamp válido
             DataType::Uuid => true,                                // Verifica si es un UUID válido
             DataType::Blob => self.is_valid_blob(value), // Verifica si es un BLOB válido (hexadecimal)
+        }
+    }
+
+    /// Crea un DataType a partir de una cadena
+    pub fn from_str(value: &str) -> Result<Self, CQLError> {
+        match value.to_uppercase().as_str() {
+            "INT" => Ok(DataType::Int),
+            "TEXT" => Ok(DataType::String),
+            "STRING" => Ok(DataType::String),
+            "BOOLEAN" => Ok(DataType::Boolean),
+            "FLOAT" => Ok(DataType::Float),
+            "DOUBLE" => Ok(DataType::Double),
+            "TIMESTAMP" => Ok(DataType::Timestamp),
+            "UUID" => Ok(DataType::Uuid),
+            "BLOB" => Ok(DataType::Blob),
+            _ => Err(CQLError::InvalidSyntax),
         }
     }
 

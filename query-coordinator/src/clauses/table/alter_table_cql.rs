@@ -51,13 +51,7 @@ impl AlterTable {
                     }
     
                     let col_name = operations[i + offset].to_string();
-                    let col_type = match operations[i + offset + 1].to_uppercase().as_str() {
-                        "INT" => DataType::Int,
-                        "STRING" => DataType::String,
-                        "BOOLEAN" => DataType::Boolean,
-                        "TEXT" => DataType::String, // Soporte adicional para TEXT como STRING
-                        _ => return Err(CQLError::InvalidSyntax),
-                    };
+                    let col_type = DataType::from_str(&operations[i + offset + 1])?;
     
                     let allows_null = if operations.len() > i + offset + 2 && operations[i + offset + 2].to_uppercase() == "NOT" {
                         if operations.len() < i + offset + 4 || operations[i + offset + 3].to_uppercase() != "NULL" {
@@ -78,12 +72,7 @@ impl AlterTable {
                 }
                 "MODIFY" => {
                     let col_name = operations[i + 1].to_string();
-                    let col_type = match operations[i + 2].to_uppercase().as_str() {
-                        "INT" => DataType::Int,
-                        "STRING" => DataType::String,
-                        "BOOLEAN" => DataType::Boolean,
-                        _ => return Err(CQLError::InvalidSyntax),
-                    };
+                    let col_type = DataType::from_str(&operations[i + 2])?;
     
                     let allows_null = if operations.len() > i + 3 && operations[i + 3].to_uppercase() == "NOT" {
                         if operations.len() < i + 5 || operations[i + 4].to_uppercase() != "NULL" {

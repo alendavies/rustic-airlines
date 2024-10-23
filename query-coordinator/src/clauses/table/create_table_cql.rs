@@ -114,12 +114,7 @@ impl CreateTable {
             }
             
             let col_name = col_parts[0];
-            let data_type = match col_parts[1].to_uppercase().as_str() {
-                "INT" => DataType::Int,
-                "TEXT" => DataType::String,
-                "BOOLEAN" => DataType::Boolean,
-                _ => return Err(CQLError::InvalidSyntax),
-            };
+            let data_type = DataType::from_str(col_parts[1])?;
 
             if col_parts.get(2).map_or(false, |&s| s.to_uppercase() == "PRIMARY") {
                 if primary_key_def.is_some() {

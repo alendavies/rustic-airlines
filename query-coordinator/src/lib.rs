@@ -1,4 +1,4 @@
-pub mod clauses;
+﻿pub mod clauses;
 pub mod errors;
 mod logical_operator;
 mod operator;
@@ -498,25 +498,27 @@ impl QueryCoordinator {
         current: &mut String,
         tokens: &mut Vec<String>,
     ) -> usize {
-        let mut paren_count = 1; 
-
-        current.push('('); 
-        index += 1;
-
+        let mut paren_count = 1;
+        index += 1; // Skip the opening parenthesis
+    
+        // No agregamos el paréntesis de apertura al current
+    
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
             if char == '(' {
-                paren_count += 1; 
+                paren_count += 1;
+                current.push(char);
             } else if char == ')' {
-                paren_count -= 1; 
+                paren_count -= 1;
                 if paren_count == 0 {
-                    current.push(')'); 
+                    // No agregamos el paréntesis de cierre al current
                     index += 1;
                     break;
                 }
+                current.push(char);
+            } else {
+                current.push(char);
             }
-            
-            current.push(char);
             index += 1;
         }
 
