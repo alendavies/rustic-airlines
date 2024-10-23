@@ -6,7 +6,8 @@ pub struct Column {
     pub data_type: DataType,
     pub is_primary_key: bool,
     pub allows_null: bool,
-    pub is_clustering_column: bool
+    pub is_clustering_column: bool,
+    pub is_partition_key: bool,
 }
 
 impl Column {
@@ -16,7 +17,8 @@ impl Column {
             data_type,
             is_primary_key,
             allows_null,
-            is_clustering_column: false
+            is_clustering_column: false,
+            is_partition_key: false,
         }
     }
 }

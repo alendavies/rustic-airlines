@@ -32,25 +32,58 @@ impl QueryExecution {
             return Err(NodeError::CQLError(CQLError::TableAlreadyExist));
         }
 
-        // Retrieve columns and the primary key
+        // Retrieve columns and the partition keys
         let columns = table_to_insert.get_columns();
-        let primary_key = columns
-            .iter()
-            .find(|column| column.is_primary_key)
-            .ok_or(NodeError::CQLError(CQLError::Error))?;
-        // Find the position of the primary key
-        let pos = columns
-            .iter()
-            .position(|x| x == primary_key)
-            .ok_or(NodeError::CQLError(CQLError::Error))?;
 
+        let mut keys_index: Vec<usize> = columns
+            .iter()
+            .enumerate()
+            .filter_map(|(index, column)| {
+                if column.is_partition_key {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let clustering_columns_index: Vec<usize> = columns
+            .iter()
+            .enumerate()
+            .filter_map(|(index, column)| {
+                if column.is_clustering_column {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Verificar si hay al menos una partition key
+        if keys_index.is_empty() {
+            return Err(NodeError::CQLError(CQLError::Error));
+        }
+
+        // Clonar los valores del query insert
         let values = insert_query.values.clone();
-        let value_to_hash = values[pos].clone();
+        println!("los values son {:?}", values);
+        // Concatenar los valores de las columnas de la partition key para generar el hash
+        let value_to_hash = keys_index
+            .iter()
+            .map(|&index| values[index].clone())
+            .collect::<Vec<String>>()
+            .join("");
+
+        println!("el insert es {:?}", insert_query);
+
+        println!("el valor para hashear es {:?}", value_to_hash);
+        // Aquí puedes aplicar el algoritmo de hash al `value_to_hash` según lo necesites
 
         // Validate values before proceeding
         self.validate_values(columns, &values)?;
         let ip = node.get_partitioner().get_ip(value_to_hash)?;
 
+        println!("se lo tengo que mandar a {:?}", ip);
         // If not internode and the IP to insert is different, forward the insert
         if !internode && ip != node.get_ip() {
             let serialized_insert = insert_query.serialize();
@@ -70,12 +103,13 @@ impl QueryExecution {
             println!("no soy internodo y tengo que insertar en mi mismo (soy el coordinador)")
         }
 
+        keys_index.extend(&clustering_columns_index);
         // Perform the insert in this node
         QueryExecution::insert_in_this_node(
             values,
             node.get_ip(),
             insert_query.into_clause.table_name,
-            pos,
+            keys_index,
             node.actual_keyspace_name()
                 .ok_or(NodeError::KeyspaceError)?,
         )
@@ -86,7 +120,7 @@ impl QueryExecution {
         values: Vec<String>,
         ip: Ipv4Addr,
         table_name: String,
-        index_of_primary_key: usize,
+        index_of_keys: Vec<usize>, // Ahora acepta un vector de índices para las partition keys
         actual_keyspace_name: String,
     ) -> Result<(), NodeError> {
         // Convert the IP to a string to use in the folder name
@@ -122,15 +156,18 @@ impl QueryExecution {
         if let Ok(file) = file {
             let reader = BufReader::new(file);
 
-            // Iterate through the existing file to check for primary key conflicts
+            // Iterate through the existing file to check for partition key conflicts
             for line in reader.lines() {
                 let line = line.map_err(NodeError::IoError)?;
                 let row_values: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
 
-                // If the primary key matches, overwrite the old row
-                if row_values.get(index_of_primary_key)
-                    == Some(&values[index_of_primary_key].as_str())
-                {
+                // Check if all partition keys match
+                let all_keys_match = index_of_keys
+                    .iter()
+                    .all(|&index| row_values.get(index) == Some(&values[index].as_str()));
+
+                // If all partition keys match, overwrite the old row
+                if all_keys_match {
                     writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
                     key_exists = true;
                 } else {

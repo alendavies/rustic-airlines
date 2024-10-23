@@ -31,8 +31,8 @@ use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
 use query_coordinator::clauses::table::create_table_cql::CreateTable;
 use query_coordinator::clauses::types::column::Column;
 use query_coordinator::errors::CQLError;
-use query_coordinator::{CreateClientResponse, NeededResponses, QueryCoordinator};
 use query_coordinator::{GetTableName, Query};
+use query_coordinator::{NeededResponses, QueryCoordinator};
 use query_execution::QueryExecution;
 
 const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
