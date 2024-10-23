@@ -69,61 +69,110 @@ impl CreateTable {
     }
 
     // Constructor
-    pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
-        if query.len() < 4 || query[0].to_uppercase() != "CREATE" || query[1].to_uppercase() != "TABLE" {
+     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
+        
+        if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
         }
-        let table_name = query[2].to_string();
-    
-        // Eliminar paréntesis de apertura y cierre de columns_str
-        let columns_str = query[3].trim_matches(|c| c == '(' || c == ')');
-        let mut columns: Vec<Column> = Vec::new();
+
+        if tokens[0] != "CREATE" || tokens[1] != "TABLE" {
+            return Err(CQLError::InvalidSyntax);
+        }
+
+        let table_name = tokens[2].clone();
+        
+       
+        let mut column_def = &tokens[3][..];
+        if column_def.starts_with('(') {
+            column_def = &column_def[1..];
+        }
+        if column_def.ends_with(')') {
+            column_def = &column_def[..column_def.len() - 1];
+        }        
+        
+        let column_parts = split_preserving_parentheses(column_def);
+        
+        let mut columns = Vec::new();
+        let mut partition_key_cols = Vec::new();
+        let mut clustering_key_cols = Vec::new();
+        
         let mut primary_key_def: Option<String> = None;
-    
-        for col_def in columns_str.split(',') {
-            let col_parts: Vec<&str> = col_def.trim().split_whitespace().collect();
+        
+        for part in &column_parts {    
+            
+            if part.to_uppercase().starts_with("PRIMARY KEY") {
+                if primary_key_def.is_some() {
+                    return Err(CQLError::InvalidSyntax);
+                }
+                primary_key_def = Some(part.to_string());
+                continue;
+            }            
+            
+            let col_parts: Vec<&str> = part.split_whitespace().collect();
             if col_parts.len() < 2 {
                 return Err(CQLError::InvalidSyntax);
             }
-        
-            if col_parts[0].to_uppercase() == "PRIMARY" && col_parts[1].to_uppercase() == "KEY" {
-                primary_key_def = Some(col_parts[2..].join(" "));
-                continue;
-            }
-        
-            let col_name = col_parts[0].to_string();
-            let col_type = match col_parts[1].to_uppercase().as_str() {
+            
+            let col_name = col_parts[0];
+            let data_type = match col_parts[1].to_uppercase().as_str() {
                 "INT" => DataType::Int,
                 "TEXT" => DataType::String,
                 "BOOLEAN" => DataType::Boolean,
-                _ => return Err(CQLError::Error),
+                _ => return Err(CQLError::InvalidSyntax),
             };
-    
-            let mut is_primary_key = false;
-            let mut allows_null = true;
-            if col_parts.len() > 2 {
-                for part in &col_parts[2..] {
-                    match part.to_uppercase().as_str() {
-                        "PRIMARY" => is_primary_key = true,
-                        "KEY" => (), // Skip "KEY", part of "PRIMARY KEY"
-                        "NOT" => allows_null = false, // Assuming NOT NULL is specified
-                        _ => return Err(CQLError::InvalidSyntax),
-                    }
+
+            if col_parts.get(2).map_or(false, |&s| s.to_uppercase() == "PRIMARY") {
+                if primary_key_def.is_some() {
+                    return Err(CQLError::InvalidSyntax); 
+                }
+                primary_key_def = Some(format!("PRIMARY KEY ({})", col_name)); 
+            }
+            
+            columns.push(Column::new(col_name, data_type, false, true));
+        }
+        
+        if let Some(pk_def) = primary_key_def {
+            let pk_content = pk_def
+                .find("PRIMARY KEY")
+                .and_then(|index| {
+                    let substring = &pk_def[index + "PRIMARY KEY".len()..].trim(); 
+                    substring.strip_prefix("(").and_then(|s| s.strip_suffix(")").or(Some(s))) 
+                })
+                .ok_or(CQLError::InvalidSyntax)?; 
+                
+            let pk_parts = split_preserving_parentheses(pk_content);
+            
+            if let Some(first_part) = pk_parts.first() {
+                if first_part.starts_with('(') {
+                    // Clave de partición compuesta
+                    let partition_content = first_part
+                        .trim_start_matches('(')
+                        .trim_end_matches(')')
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .collect::<Vec<String>>();
+                    
+                    partition_key_cols.extend(partition_content);
+                } else {
+                    // Clave de partición simple
+                    partition_key_cols.push(first_part.to_string());
+                }
+                
+                // El resto son clustering keys
+                clustering_key_cols.extend(pk_parts.iter().skip(1).map(|s| s.trim().to_string()));
+            }
+            
+            for column in &mut columns {
+                if partition_key_cols.contains(&column.name) {
+                    column.is_primary_key = true;
+                } else if clustering_key_cols.contains(&column.name) {
+                    column.is_primary_key = true;
+                    column.is_clustering_column = true;
                 }
             }
-            columns.push(Column::new(&col_name, col_type, is_primary_key, allows_null)); 
         }
-    
-        if let Some(pk_def) = primary_key_def {
-            process_primary_key(&mut columns, &pk_def)?;
-        } else {
-            // IF NO EXPLICIT DEFINITION OF PRIMARY KEY, SEARCH COLUMN DEFINITION.
-            if !columns.iter().any(|c| c.is_primary_key) {
-                return Err(CQLError::InvalidSyntax);
-            }
-        }
-    
-        Ok(Self {
+        
+        Ok(CreateTable {
             name: table_name,
             columns,
         })
@@ -175,33 +224,42 @@ impl CreateTable {
   
 }
 
-fn process_primary_key(columns: &mut Vec<Column>, pk_def: &str) -> Result<(), CQLError> {
-        let pk_parts: Vec<&str> = pk_def.trim_matches(|c| c == '(' || c == ')').split(',').map(|s| s.trim()).collect();
-    
-        let partition_key_end = pk_parts.iter().position(|&s| !s.starts_with('(')).unwrap_or(pk_parts.len());
-    
-        // Mark partition key columns
-        for pk_col in &pk_parts[0..partition_key_end] {
-            let col_name = pk_col.trim_matches(|c| c == '(' || c == ')');
-            if let Some(col) = columns.iter_mut().find(|c| c.name == col_name) {
-                col.is_primary_key = true;
-            } else {
-                return Err(CQLError::InvalidSyntax);
+fn split_preserving_parentheses(input: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut current = String::new();
+    let mut paren_count = 0;
+            
+    for c in input.chars() {
+        match c {
+            '(' => {
+                paren_count += 1;
+                current.push(c);
             }
-        }
-    
-        // Mark clustering columns
-        for pk_col in &pk_parts[partition_key_end..] {
-            if let Some(col) = columns.iter_mut().find(|c| c.name == *pk_col) {
-                col.is_primary_key = true;
-                col.is_clustering_column = true;
-            } else {
-                return Err(CQLError::InvalidSyntax);
+            ')' => {
+                paren_count -= 1;
+                current.push(c);
+                if paren_count == 0 && !current.trim().is_empty() {
+                    result.push(current.trim().to_string());
+                    current = String::new();
+                }
             }
+            ',' if paren_count == 0 => {
+                if !current.trim().is_empty() {
+                    result.push(current.trim().to_string());
+                }
+                current = String::new();
+            }
+            _ => current.push(c),
         }
-    
-        Ok(())
     }
+            
+    if !current.trim().is_empty() {
+        result.push(current.trim().to_string());
+    }
+            
+    result
+}
+
 
 impl PartialEq for CreateTable {
     fn eq(&self, other: &Self) -> bool {

@@ -498,16 +498,28 @@ impl QueryCoordinator {
         current: &mut String,
         tokens: &mut Vec<String>,
     ) -> usize {
+        let mut paren_count = 1; 
+
+        current.push('('); 
         index += 1;
+
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            if char == ')' {
-                break;
+            if char == '(' {
+                paren_count += 1; 
+            } else if char == ')' {
+                paren_count -= 1; 
+                if paren_count == 0 {
+                    current.push(')'); 
+                    index += 1;
+                    break;
+                }
             }
+            
             current.push(char);
             index += 1;
         }
-        index += 1;
+
         tokens.push(current.clone());
         current.clear();
         index
@@ -532,3 +544,128 @@ impl QueryCoordinator {
         index
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_select_query() {
+        let coordinator = QueryCoordinator::new();
+        let query = "SELECT name, age FROM users WHERE age > 30;".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::Select(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::AllNodes
+            ));
+        }
+    }
+
+    #[test]
+    fn test_create_insert_query() {
+        let coordinator = QueryCoordinator::new();
+        let query = "INSERT INTO users (name, age) VALUES ('John', 28);".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::Insert(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::Specific(1)
+            ));
+        }
+    }
+
+    #[test]
+    fn test_create_update_query() {
+        let coordinator = QueryCoordinator::new();
+        let query = "UPDATE users SET age = 29 WHERE name = 'John';".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::Update(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::Specific(1)
+            ));
+        }
+    }
+
+    #[test]
+    fn test_create_delete_query() {
+        let coordinator = QueryCoordinator::new();
+        let query = "DELETE FROM users WHERE age < 20;".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::Delete(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::Specific(1)
+            ));
+        }
+    }
+
+    #[test]
+    fn test_create_table_query_success() {
+        let coordinator = QueryCoordinator::new();
+        let query = "CREATE TABLE t (a int, b int, c int, d int, PRIMARY KEY ((a, b), c, d));".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::CreateTable(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::AllNodes
+            ));
+        }
+    }
+
+    #[test]
+    fn test_create_keyspace_query_success() {
+        let coordinator = QueryCoordinator::new();
+        let query = "CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::CreateKeyspace(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::AllNodes
+            ));
+        }
+    }
+
+    #[test]
+    fn test_drop_keyspace_query_success() {
+        let coordinator = QueryCoordinator::new();
+        let query = "DROP KEYSPACE test;".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::DropKeyspace(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::AllNodes
+            ));
+        }
+    }
+
+    #[test]
+    fn test_alter_keyspace_query_success() {
+        let coordinator = QueryCoordinator::new();
+        let query = "ALTER KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};".to_string();
+        let result = coordinator.handle_query(query);
+        assert!(matches!(result, Ok(Query::AlterKeyspace(_))));
+
+        if let Ok(query) = result {
+            assert!(matches!(
+                query.needed_responses(),
+                NeededResponseCount::AllNodes
+            ));
+        }
+    }
+}
+
