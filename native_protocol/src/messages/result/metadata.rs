@@ -112,6 +112,31 @@ pub struct Metadata {
 }
 
 impl Metadata {
+    pub fn new(columns_count: u32, col_spec: Vec<(String, ColumnType)>) -> Self {
+        let flags = MetadataFlags {
+            global_tables_spec: false,
+            has_more_pages: false,
+            no_metadata: false,
+        };
+
+        let mut col_spec_i = Vec::new();
+
+        for col in col_spec {
+            col_spec_i.push(ColumnSpec {
+                keyspace: None,
+                table_name: None,
+                name: col.0,
+                type_: col.1,
+            });
+        }
+
+        Self {
+            flags,
+            columns_count,
+            global_table_spec: None,
+            col_spec_i,
+        }
+    }
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
 

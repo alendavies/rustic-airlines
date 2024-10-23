@@ -14,6 +14,9 @@ pub enum CQLError {
     InvalidTable,
     InvalidColumn,
     InvalidSyntax,
+    NoActualKeyspaceError,
+    TableAlreadyExist,
+    NoWhereCondition,
     Error,
 }
 
@@ -23,6 +26,18 @@ impl Display for CQLError {
             CQLError::InvalidTable => write!(f, "[InvalidTable]: [Error to process table]"),
             CQLError::InvalidColumn => write!(f, "[InvalidColumn]: [Error to process column]"),
             CQLError::InvalidSyntax => write!(f, "[InvalidSyntax]: [Error to process query]"),
+            CQLError::NoActualKeyspaceError => {
+                write!(f, "[NoActualKeyspace]: [There is not actual keyspace]")
+            }
+            CQLError::TableAlreadyExist => {
+                write!(f, "[TableAlreadyExist]: [The table already exist]")
+            }
+            CQLError::NoWhereCondition => {
+                write!(
+                    f,
+                    "[NoWhereCondition]: [The query has not WHERE and it is neccesary]"
+                )
+            }
             CQLError::Error => write!(f, "[Error]: [An error occurred]"),
         }
     }

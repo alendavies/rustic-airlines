@@ -1,3 +1,27 @@
+// Local modules first
+mod errors;
+mod internode_protocol_handler;
+mod keyspace;
+mod open_query_handler;
+mod query_execution;
+mod table;
+mod utils;
+
+// Standard libraries
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+// Internal project libraries
+use crate::table::Table;
+use crate::utils::{connect, send_message};
+
+// External libraries
+use driver::server::{handle_client_request, Request};
+use errors::NodeError;
+use internode_protocol_handler::InternodeProtocolHandler;
 use keyspace::Keyspace;
 use native_protocol::frame::Frame;
 use native_protocol::Serializable;
@@ -5,31 +29,17 @@ use open_query_handler::OpenQueryHandler;
 use partitioner::Partitioner;
 use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
 use query_coordinator::clauses::table::create_table_cql::CreateTable;
+use query_coordinator::clauses::types::column::Column;
 use query_coordinator::errors::CQLError;
-use query_coordinator::Query;
-use query_coordinator::{NeededResponses, QueryCoordinator};
-use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
-use std::thread;
-mod query_execution;
+use query_coordinator::{CreateClientResponse, NeededResponses, QueryCoordinator};
+use query_coordinator::{GetTableName, Query};
 use query_execution::QueryExecution;
-mod internode_protocol_handler;
-use internode_protocol_handler::InternodeProtocolHandler;
-mod errors;
-use errors::NodeError;
-mod keyspace;
-mod open_query_handler;
-mod table;
-mod utils;
-use crate::table::Table;
-use crate::utils::{connect, send_message};
-use driver::server::{handle_client_request, Request};
 
-const CLIENT_NODE_PORT_1: u16 = 0x4645; // Hexadecimal de "FE" (FERRUM) = 17989
-const INTERNODE_PORT: u16 = 0x554D; // Hexadecimal de "UM" (FERRUM) = 21837
+const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
+const INTERNODE_PORT: u16 = 0x554D; // Hexadecimal of "UM" (FERRUM) = 21837
 
+/// Represents a node within the distributed network.
+/// The node can manage keyspaces, tables, and handle connections between nodes and clients.
 pub struct Node {
     ip: Ipv4Addr,
     seeds_nodes: Vec<Ipv4Addr>,
@@ -41,6 +51,15 @@ pub struct Node {
 }
 
 impl Node {
+    /// Creates a new node with the given IP and a list of seed nodes.
+    ///
+    /// # Arguments
+    ///
+    /// * `ip` - The IP address of the node.
+    /// * `seeds_nodes` - A vector of IP addresses of the seed nodes.
+    ///
+    /// # Returns
+    /// Returns a `Node` instance or a `NodeError` if it fails.
     pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>) -> Result<Node, NodeError> {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip)?;
@@ -55,75 +74,105 @@ impl Node {
         })
     }
 
-    // pub fn add_response_to_open_query(&mut self, open_query_id: i32, response: String)->bool{
-    //     self.open_query_handler.add_response(open_query_id, response)
-    // }
-
-    pub fn add_open_query(&mut self, needed_responses: i32, connection: TcpStream) -> i32 {
-        self.open_query_handler
-            .new_open_query(needed_responses, connection)
+    /// Adds a new open query in the node.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The query to be opened.
+    /// * `connection` - The TCP connection with the client.
+    ///
+    /// # Returns
+    /// Returns the ID of the open query or a `NodeError`.
+    pub fn add_open_query(
+        &mut self,
+        query: Query,
+        connection: TcpStream,
+        table: Option<Table>,
+    ) -> Result<i32, NodeError> {
+        let all_nodes = self.get_how_many_nodes_i_know();
+        let needed_responses = match query.needed_responses() {
+            query_coordinator::NeededResponseCount::AllNodes => all_nodes,
+            query_coordinator::NeededResponseCount::Specific(specific_value) => {
+                specific_value as usize
+            }
+        };
+        Ok(self.open_query_handler.new_open_query(
+            needed_responses as i32,
+            connection,
+            query,
+            table,
+        ))
     }
 
-    pub fn remove_open_query(&mut self, id: i32) {
-        self.open_query_handler.remove_query(&id);
-    }
-
-    pub fn is_seed(&self) -> bool {
+    fn is_seed(&self) -> bool {
         self.seeds_nodes.contains(&self.ip)
     }
 
-    pub fn get_ip(&self) -> Ipv4Addr {
+    fn get_ip(&self) -> Ipv4Addr {
         self.ip
     }
 
-    pub fn get_ip_string(&self) -> String {
+    fn get_ip_string(&self) -> String {
         self.ip.to_string()
     }
 
-    pub fn get_how_many_nodes_i_know(&self) -> usize {
+    fn get_how_many_nodes_i_know(&self) -> usize {
         self.partitioner.get_nodes().len() - 1
     }
-    pub fn get_partitioner(&self) -> Partitioner {
+
+    fn get_partitioner(&self) -> Partitioner {
         self.partitioner.clone()
     }
 
-    // Método para verificar si no hay keyspace actual
-    pub fn has_no_actual_keyspace(&self) -> bool {
+    // Method to check if there is no current keyspace
+    fn has_no_actual_keyspace(&self) -> bool {
         self.actual_keyspace.is_none()
     }
 
-    // Método para obtener el nombre del keyspace actual si existe
-    pub fn actual_keyspace_name(&self) -> Result<String, NodeError> {
+    // Method to get the name of the current keyspace if it exists
+    fn actual_keyspace_name(&self) -> Option<String> {
         self.actual_keyspace
-            .as_ref() // Convierte Option<CreateKeyspace> en Option<&CreateKeyspace>
-            .map(|keyspace| keyspace.get_name()) // Obtiene el nombre si existe
-            .ok_or(NodeError::OtherError) // Si es None, devuelve un error
+            .as_ref() // Converts Option<CreateKeyspace> to Option<&CreateKeyspace>
+            .map(|keyspace| keyspace.get_name()) // Gets the name if it exists // If None, returns an error
     }
 
-    pub fn get_open_hanlde_query(&mut self) -> &mut OpenQueryHandler {
+    fn get_open_handle_query(&mut self) -> &mut OpenQueryHandler {
         &mut self.open_query_handler
     }
 
-    pub fn add_keyspace(&mut self, new_keyspace: CreateKeyspace) -> Result<(), NodeError> {
+    /// Adds a new keyspace to this node.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_keyspace` - The keyspace to be added.
+    ///
+    /// # Returns
+    /// Returns a `Result` with `Ok(())` if the keyspace was successfully added, or a `NodeError` if it failed.
+    fn add_keyspace(&mut self, new_keyspace: CreateKeyspace) -> Result<(), NodeError> {
         let new_keyspace = Keyspace::new(new_keyspace);
         if self.keyspaces.contains(&new_keyspace) {
-            return Err(NodeError::CQLError(CQLError::InvalidTable));
+            return Err(NodeError::KeyspaceError);
         }
         self.keyspaces.push(new_keyspace.clone());
         self.actual_keyspace = Some(new_keyspace);
         Ok(())
     }
 
-    pub fn remove_keyspace(&mut self, keyspace_name: String) -> Result<(), NodeError> {
+    fn remove_keyspace(&mut self, keyspace_name: String) -> Result<(), NodeError> {
         let mut keyspaces = self.keyspaces.clone();
 
         let index = keyspaces
             .iter()
             .position(|keyspace| keyspace.get_name() == keyspace_name)
-            .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
+            .ok_or(NodeError::KeyspaceError)?;
 
         keyspaces.remove(index);
-        if self.actual_keyspace_name().is_ok() && self.actual_keyspace_name()? == keyspace_name {
+        if self.actual_keyspace_name().is_some()
+            && self
+                .actual_keyspace_name()
+                .ok_or(NodeError::KeyspaceError)?
+                == keyspace_name
+        {
             self.actual_keyspace = None;
         }
 
@@ -131,65 +180,81 @@ impl Node {
         Ok(())
     }
 
-    pub fn add_table(&mut self, new_table: CreateTable) -> Result<(), NodeError> {
-        let mut new_keyspace = self.actual_keyspace.clone().ok_or(NodeError::OtherError)?;
+    fn add_table(&mut self, new_table: CreateTable) -> Result<(), NodeError> {
+        let mut new_keyspace = self
+            .actual_keyspace
+            .clone()
+            .ok_or(NodeError::KeyspaceError)?;
         new_keyspace.add_table(Table::new(new_table))?;
         self.actual_keyspace = Some(new_keyspace);
         Ok(())
     }
 
-    pub fn get_table(&self, table_name: String) -> Result<Table, NodeError> {
+    fn get_table(&self, table_name: String) -> Result<Table, NodeError> {
         self.actual_keyspace
             .clone()
-            .ok_or(NodeError::OtherError)?
-            .get_table(&table_name) // Clona el valor encontrado para devolverlo
+            .ok_or(NodeError::KeyspaceError)?
+            .get_table(&table_name) // Clones the found value to return it
     }
 
-    pub fn remove_table(&mut self, table_name: String) -> Result<(), NodeError> {
-        let keyspace = self.actual_keyspace.as_mut().ok_or(NodeError::OtherError)?;
+    fn remove_table(&mut self, table_name: String) -> Result<(), NodeError> {
+        let keyspace = self
+            .actual_keyspace
+            .as_mut()
+            .ok_or(NodeError::KeyspaceError)?;
         keyspace.remove_table(&table_name)?;
         Ok(())
     }
 
-    pub fn update_table(&mut self, new_table: CreateTable) -> Result<(), NodeError> {
-        // Obtiene una referencia mutable a `actual_keyspace` si existe
-        let keyspace = self.actual_keyspace.as_mut().ok_or(NodeError::OtherError)?;
+    fn update_table(&mut self, new_table: CreateTable) -> Result<(), NodeError> {
+        // Gets a mutable reference to `actual_keyspace` if it exists
+        let keyspace = self
+            .actual_keyspace
+            .as_mut()
+            .ok_or(NodeError::KeyspaceError)?;
 
-        // Encuentra la posición de la tabla en el vector `tables` del `Keyspace`
+        // Finds the position of the table in the `tables` vector of the `Keyspace`
         let index = keyspace
             .tables
             .iter()
             .position(|table| table.get_name() == new_table.get_name())
             .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
 
-        // Reemplaza la tabla existente en la posición encontrada con la nueva tabla
+        // Replaces the existing table at the found position with the new table
         keyspace.tables[index] = Table::new(new_table);
 
         Ok(())
     }
 
-    pub fn update_keyspace(&mut self, new_keyspace: Keyspace) -> Result<(), NodeError> {
-        // Encuentra la posición del keyspace en kesyapces
+    fn update_keyspace(&mut self, new_keyspace: Keyspace) -> Result<(), NodeError> {
+        // Finds the position of the keyspace in the `keyspaces`
         let index = self
             .keyspaces
             .iter()
             .position(|table| table.get_name() == new_keyspace.get_name())
-            .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
+            .ok_or(NodeError::KeyspaceError)?;
 
-        // Reemplaza la tabla existente en la posición encontrada con la nueva tabla
+        // Replaces the existing table at the found position with the new table
         self.keyspaces[index] = new_keyspace.clone();
 
-        //Actualizamos el actual si es que era ese
+        // Updates the current keyspace if it's the same
         if self.actual_keyspace.is_some()
-            && self.actual_keyspace.clone().ok_or(NodeError::OtherError)? == new_keyspace
+            && self
+                .actual_keyspace
+                .clone()
+                .ok_or(NodeError::KeyspaceError)?
+                == new_keyspace
         {
             self.actual_keyspace = Some(new_keyspace);
         }
         Ok(())
     }
-    pub fn table_already_exist(&self, table_name: String) -> Result<bool, NodeError> {
-        // Obtiene una referencia a `actual_keyspace` si existe; si no, devuelve un error
-        let keyspace = self.actual_keyspace.as_ref().ok_or(NodeError::OtherError)?;
+    fn table_already_exist(&self, table_name: String) -> Result<bool, NodeError> {
+        // Gets a reference to `actual_keyspace` if it exists; otherwise, returns an error
+        let keyspace = self
+            .actual_keyspace
+            .as_ref()
+            .ok_or(NodeError::KeyspaceError)?;
 
         for table in keyspace.get_tables() {
             if table.get_name() == table_name {
@@ -215,7 +280,7 @@ impl Node {
 
             if !is_seed {
                 if let Ok(stream) = connect(seed_ip, INTERNODE_PORT, Arc::clone(&connections)) {
-                    let stream = Arc::new(Mutex::new(stream)); // Encapsulamos en Arc<Mutex<TcpStream>>
+                    let stream = Arc::new(Mutex::new(stream)); // Encapsulates in Arc<Mutex<TcpStream>>
                     let message = InternodeProtocolHandler::create_protocol_message(
                         &node_guard.get_ip_string(),
                         0,
@@ -223,7 +288,6 @@ impl Node {
                         "_",
                         true,
                     );
-
                     let mut stream_guard = stream.lock()?;
                     send_message(&mut stream_guard, &message)?;
                     node_guard.partitioner.add_node(seed_ip)?;
@@ -231,16 +295,23 @@ impl Node {
             }
         }
 
-        // Crea un hilo para manejar las conexiones de nodos
+        // Creates a thread to handle node connections
         let node_connections_node = Arc::clone(&node);
         let node_connections = Arc::clone(&connections);
         let self_ip_node = self_ip.clone();
         let handle_node_thread = thread::spawn(move || {
-            Self::handle_node_connections(node_connections_node, node_connections, self_ip_node)
-                .unwrap_or_else(|e| eprintln!("Error in node connection handler: {:?}", e));
+            Self::handle_node_connections(
+                node_connections_node,
+                node_connections,
+                self_ip_node,
+                is_seed,
+            )
+            .unwrap_or_else(|err| {
+                eprintln!("Error in internode connections: {:?}", err); // Or handle the error as needed
+            });
         });
 
-        // Crea un hilo para manejar las conexiones de clientes
+        // Creates a thread to handle client connections
         let client_connections_node = Arc::clone(&node);
         let client_connections = Arc::clone(&connections);
         let self_ip_client = self_ip;
@@ -251,11 +322,15 @@ impl Node {
                 client_connections,
                 self_ip_client,
             )
-            .unwrap_or_else(|e| eprintln!("Error in client connection handler: {:?}", e));
+            .unwrap_or_else(|e| eprintln!("Error in client connections: {:?}", e));
         });
 
-        handle_node_thread.join().unwrap();
-        handle_client_thread.join().unwrap();
+        handle_node_thread
+            .join()
+            .map_err(|_| NodeError::InternodeError)?;
+        handle_client_thread
+            .join()
+            .map_err(|_| NodeError::ClientError)?;
 
         Ok(())
     }
@@ -264,6 +339,7 @@ impl Node {
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         self_ip: std::net::Ipv4Addr,
+        is_seed: bool,
     ) -> Result<(), NodeError> {
         let socket = SocketAddrV4::new(self_ip, INTERNODE_PORT);
         let listener = TcpListener::bind(socket)?;
@@ -272,7 +348,7 @@ impl Node {
             match stream {
                 Ok(stream) => {
                     let node_clone = Arc::clone(&node);
-                    let stream = Arc::new(Mutex::new(stream)); // Encapsulamos el stream en Arc<Mutex<TcpStream>>
+                    let stream = Arc::new(Mutex::new(stream)); // Encapsulates the stream in Arc<Mutex<TcpStream>>
                     let connections_clone = Arc::clone(&connections);
 
                     thread::spawn(move || {
@@ -280,14 +356,14 @@ impl Node {
                             node_clone,
                             stream,
                             connections_clone,
-                            true,
+                            is_seed,
                         ) {
-                            eprintln!("Error handling incoming node message: {:?}", e);
+                            eprintln!("{:?}", e);
                         }
                     });
                 }
                 Err(e) => {
-                    eprintln!("Error accepting node connection: {:?}", e);
+                    eprintln!("Error accepting internode connection {:?}", e);
                 }
             }
         }
@@ -300,7 +376,7 @@ impl Node {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         self_ip: std::net::Ipv4Addr,
     ) -> Result<(), NodeError> {
-        let socket = SocketAddrV4::new(self_ip, CLIENT_NODE_PORT_1); // Puerto específico para clientes
+        let socket = SocketAddrV4::new(self_ip, CLIENT_NODE_PORT); // Specific port for clients
         let listener = TcpListener::bind(socket)?;
 
         for stream in listener.incoming() {
@@ -310,20 +386,16 @@ impl Node {
                     let stream = Arc::new(Mutex::new(stream));
                     let connections_clone = Arc::clone(&connections);
 
-                    let handle = thread::spawn(move || {
+                    thread::spawn(move || {
                         match Node::handle_incoming_client_messages(
                             node_clone,
                             stream,
                             connections_clone,
                         ) {
-                            Ok(res) => {
-                                dbg!(&res);
-                            }
+                            Ok(_) => {}
                             Err(_) => todo!(),
                         };
                     });
-
-                    handle.join().unwrap();
                 }
                 Err(e) => {
                     eprintln!("Error accepting client connection: {:?}", e);
@@ -340,7 +412,7 @@ impl Node {
         sent_ip: Ipv4Addr,
         target_ip: Ipv4Addr,
     ) -> Result<(), NodeError> {
-        // Primero intentamos reutilizar o establecer una conexión
+        // First, try to reuse or establish a connection
         let mut tcp = connect(target_ip, INTERNODE_PORT, Arc::clone(&connections))?;
 
         let message = InternodeProtocolHandler::create_protocol_message(
@@ -355,38 +427,36 @@ impl Node {
         Ok(())
     }
 
-    // recibe los paquetes desde el cliente
-    pub fn handle_incoming_client_messages(
+    // Receives packets from the client
+    fn handle_incoming_client_messages(
         node: Arc<Mutex<Node>>,
         stream: Arc<Mutex<TcpStream>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
-        // Clona el stream bajo protección Mutex y crea el lector
+        // Clone the stream under Mutex protection and create the reader
         let mut stream_guard = stream.lock()?;
 
         let mut reader = BufReader::new(stream_guard.try_clone().map_err(NodeError::IoError)?);
 
         loop {
-            // Limpiamos el buffer
+            // Clean the buffer
             // let mut buffer = String::new();
 
             let mut buffer = [0; 2048];
 
-            // Ejecuta inserciones iniciales si es necesario
+            // Execute initial inserts if necessary
 
-            // Intentamos leer una línea
+            // Try to read a line
             // let bytes_read = reader.read_line(&mut buffer);
             let bytes_read = reader.read(&mut buffer);
 
             match bytes_read {
                 Ok(0) => {
-                    // Conexión cerrada
+                    // Connection closed
                     break;
                 }
                 Ok(_) => {
                     let query = handle_client_request(&buffer);
-
-                    dbg!(&query);
 
                     match query {
                         Request::Startup => {
@@ -395,23 +465,27 @@ impl Node {
                             stream_guard.flush()?;
                         }
                         Request::Query(query) => {
-                            // handle la query
+                            // Handle the query
                             let query_str = &query.query;
                             let client_stream = stream_guard.try_clone()?;
 
-                            Node::handle_query_execution(
+                            let result = Node::handle_query_execution(
                                 query_str,
                                 &node,
                                 connections.clone(),
                                 client_stream,
-                            )?;
+                            );
+
+                            if let Err(e) = result {
+                                eprintln!("{:?} when client sent {:?}", e, query_str);
+                            }
                         }
                     };
                 }
                 Err(e) => {
-                    // Otro tipo de error
-                    eprintln!("Error de lectura en handle_incoming_messages: {:?}", e);
-                    break;
+                    // Another type of error
+                    eprintln!("{:?}", e);
+                    return Err(NodeError::IoError(e));
                 }
             }
         }
@@ -419,13 +493,13 @@ impl Node {
         Ok(())
     }
 
-    pub fn handle_incoming_internode_messages(
+    fn handle_incoming_internode_messages(
         node: Arc<Mutex<Node>>,
         mut stream: Arc<Mutex<TcpStream>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
     ) -> Result<(), NodeError> {
-        // Clona el stream bajo protección Mutex y crea el lector
+        // Clone the stream under Mutex protection and create the reader
         let mut reader = {
             let stream_guard = stream.lock()?;
             BufReader::new(stream_guard.try_clone().map_err(NodeError::IoError)?)
@@ -434,26 +508,23 @@ impl Node {
         let internode_protocol_handler = InternodeProtocolHandler::new();
 
         loop {
-            // Limpiamos el buffer
+            // Clean the buffer
             let mut buffer = String::new();
 
-            // Ejecuta inserciones iniciales si es necesario
+            // Execute initial inserts if necessary
 
             // Self::execute_querys(&node, connections.clone())?;
 
-            // Intentamos leer una línea
+            // Try to read a line
             let bytes_read = reader.read_line(&mut buffer);
-
-            dbg!(&buffer);
-
             match bytes_read {
                 Ok(0) => {
-                    // Conexión cerrada
+                    // Connection closed
                     break;
                 }
                 Ok(_) => {
-                    // Procesa el comando con el protocolo, pasándole el buffer y los parámetros necesarios
-                    let buffer_cop = buffer.clone();
+                    // Process the command with the protocol, passing the buffer and the necessary parameters
+
                     let result = internode_protocol_handler.handle_command(
                         &node,
                         &buffer.trim().to_string(),
@@ -462,19 +533,16 @@ impl Node {
                         is_seed,
                     );
 
-                    // Si hay un error al manejar el comando, salimos del bucle
+                    // If there's an error handling the command, exit the loop
                     if let Err(e) = result {
-                        eprintln!(
-                            "Error handling command: {:?} cuando le pase {:?}",
-                            e, buffer_cop
-                        );
+                        eprintln!("{:?} when other node sent me {:?}", e, buffer);
                         break;
                     }
                 }
                 Err(e) => {
-                    // Otro tipo de error
-                    eprintln!("Error de lectura en handle_incoming_messages: {:?}", e);
-                    break;
+                    // Another type of error
+                    eprintln!("{:?}", e);
+                    return Err(NodeError::IoError(e));
                 }
             }
         }
@@ -486,38 +554,62 @@ impl Node {
         query_str: &str,
         node: &Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-        mut client_connection: TcpStream,
+        client_connection: TcpStream,
     ) -> Result<(), NodeError> {
         let query = QueryCoordinator::new()
             .handle_query(query_str.to_string())
             .map_err(NodeError::CQLError)?;
 
-        let query_id;
+        let open_query_id;
         {
             let mut guard_node = node.lock()?;
-            let all_nodes = guard_node.get_how_many_nodes_i_know();
-            let needed_responses = match query.needed_responses() {
-                query_coordinator::NeededResponseCount::AllNodes => all_nodes,
-                query_coordinator::NeededResponseCount::Specific(specific_value) => {
-                    specific_value as usize
+            let table_name = query.get_table_name();
+            let table = {
+                if let Some(table) = table_name {
+                    guard_node.get_table(table).ok()
+                } else {
+                    None
                 }
             };
-            query_id =
-                guard_node.add_open_query(needed_responses as i32, client_connection.try_clone()?);
+
+            open_query_id =
+                guard_node.add_open_query(query.clone(), client_connection.try_clone()?, table)?;
         }
 
         let response = QueryExecution::new(node.clone(), connections.clone()).execute(
             query.clone(),
             false,
-            query_id,
+            open_query_id,
         )?;
 
-        dbg!("query", &response);
-
-        if let Some(value) = response {
-            //creamos mensaje de respuesta del native
-            client_connection.write(value.as_bytes())?;
-            client_connection.flush()?;
+        if let Some(content) = response {
+            let mut guard_node = node.lock()?;
+            let keyspace_name = guard_node
+                .actual_keyspace_name()
+                .ok_or(NodeError::KeyspaceError)?;
+            let table_name = query.get_table_name();
+            let table = {
+                if let Some(table) = table_name {
+                    guard_node.get_table(table).ok()
+                } else {
+                    None
+                }
+            };
+            let columns: Vec<Column> = {
+                if let Some(table) = table {
+                    table.get_columns()
+                } else {
+                    vec![]
+                }
+            };
+            let query_handler = guard_node.get_open_handle_query();
+            InternodeProtocolHandler::add_response_to_open_query_and_send_response_if_closed(
+                query_handler,
+                &content,
+                open_query_id,
+                keyspace_name.clone(),
+                columns.clone(),
+            )?;
         }
 
         Ok(())

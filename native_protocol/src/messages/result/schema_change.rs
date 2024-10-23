@@ -26,6 +26,14 @@ pub struct Options {
     name: Option<String>,
 }
 
+impl Options {
+    pub fn new(keyspace: String, table: Option<String>) -> Self {
+        Options {
+            keyspace,
+            name: table,
+        }
+    }
+}
 #[derive(Debug, PartialEq)]
 ///  The result to a schema altering query
 /// (creation/update/drop of a keyspace/table/index).
@@ -35,6 +43,15 @@ pub struct SchemaChange {
     options: Options,
 }
 
+impl SchemaChange {
+    pub fn new(change_type: ChangeType, target: Target, options: Options) -> Self {
+        SchemaChange {
+            change_type,
+            target,
+            options,
+        }
+    }
+}
 impl Serializable for SchemaChange {
     /// Serializes the schema change to bytes.
     fn to_bytes(&self) -> Vec<u8> {
@@ -61,6 +78,8 @@ impl Serializable for SchemaChange {
         if let Some(name) = &self.options.name {
             bytes.extend_from_slice(&(name.len() as u16).to_be_bytes());
             bytes.extend_from_slice(name.as_bytes());
+        } else {
+            bytes.extend_from_slice([0u8; 2].as_ref());
         }
 
         bytes
@@ -169,13 +188,39 @@ mod tests {
     }
 
     #[test]
-    fn test_schema_change_from_bytes() {
+    fn test_schema_change_to_bytes_with_none() {
         let expected_result = Result::SchemaChange(SchemaChange {
             change_type: ChangeType::Created,
-            target: Target::Table,
+            target: Target::Keyspace,
             options: Options {
                 keyspace: "my_keyspace".to_string(),
-                name: Some("my_table".to_string()),
+                name: None,
+            },
+        });
+
+        let bytes = Result::to_bytes(&expected_result);
+
+        let mut expected_bytes = Vec::new();
+        expected_bytes.extend_from_slice(&(ResultCode::SchemaChange as u32).to_be_bytes());
+        expected_bytes.extend_from_slice(&("CREATED".len() as u16).to_be_bytes());
+        expected_bytes.extend_from_slice("CREATED".as_bytes());
+        expected_bytes.extend_from_slice(&("KEYSPACE".len() as u16).to_be_bytes());
+        expected_bytes.extend_from_slice("KEYSPACE".as_bytes());
+        expected_bytes.extend_from_slice(&("my_keyspace".len() as u16).to_be_bytes());
+        expected_bytes.extend_from_slice("my_keyspace".as_bytes());
+        expected_bytes.extend_from_slice([0u8; 2].as_ref());
+
+        assert_eq!(bytes, expected_bytes);
+    }
+
+    #[test]
+    fn test_schema_change_from_bytes_with_none() {
+        let expected_result = Result::SchemaChange(SchemaChange {
+            change_type: ChangeType::Created,
+            target: Target::Keyspace,
+            options: Options {
+                keyspace: "my_keyspace".to_string(),
+                name: None,
             },
         });
 
