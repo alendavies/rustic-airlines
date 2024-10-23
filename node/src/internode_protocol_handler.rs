@@ -13,7 +13,7 @@ use query_coordinator::clauses::types::column::Column;
 use query_coordinator::clauses::{
     delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update,
 };
-use query_coordinator::{CreateClientResponse, GetTableName};
+use query_coordinator::CreateClientResponse;
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
@@ -244,29 +244,25 @@ impl InternodeProtocolHandler {
             .get_query_mut(&open_query_id)
             .ok_or(NodeError::OtherError)?;
 
-        let table_name = open_query.get_query().get_table_name();
-        // let columns;
-
-        // if let Some(table_name) = table_name {
-        //     let table = guard_node.get_table(table_name)?;
-        //     columns = table.get_columns();
-        // } else {
-        //     columns = Vec::new();
-        // }
-
-        self.add_response_to_open_query(
+        let columns = {
+            if let Some(table) = open_query.get_table() {
+                table.get_columns()
+            } else {
+                vec![]
+            }
+        };
+        Self::add_response_to_open_query_and_send_response_if_closed(
             query_handler,
             content,
             open_query_id,
             keyspace_name,
-            vec![],
+            columns,
         )?;
 
         Ok(())
     }
 
-    fn add_response_to_open_query(
-        &self,
+    pub fn add_response_to_open_query_and_send_response_if_closed(
         query_handler: &mut OpenQueryHandler,
         content: &str,
         open_query_id: i32,
@@ -276,11 +272,6 @@ impl InternodeProtocolHandler {
         if let Some(open_query) =
             query_handler.add_response_and_get_if_closed(open_query_id, content.to_string())
         {
-            println!(
-                "cerro la query y el contendio es {:?}",
-                content.replace("/", "\n")
-            );
-
             let mut connection = open_query.get_connection();
 
             let keyspace_name = keyspace_name;

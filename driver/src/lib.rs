@@ -41,7 +41,6 @@ impl CassandraClient {
     /// Execute a query.
     pub fn execute(&mut self, query: &str) -> Result<QueryResult, ClientError> {
         let result = self.send_query(query)?;
-
         match result {
             Frame::Result(res) => Ok(QueryResult::Result(res)),
             Frame::Error(err) => Ok(QueryResult::Error(err)),

@@ -32,7 +32,7 @@ impl QueryExecution {
     /// Executes an `UPDATE` operation. This function is public only for internal use
     /// within the library (defined as `pub(crate)`).
     pub(crate) fn execute_update(
-        &self,
+        &mut self,
         update_query: Update,
         internode: bool,
         open_query_id: i32,
@@ -74,6 +74,10 @@ impl QueryExecution {
                 )?;
                 return Ok(());
             }
+        }
+
+        if !internode {
+            self.execution_finished_itself = true;
         }
 
         // Execute the update on this node

@@ -28,6 +28,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct QueryExecution {
     node_that_execute: Arc<Mutex<Node>>,
     connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+    execution_finished_itself: bool,
 }
 
 impl QueryExecution {
@@ -39,17 +40,18 @@ impl QueryExecution {
         QueryExecution {
             node_that_execute,
             connections,
+            execution_finished_itself: false,
         }
     }
 
     // Método para ejecutar la query según su tipo
     pub fn execute(
-        &self,
+        &mut self,
         query: Query,
         internode: bool,
         open_query_id: i32,
     ) -> Result<Option<String>, NodeError> {
-        let mut content: Result<Option<String>, NodeError> = Ok(None);
+        let mut content: Result<Option<String>, NodeError> = Ok(Some(String::from("_")));
 
         match query {
             Query::Select(select_query) => {
@@ -102,12 +104,14 @@ impl QueryExecution {
         }
 
         if internode {
-            let protocol_response = InternodeProtocolHandler::create_protocol_response(
+            let response = InternodeProtocolHandler::create_protocol_response(
                 "OK",
                 &content?.unwrap_or("_".to_string()),
                 open_query_id,
             );
-            Ok(Some(protocol_response))
+            Ok(Some(response))
+        } else if self.execution_finished_itself {
+            content
         } else {
             Ok(None)
         }

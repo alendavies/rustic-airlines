@@ -29,9 +29,10 @@ use open_query_handler::OpenQueryHandler;
 use partitioner::Partitioner;
 use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
 use query_coordinator::clauses::table::create_table_cql::CreateTable;
+use query_coordinator::clauses::types::column::Column;
 use query_coordinator::errors::CQLError;
-use query_coordinator::Query;
-use query_coordinator::{NeededResponses, QueryCoordinator};
+use query_coordinator::{CreateClientResponse, NeededResponses, QueryCoordinator};
+use query_coordinator::{GetTableName, Query};
 use query_execution::QueryExecution;
 
 const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
@@ -86,6 +87,7 @@ impl Node {
         &mut self,
         query: Query,
         connection: TcpStream,
+        table: Option<Table>,
     ) -> Result<i32, NodeError> {
         let all_nodes = self.get_how_many_nodes_i_know();
         let needed_responses = match query.needed_responses() {
@@ -94,9 +96,12 @@ impl Node {
                 specific_value as usize
             }
         };
-        Ok(self
-            .open_query_handler
-            .new_open_query(needed_responses as i32, connection, query))
+        Ok(self.open_query_handler.new_open_query(
+            needed_responses as i32,
+            connection,
+            query,
+            table,
+        ))
     }
 
     fn is_seed(&self) -> bool {
@@ -472,11 +477,7 @@ impl Node {
                             );
 
                             if let Err(e) = result {
-                                eprintln!(
-                                    "{:?} when client sent {:?}",
-                                    e,
-                                    String::from_utf8(buffer.to_vec())
-                                );
+                                eprintln!("{:?} when client sent {:?}", e, query_str);
                             }
                         }
                     };
@@ -553,28 +554,62 @@ impl Node {
         query_str: &str,
         node: &Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-        mut client_connection: TcpStream,
+        client_connection: TcpStream,
     ) -> Result<(), NodeError> {
         let query = QueryCoordinator::new()
             .handle_query(query_str.to_string())
             .map_err(NodeError::CQLError)?;
 
-        let query_id;
+        let open_query_id;
         {
             let mut guard_node = node.lock()?;
-            query_id = guard_node.add_open_query(query.clone(), client_connection.try_clone()?)?;
+            let table_name = query.get_table_name();
+            let table = {
+                if let Some(table) = table_name {
+                    guard_node.get_table(table).ok()
+                } else {
+                    None
+                }
+            };
+
+            open_query_id =
+                guard_node.add_open_query(query.clone(), client_connection.try_clone()?, table)?;
         }
 
         let response = QueryExecution::new(node.clone(), connections.clone()).execute(
             query.clone(),
             false,
-            query_id,
+            open_query_id,
         )?;
 
-        if let Some(value) = response {
-            // Create a native response message
-            client_connection.write(value.as_bytes())?;
-            client_connection.flush()?;
+        if let Some(content) = response {
+            let mut guard_node = node.lock()?;
+            let keyspace_name = guard_node
+                .actual_keyspace_name()
+                .ok_or(NodeError::KeyspaceError)?;
+            let table_name = query.get_table_name();
+            let table = {
+                if let Some(table) = table_name {
+                    guard_node.get_table(table).ok()
+                } else {
+                    None
+                }
+            };
+            let columns: Vec<Column> = {
+                if let Some(table) = table {
+                    table.get_columns()
+                } else {
+                    vec![]
+                }
+            };
+            let query_handler = guard_node.get_open_handle_query();
+            InternodeProtocolHandler::add_response_to_open_query_and_send_response_if_closed(
+                query_handler,
+                &content,
+                open_query_id,
+                keyspace_name.clone(),
+                columns.clone(),
+            )?;
         }
 
         Ok(())

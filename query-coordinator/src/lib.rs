@@ -156,7 +156,6 @@ impl CreateClientResponse for Query {
     ) -> Result<Frame, CQLError> {
         let query_type = match self {
             Query::Select(_) => {
-                println!("las columnas son {:?} y las rows son {:?}", columns, rows);
                 let necessary_columns: Vec<_> = rows
                     .get(0)
                     .ok_or(CQLError::InvalidSyntax)?
@@ -172,7 +171,6 @@ impl CreateClientResponse for Query {
                             .ok_or(CQLError::Error)?;
 
                         let b = ColumnType::from(a.data_type.clone());
-
                         Ok((name.to_string(), b))
                     })
                     .collect();
@@ -181,7 +179,7 @@ impl CreateClientResponse for Query {
 
                 let mut records = Vec::new();
 
-                for row in rows {
+                for row in rows[1..].to_vec() {
                     let mut record = BTreeMap::new();
 
                     for (idx, value) in row.split(",").enumerate() {
@@ -196,7 +194,6 @@ impl CreateClientResponse for Query {
                 }
 
                 let rows = Rows::new(col_types, records);
-
                 Frame::Result(result::Result::Rows(rows))
             }
             Query::Insert(_) => Frame::Result(result::Result::Void),

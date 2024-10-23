@@ -11,7 +11,7 @@ impl QueryExecution {
     /// Executes a SELECT operation. This function is public only for internal use
     /// within the library (defined as `pub(crate)`).
     pub(crate) fn execute_select(
-        &self,
+        &mut self,
         select_query: Select,
         internode: bool,
         open_query_id: i32,
@@ -53,8 +53,14 @@ impl QueryExecution {
                     true,
                     open_query_id,
                 )?;
+                return Ok(vec![]);
             }
         }
+
+        if !internode {
+            self.execution_finished_itself = true;
+        }
+
         // Execute the SELECT locally if this is not an internode operation
         let result = self.execute_select_in_this_node(select_query, table)?;
         Ok(result)

@@ -16,7 +16,7 @@ impl QueryExecution {
     /// Executes an INSERT operation. This function is public only for internal use
     /// within the library (defined as `pub(crate)`).
     pub(crate) fn execute_insert(
-        &self,
+        &mut self,
         insert_query: Insert,
         table_to_insert: Table,
         internode: bool,
@@ -63,6 +63,11 @@ impl QueryExecution {
                 open_query_id,
             )?;
             return Ok(());
+        }
+
+        if !internode {
+            self.execution_finished_itself = true;
+            println!("no soy internodo y tengo que insertar en mi mismo (soy el coordinador)")
         }
 
         // Perform the insert in this node
