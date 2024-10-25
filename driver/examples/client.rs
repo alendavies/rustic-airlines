@@ -27,15 +27,16 @@ fn main() {
         )",
 
         // // // Insertar algunos elementos
-        "INSERT INTO users (user_id, age, weight) VALUES (1, 40, 80)",
+        "INSERT INTO users (user_id, age, last_name , weight) VALUES (1, 40, 'perrazo',80)",
         "INSERT INTO users (user_id, age, weight) VALUES (2, 40, 80)",
         "INSERT INTO users (user_id, age, weight) VALUES (3, 40, 90)",
         "INSERT INTO users (user_id, first_name, email, age, weight) VALUES (1, 'Emily', 'emily.davis@example.com', 28, 91)",
         //"DELETE FROM users WHERE user_id = 1 AND age < 30",
-        "DELETE FROM users WHERE user_id = 1 AND age < 30 AND age > 27",
-        "UPDATE users SET first_name = 'Narizon' WHERE user_id = 2 AND age = 40 AND weight = 80",
+        "DELETE FROM users WHERE user_id = 1 AND age < 30",
+        "DELETE last_name FROM users WHERE user_id = 1 AND age > 30",
+        //"UPDATE users SET first_name = 'Narizon' WHERE user_id = 2 AND age = 40 AND weight = 80",
         //"UPDATE users SET age = 21 WHERE user_id = 2 AND age = 40 ",
-        "SELECT age FROM users WHERE user_id = 1 AND weight > 75 AND weight < 450",
+        //"SELECT age FROM users WHERE user_id = 1 AND weight > 75 AND weight < 450",
         //"DELETE FROM users WHERE user_id = 1 AND age < 30 AND email = 's'"
         // "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (789, 'Daniel', 'Garcia', 'daniel.garcia@example.com', 22)",
         // "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (190, 'Sophia', 'Martinez', 'sophia.martinez@example.com', 31)",
