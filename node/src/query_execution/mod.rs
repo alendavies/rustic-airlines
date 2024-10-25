@@ -54,70 +54,87 @@ impl QueryExecution {
     ) -> Result<Option<String>, NodeError> {
         let mut content: Result<Option<String>, NodeError> = Ok(Some(String::from("_")));
 
-        match query {
-            Query::Select(select_query) => {
-                match self.execute_select(select_query, internode, open_query_id) {
-                    Ok(select_querys) => {
-                        content = Ok(Some(select_querys.join("/")));
-                    }
-                    Err(e) => {
-                        // Aquí podrías mapear a un error específico de `NodeError`
-                        return Err(e);
+        let query_result = {
+            match query {
+                Query::Select(select_query) => {
+                    match self.execute_select(select_query, internode, open_query_id) {
+                        Ok(select_querys) => {
+                            content = Ok(Some(select_querys.join("/")));
+                            Ok(())
+                        }
+                        Err(e) => {
+                            // Aquí podrías mapear a un error específico de `NodeError`
+                            Err(e)
+                        }
                     }
                 }
-            }
-            Query::Insert(insert_query) => {
-                let table_name = insert_query.into_clause.table_name.clone();
-                let table = self.node_that_execute.lock()?.get_table(table_name)?;
-                self.execute_insert(insert_query, table, internode, open_query_id)?;
-            }
-            Query::Update(update_query) => {
-                self.execute_update(update_query, internode, open_query_id)?;
-            }
-            Query::Delete(delete_query) => {
-                self.execute_delete(delete_query, internode, open_query_id)?;
-            }
-            Query::CreateTable(create_table) => {
-                if self
-                    .node_that_execute
-                    .lock()?
-                    .table_already_exist(create_table.get_name())?
-                {
-                    return Err(NodeError::CQLError(CQLError::InvalidTable));
+                Query::Insert(insert_query) => {
+                    let table_name = insert_query.into_clause.table_name.clone();
+                    let table = self.node_that_execute.lock()?.get_table(table_name)?;
+                    self.execute_insert(insert_query, table, internode, open_query_id)
                 }
-                self.execute_create_table(create_table, internode, open_query_id)?;
+                Query::Update(update_query) => {
+                    self.execute_update(update_query, internode, open_query_id)
+                }
+                Query::Delete(delete_query) => {
+                    self.execute_delete(delete_query, internode, open_query_id)
+                }
+                Query::CreateTable(create_table) => {
+                    if self
+                        .node_that_execute
+                        .lock()?
+                        .table_already_exist(create_table.get_name())?
+                    {
+                        return Err(NodeError::CQLError(CQLError::InvalidTable));
+                    }
+                    self.execute_create_table(create_table, internode, open_query_id)
+                }
+                Query::DropTable(drop_table) => {
+                    self.execute_drop_table(drop_table, internode, open_query_id)
+                }
+                Query::AlterTable(alter_table) => {
+                    self.execute_alter_table(alter_table, internode, open_query_id)
+                }
+                Query::CreateKeyspace(create_keyspace) => {
+                    self.execute_create_keyspace(create_keyspace, internode, open_query_id)
+                }
+                Query::DropKeyspace(drop_keyspace) => {
+                    self.execute_drop_keyspace(drop_keyspace, internode, open_query_id)
+                }
+                Query::AlterKeyspace(alter_keyspace) => {
+                    self.execute_alter_keyspace(alter_keyspace, internode, open_query_id)
+                }
+                Query::Use(use_cql) => self.execute_use(use_cql, internode, open_query_id),
             }
-            Query::DropTable(drop_table) => {
-                self.execute_drop_table(drop_table, internode, open_query_id)?;
-            }
-            Query::AlterTable(alter_table) => {
-                self.execute_alter_table(alter_table, internode, open_query_id)?;
-            }
-            Query::CreateKeyspace(create_keyspace) => {
-                self.execute_create_keyspace(create_keyspace, internode, open_query_id)?;
-            }
-            Query::DropKeyspace(drop_keyspace) => {
-                self.execute_drop_keyspace(drop_keyspace, internode, open_query_id)?;
-            }
-            Query::AlterKeyspace(alter_keyspace) => {
-                self.execute_alter_keyspace(alter_keyspace, internode, open_query_id)?;
-            }
-            Query::Use(use_cql) => {
-                self.execute_use(use_cql, internode, open_query_id)?;
-            }
-        }
+        };
 
         if internode {
-            let response = InternodeProtocolHandler::create_protocol_response(
-                "OK",
-                &content?.unwrap_or("_".to_string()),
-                open_query_id,
-            );
+            let response = {
+                match query_result {
+                    Ok(_) => InternodeProtocolHandler::create_protocol_response(
+                        "OK",
+                        &content?.unwrap_or("_".to_string()),
+                        open_query_id,
+                    ),
+                    Err(_) => InternodeProtocolHandler::create_protocol_response(
+                        "ERROR",
+                        &content?.unwrap_or("_".to_string()),
+                        open_query_id,
+                    ),
+                }
+            };
             Ok(Some(response))
-        } else if self.execution_finished_itself {
-            content
         } else {
-            Ok(None)
+            match query_result {
+                Ok(_) => {
+                    if self.execution_finished_itself {
+                        return content;
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Err(e) => return Err(e),
+            }
         }
     }
 

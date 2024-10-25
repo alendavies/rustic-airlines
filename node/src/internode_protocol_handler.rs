@@ -1,6 +1,8 @@
 use crate::open_query_handler::OpenQueryHandler;
 use crate::utils::{connect, send_message};
 use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
+use native_protocol::frame::Frame;
+use native_protocol::messages::error;
 use native_protocol::Serializable;
 use query_creator::clauses::keyspace::{
     alter_keyspace_cql::AlterKeyspace, create_keyspace_cql::CreateKeyspace,
@@ -244,10 +246,33 @@ impl InternodeProtocolHandler {
         let status = parts[1];
         let content = parts[2];
 
-        if status != "OK" {
-            return Err(NodeError::OtherError);
+        match status {
+            "OK" => {
+                self.process_ok_response(query_handler, content, open_query_id, keyspace_name)?;
+            }
+            "ERROR" => {
+                // Aquí puedes agregar la lógica para manejar el caso "ERROR".
+                // Por ejemplo, puedes retornar un error específico o realizar otra acción.
+                self.process_error_response(query_handler, open_query_id)?;
+            }
+            _ => {
+                // En caso de que el estado no sea ni "OK" ni "ERROR", podemos manejarlo
+                // como un error de protocolo o una situación inesperada.
+                return Err(NodeError::InternodeProtocolError);
+            }
         }
 
+        Ok(())
+    }
+
+    /// Procesa la respuesta cuando el estado es "OK"
+    fn process_ok_response(
+        &self,
+        query_handler: &mut OpenQueryHandler,
+        content: &str,
+        open_query_id: i32,
+        keyspace_name: String,
+    ) -> Result<(), NodeError> {
         let open_query = query_handler
             .get_query_mut(&open_query_id)
             .ok_or(NodeError::OtherError)?;
@@ -259,6 +284,7 @@ impl InternodeProtocolHandler {
                 vec![]
             }
         };
+
         Self::add_response_to_open_query_and_send_response_if_closed(
             query_handler,
             content,
@@ -268,6 +294,15 @@ impl InternodeProtocolHandler {
         )?;
 
         Ok(())
+    }
+
+    /// Procesa la respuesta cuando el estado es "ERROR"
+    fn process_error_response(
+        &self,
+        query_handler: &mut OpenQueryHandler,
+        open_query_id: i32,
+    ) -> Result<(), NodeError> {
+        Self::close_query_and_send_error_frame(query_handler, open_query_id)
     }
 
     pub fn add_response_to_open_query_and_send_response_if_closed(
@@ -291,6 +326,24 @@ impl InternodeProtocolHandler {
             )?;
             println!("el frame a devolver es {:?}", frame);
             connection.write(&frame.to_bytes())?;
+            Ok(())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn close_query_and_send_error_frame(
+        query_handler: &mut OpenQueryHandler,
+        open_query_id: i32,
+    ) -> Result<(), NodeError> {
+        // Verificamos si la consulta está cerrada y necesitamos enviar un frame de error.
+        if let Some(open_query) = query_handler.close_query_and_get_if_closed(open_query_id) {
+            let mut connection = open_query.get_connection();
+
+            // Crear un frame de error para el cliente.
+            let error_frame = Frame::Error(error::Error::ServerError("".to_string()));
+
+            connection.write(&error_frame.to_bytes())?;
             Ok(())
         } else {
             Ok(())

@@ -46,7 +46,7 @@ fn main() {
         "INSERT INTO users (user_id, first_name, email, age, weight) VALUES (1, 'Emily', 'emily.davis@example.com', 28, 91)",
         //"DELETE FROM users WHERE user_id = 1 AND age < 30",
         "DELETE FROM users WHERE user_id = 1 AND age < 30",
-        "DELETE last_name FROM users WHERE user_id = 1 AND age > 30",
+        "DELETE FROM users WHERE user_id = 1 AND age > 30",
         //"UPDATE users SET first_name = 'Narizon' WHERE user_id = 2 AND age = 40 AND weight = 80",
         //"UPDATE users SET age = 21 WHERE user_id = 2 AND age = 40 ",
         //"SELECT age FROM users WHERE user_id = 1 AND weight > 75 AND weight < 450",

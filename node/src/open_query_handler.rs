@@ -52,6 +52,9 @@ impl OpenQuery {
         self.actual_responses += 1;
     }
 
+    fn close(&mut self) {
+        self.actual_responses = self.needed_responses;
+    }
     /// Checks if the query has received all needed responses.
     ///
     /// # Returns
@@ -190,6 +193,7 @@ impl OpenQueryHandler {
     ///
     /// # Returns
     /// The `OpenQuery` if it has been closed, or `None` if it is still open.
+    ///
     pub fn add_response_and_get_if_closed(
         &mut self,
         open_query_id: i32,
@@ -200,6 +204,22 @@ impl OpenQueryHandler {
                 query.add_response(response);
 
                 if query.is_close() {
+                    self.queries.remove(&open_query_id)
+                } else {
+                    None
+                }
+            }
+            None => None,
+        }
+    }
+
+    pub fn close_query_and_get_if_closed(&mut self, open_query_id: i32) -> Option<OpenQuery> {
+        match self.get_query_mut(&open_query_id) {
+            Some(query) => {
+                query.close(); // Marca la consulta como cerrada.
+
+                if query.is_close() {
+                    // Si la consulta está cerrada, se elimina y se devuelve.
                     self.queries.remove(&open_query_id)
                 } else {
                     None

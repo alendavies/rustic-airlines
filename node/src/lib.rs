@@ -24,6 +24,7 @@ use errors::NodeError;
 use internode_protocol_handler::InternodeProtocolHandler;
 use keyspace::Keyspace;
 use native_protocol::frame::Frame;
+use native_protocol::messages::error;
 use native_protocol::Serializable;
 use open_query_handler::OpenQueryHandler;
 use partitioner::Partitioner;
@@ -377,7 +378,7 @@ impl Node {
                     });
                 }
                 Err(e) => {
-                    eprintln!("Error accepting internode connection {:?}", e);
+                    eprintln!("Error accepting internode connection: {:?}", e);
                 }
             }
         }
@@ -397,17 +398,31 @@ impl Node {
             match stream {
                 Ok(stream) => {
                     let node_clone = Arc::clone(&node);
-                    let stream = Arc::new(Mutex::new(stream));
+                    let stream = Arc::new(Mutex::new(stream.try_clone()?)); // Cloning the stream
                     let connections_clone = Arc::clone(&connections);
 
                     thread::spawn(move || {
                         match Node::handle_incoming_client_messages(
                             node_clone,
-                            stream,
+                            stream.clone(),
                             connections_clone,
                         ) {
                             Ok(_) => {}
-                            Err(_) => todo!(),
+                            Err(e) => {
+                                eprintln!("Error handling query: [{:?}]", e);
+
+                                let frame = Frame::Error(error::Error::ServerError("".to_string()));
+                                if let Ok(mut client_stream) = stream.lock() {
+                                    if let Err(write_err) = client_stream.write(&frame.to_bytes()) {
+                                        eprintln!(
+                                            "Error writing to client stream: {:?}",
+                                            write_err
+                                        );
+                                    }
+                                } else {
+                                    eprintln!("Error locking client stream");
+                                }
+                            }
                         };
                     });
                 }
@@ -492,14 +507,14 @@ impl Node {
 
                             if let Err(e) = result {
                                 eprintln!("{:?} when client sent {:?}", e, query_str);
+                                return Err(e);
                             }
                         }
                     };
                 }
-                Err(e) => {
+                Err(_) => {
                     // Another type of error
-                    eprintln!("{:?}", e);
-                    return Err(NodeError::IoError(e));
+                    return Err(NodeError::OtherError);
                 }
             }
         }
@@ -553,10 +568,9 @@ impl Node {
                         break;
                     }
                 }
-                Err(e) => {
+                Err(_) => {
                     // Another type of error
-                    eprintln!("{:?}", e);
-                    return Err(NodeError::IoError(e));
+                    return Err(NodeError::OtherError);
                 }
             }
         }
