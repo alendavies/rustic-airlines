@@ -153,6 +153,16 @@ impl Condition {
                     if is_number(y) && !is_number(x) || !is_number(y) && is_number(x) {
                         return Err(CQLError::InvalidSyntax);
                     }
+                    if is_number(x) && is_number(y) {
+                        let x: i32 = x.parse().map_err(|_| CQLError::InvalidSyntax)?;
+                        let y: i32 = y.parse().map_err(|_| CQLError::InvalidSyntax)?;
+                        match operator {
+                            Operator::Lesser => return Ok(x < y),
+                            Operator::Greater => return Ok(x > y),
+                            Operator::Equal => return Ok(x == y),
+                        }
+                    }
+
                     match operator {
                         Operator::Lesser => Ok(x < y),
                         Operator::Greater => Ok(x > y),
@@ -191,20 +201,32 @@ impl Condition {
                 }
             },
         };
+        println!("{:?}", op_result);
         op_result
     }
 
     pub fn serialize(&self) -> String {
         match self {
-            Condition::Simple { field, operator, value } => {
+            Condition::Simple {
+                field,
+                operator,
+                value,
+            } => {
                 format!("{} {} {}", field, operator.serialize(), value)
             }
-            Condition::Complex { left, operator, right } => {
-                match operator {
-                    LogicalOperator::Not => format!("{} ({})", operator.serialize(), right.serialize()),
-                    _ => format!("({}) {} ({})", left.as_ref().unwrap().serialize(), operator.serialize(), right.serialize()),
-                }
-            }
+            Condition::Complex {
+                left,
+                operator,
+                right,
+            } => match operator {
+                LogicalOperator::Not => format!("{} {}", operator.serialize(), right.serialize()),
+                _ => format!(
+                    "{} {} {}",
+                    left.as_ref().unwrap().serialize(),
+                    operator.serialize(),
+                    right.serialize()
+                ),
+            },
         }
     }
 
@@ -250,7 +272,6 @@ impl Condition {
         Err(CQLError::InvalidSyntax)
     }
 }
-
 
 #[cfg(test)]
 mod tests {

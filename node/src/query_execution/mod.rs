@@ -179,6 +179,9 @@ impl QueryExecution {
         }
 
         for (column, value) in columns.iter().zip(values) {
+            if value == "" {
+                continue;
+            }
             if !column.data_type.is_valid_value(value) {
                 return Err(CQLError::InvalidSyntax);
             }
@@ -215,12 +218,12 @@ impl QueryExecution {
         &self,
         table: &Table,
         columns: &[String],
-        only_primary_key: bool,
+        only_partitioner_key: bool,
     ) -> HashMap<String, String> {
         let mut column_value_map = HashMap::new();
         for (i, column) in table.get_columns().iter().enumerate() {
             if let Some(value) = columns.get(i) {
-                if column.is_primary_key || !only_primary_key {
+                if column.is_partition_key || column.is_clustering_column || !only_partitioner_key {
                     column_value_map.insert(column.name.clone(), value.clone());
                 }
             }

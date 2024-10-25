@@ -1,1 +1,2 @@
-user_id,first_name,last_name,email,age
+user_id,first_name,last_name,email,age,weight
+3,,,,40,90

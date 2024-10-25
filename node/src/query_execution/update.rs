@@ -20,8 +20,11 @@ impl QueryExecution {
         for (column_name, value) in set_clause.get_pairs() {
             for column in &columns {
                 if *column_name == column.name {
+                    if column.is_partition_key || column.is_clustering_column {
+                        return Err(NodeError::CQLError(CQLError::InvalidCondition));
+                    }
                     if !column.data_type.is_valid_value(value) {
-                        return Err(NodeError::CQLError(CQLError::InvalidSyntax));
+                        return Err(NodeError::CQLError(CQLError::InvalidCondition));
                     }
                 }
             }
@@ -45,20 +48,28 @@ impl QueryExecution {
                 .node_that_execute
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
+
             table = node.get_table(table_name.clone())?;
 
             // Validate the primary key and where clause
-            let primary_key = table.get_primary_key()?;
+            let partition_keys = table.get_partition_keys()?;
+            let clustering_columns = table.get_clustering_columns()?;
             let where_clause = update_query
                 .clone()
                 .where_clause
                 .ok_or(NodeError::CQLError(CQLError::NoWhereCondition))?;
-            where_clause.validate_cql_conditions(&primary_key, "")?;
+            where_clause.validate_cql_conditions(
+                &partition_keys,
+                &clustering_columns,
+                false,
+                true,
+            )?;
 
-            // Get the value to hash for finding the node to update
+            // Get the value to hash and determine which node should handle the delete
             let value_to_hash = where_clause
-                .get_value_primary_condition(&primary_key)?
-                .ok_or(NodeError::OtherError)?;
+                .get_value_partitioner_key_condition(partition_keys)?
+                .join("");
+
             let node_to_update = node.partitioner.get_ip(value_to_hash.clone())?;
 
             // If this is not an internode operation and the target node is different, forward the update
@@ -172,26 +183,39 @@ impl QueryExecution {
         update_query: &Update,
         temp_file: &mut File,
     ) -> Result<(), NodeError> {
+        // Crea una fila nueva vacía con el tamaño de las columnas de la tabla
         let mut new_row: Vec<String> = vec!["".to_string(); table.get_columns().len()];
-        let primary_key = table.get_primary_key()?;
-        let primary_key_index = table
-            .get_column_index(&primary_key)
-            .ok_or(NodeError::OtherError)?;
 
-        // Extract the primary key value from the `WHERE` clause
-        let primary_key_value = update_query
+        // Obtener todas las claves primarias (pueden ser múltiples)
+        let primary_keys = table.get_partition_keys()?; // Supongo que get_primary_keys devuelve Vec<String>
+
+        // Obtener los valores de las claves primarias desde la cláusula `WHERE`
+        let primary_key_values = update_query
             .where_clause
             .as_ref()
-            .and_then(|where_clause| where_clause.get_value_primary_condition(&primary_key).ok())
-            .flatten()
-            .ok_or(NodeError::OtherError)?;
+            .map(|where_clause| {
+                where_clause.get_value_partitioner_key_condition(primary_keys.clone())
+            })
+            .ok_or(NodeError::OtherError)??;
 
-        new_row[primary_key_index] = primary_key_value;
+        // Verifica que la cantidad de valores coincida con la cantidad de claves primarias
+        if primary_key_values.len() != primary_keys.len() {
+            return Err(NodeError::OtherError);
+        }
 
-        // Set the new values based on the `SET` clause
+        // Coloca cada valor de la clave primaria en la posición correcta en `new_row`
+        for (i, primary_key) in primary_keys.iter().enumerate() {
+            let primary_key_index = table
+                .get_column_index(primary_key)
+                .ok_or(NodeError::OtherError)?;
+
+            new_row[primary_key_index] = primary_key_values[i].clone();
+        }
+
+        // Setea los nuevos valores basados en la cláusula `SET`
         for (column, new_value) in update_query.set_clause.get_pairs() {
             if table.is_primary_key(&column)? {
-                return Err(NodeError::OtherError);
+                return Err(NodeError::OtherError); // No se permite modificar una clave primaria
             }
             let index = table
                 .get_column_index(&column)
@@ -199,6 +223,7 @@ impl QueryExecution {
             new_row[index] = new_value.clone();
         }
 
+        // Escribe la nueva fila en el archivo temporal
         writeln!(temp_file, "{}", new_row.join(",")).map_err(|e| NodeError::from(e))
     }
 }

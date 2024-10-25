@@ -95,7 +95,6 @@ impl Keyspace {
         if self.tables.contains(&new_table) {
             return Err(NodeError::CQLError(CQLError::InvalidTable));
         }
-        println!("la nueva tabla es {:?}", new_table.get_columns());
         self.tables.push(new_table);
         Ok(())
     }

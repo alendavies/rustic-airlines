@@ -1,7 +1,5 @@
 use super::{condition::Condition, recursive_parser::parse_condition};
-use crate::{
-    errors::CQLError, logical_operator::LogicalOperator, operator::Operator, 
-};
+use crate::{errors::CQLError, logical_operator::LogicalOperator, operator::Operator};
 
 /// Struct representing the `WHERE` SQL clause.
 ///
@@ -53,104 +51,229 @@ impl Where {
     pub fn serialize(&self) -> String {
         self.condition.serialize()
     }
-
-     /// Valida que la primera condición sea `primary_key = algo` y que las condiciones posteriores
-    /// solo sean `AND` anidados relacionados con la `clustering_column`.
+    /// Valida que las condiciones sean `primary_key = algo` primero y que las condiciones posteriores
+    /// solo sean `AND` relacionados con las `clustering_columns`.
     ///
     /// # Arguments
     ///
-    /// * `primary_key` - El nombre de la clave primaria que debe aparecer en la primera condición.
-    /// * `clustering_column` - El nombre de la columna de clustering que debe aparecer en las condiciones posteriores.
+    /// * `partitioner_keys` - Vector con los nombres de las claves primarias que deben aparecer en las primeras condiciones.
+    /// * `clustering_columns` - Vector con los nombres de las columnas de clustering que deben aparecer en las condiciones posteriores.
     ///
     /// # Returns
     ///
     /// * `Ok(())` si las condiciones cumplen con los requisitos.
     /// * `Err(CQLError::InvalidCondition)` si no se cumple alguna de las validaciones.
-    pub fn validate_cql_conditions(&self, primary_key: &str, clustering_column: &str) -> Result<(), CQLError> {
-        match &self.condition {
-            Condition::Simple { field, operator, .. } => {
-                // Verifica que la primera condición sea `primary_key = algo`
-                if field != primary_key || *operator != Operator::Equal {
-                    return Err(CQLError::InvalidSyntax);
-                }
-            }
-            Condition::Complex { left, operator, right } => {
-                // Verifica que la primera condición compleja sea `primary_key = algo`
-                if let Some(left_condition) = left.as_ref() {
-                    if let Condition::Simple { field, operator, .. } = &**left_condition {
-                        if field != primary_key || *operator != Operator::Equal {
-                            return Err(CQLError::InvalidSyntax);
+    /// Valida que las condiciones sean `partition_key = algo` primero, y luego comparaciones con `clustering_columns`.
+    ///
+    /// # Arguments
+    ///
+    /// * `partitioner_keys` - Vector con los nombres de las claves primarias.
+    /// * `clustering_columns` - Vector con los nombres de las columnas de clustering.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` si las condiciones cumplen con los requisitos.
+    /// * `Err(CQLError::InvalidCondition)` si no se cumple alguna de las validaciones.
+    /// Valida que las condiciones sean correctas para una operación de `DELETE` o `UPDATE`.
+    ///
+    /// # Arguments
+    ///
+    /// * `partitioner_keys` - Vector con los nombres de las claves primarias.
+    /// * `clustering_columns` - Vector con los nombres de las columnas de clustering.
+    /// * `delete` - Booleano que indica si es una operación de DELETE.
+    /// * `update` - Booleano que indica si es una operación de UPDATE.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` si las condiciones cumplen con los requisitos.
+    /// * `Err(CQLError::InvalidCondition)` si no se cumple alguna de las validaciones.
+    pub fn validate_cql_conditions(
+        &self,
+        partitioner_keys: &Vec<String>,
+        clustering_columns: &Vec<String>,
+        delete: bool,
+        update: bool,
+    ) -> Result<(), CQLError> {
+        let mut partitioner_key_count = 0;
+        let mut partitioner_keys_verified = false;
+        let mut clustering_key_count = 0;
+
+        // Valida recursivamente las condiciones
+        self.recursive_validate_conditions(
+            &self.condition,
+            partitioner_keys,
+            clustering_columns,
+            &mut partitioner_key_count,
+            &mut partitioner_keys_verified,
+            &mut clustering_key_count,
+            delete,
+            update,
+        )?;
+
+        // En caso de `UPDATE`, verificar que todas las clustering columns hayan sido comparadas
+        if update && clustering_key_count != clustering_columns.len() {
+            return Err(CQLError::InvalidCondition); // No se han comparado todas las clustering columns
+        }
+        Ok(())
+    }
+
+    /// Método recursivo para validar las condiciones de las claves primarias y de clustering.
+    fn recursive_validate_conditions(
+        &self,
+        condition: &Condition,
+        partitioner_keys: &Vec<String>,
+        clustering_columns: &Vec<String>,
+        partitioner_key_count: &mut usize,
+        partitioner_keys_verified: &mut bool,
+        clustering_key_count: &mut usize,
+        delete_or_select: bool,
+        update: bool,
+    ) -> Result<(), CQLError> {
+        match condition {
+            Condition::Simple {
+                field, operator, ..
+            } => {
+                // Si no hemos verificado todas las partitioner keys, verificamos solo claves primarias con `=`
+                if !*partitioner_keys_verified {
+                    if partitioner_keys.contains(field) && *operator == Operator::Equal {
+                        *partitioner_key_count += 1;
+                        if *partitioner_key_count == partitioner_keys.len() {
+                            *partitioner_keys_verified = true; // Todas las claves primarias han sido verificadas
                         }
                     } else {
-                        return Err(CQLError::InvalidSyntax);
+                        return Err(CQLError::InvalidCondition); // La clave no es de partición o el operador no es `=`
                     }
                 } else {
-                    return Err(CQLError::InvalidSyntax);
-                }
-    
-                // Verifica que el operador lógico sea `AND`
-                if *operator != LogicalOperator::And {
-                    return Err(CQLError::InvalidSyntax);
-                }
-    
-                // Verifica que todas las condiciones derechas se refieran a la clustering column
-                self.check_clustering_conditions(right, clustering_column)?;
-            }
-        }
-    
-        Ok(())
-    }
-    
-
-    /// Método auxiliar que verifica que todas las condiciones en una estructura compleja estén relacionadas
-    /// con la `clustering_column` usando solo `AND`.
-    fn check_clustering_conditions(&self, condition: &Condition, clustering_column: &str) -> Result<(), CQLError> {
-        match condition {
-            Condition::Simple { field, .. } => {
-                // Verifica que el campo sea la clustering_column
-                if field != clustering_column {
-                    return Err(CQLError::InvalidSyntax);
+                    // Si ya verificamos las partitioner keys, ahora validamos clustering columns
+                    if !clustering_columns.contains(field) {
+                        return Err(CQLError::InvalidCondition); // No es una clustering column válida
+                    }
+                    // En caso de `UPDATE`, verificamos que todas las clustering columns se comparen
+                    if update {
+                        if *operator != Operator::Equal {
+                            return Err(CQLError::InvalidCondition); // Las clustering columns deben compararse con `=`
+                        }
+                        *clustering_key_count += 1;
+                    }
                 }
             }
-            Condition::Complex { left, operator, right } => {
-                // Solo se permite el operador `AND`
-                if *operator != LogicalOperator::And {
-                    return Err(CQLError::InvalidSyntax);
+            Condition::Complex {
+                left,
+                operator,
+                right,
+            } => {
+                // Verificar que el operador sea `AND` si aún estamos verificando partitioner keys
+                if !*partitioner_keys_verified && *operator != LogicalOperator::And {
+                    return Err(CQLError::InvalidCondition); // Solo se permite `AND` para las partitioner keys
                 }
 
-                // Verifica recursivamente en las condiciones anidadas
+                // Si es un `UPDATE`, después de verificar las partitioner keys, solo permitimos `AND` para clustering columns
+                if update && *partitioner_keys_verified && *operator != LogicalOperator::And {
+                    return Err(CQLError::InvalidCondition); // Solo se permite `AND` para las clustering columns en `UPDATE`
+                }
+
+                // Verificación recursiva en las condiciones anidadas
                 if let Some(left_condition) = left.as_ref() {
-                    self.check_clustering_conditions(left_condition, clustering_column)?;
+                    self.recursive_validate_conditions(
+                        &*left_condition,
+                        partitioner_keys,
+                        clustering_columns,
+                        partitioner_key_count,
+                        partitioner_keys_verified,
+                        clustering_key_count,
+                        delete_or_select,
+                        update,
+                    )?;
                 }
-                self.check_clustering_conditions(right, clustering_column)?;
+
+                self.recursive_validate_conditions(
+                    right,
+                    partitioner_keys,
+                    clustering_columns,
+                    partitioner_key_count,
+                    partitioner_keys_verified,
+                    clustering_key_count,
+                    delete_or_select,
+                    update,
+                )?;
             }
         }
+
         Ok(())
     }
 
-    pub fn get_value_primary_condition(&self, primary_key: &str) -> Result<Option<String>, CQLError> {
+    /// Retorna los valores de las claves primarias de las condiciones en la cláusula `WHERE`.
+    pub fn get_value_partitioner_key_condition(
+        &self,
+        partitioner_keys: Vec<String>,
+    ) -> Result<Vec<String>, CQLError> {
+        let mut result = vec![];
+
         match &self.condition {
-            Condition::Simple { field, operator, value } => {
-                // Verifica si la condición es `primary_key = algo`
-                if field == primary_key && *operator == Operator::Equal {
-                    return Ok(Some(value.clone()));
+            Condition::Simple {
+                field,
+                operator,
+                value,
+            } => {
+                // Si es una condición simple y la clave está en partitioner_keys y el operador es `=`
+                if partitioner_keys.contains(field) && *operator == Operator::Equal {
+                    result.push(value.clone());
                 }
             }
             Condition::Complex { left, .. } => {
-                // Verifica si la primera condición en la parte izquierda es `primary_key = algo`
+                // Recorremos la condición izquierda
                 if let Some(left_condition) = left.as_ref() {
-                    if let Condition::Simple { field, operator, value } = &**left_condition {
-                        if field == primary_key && *operator == Operator::Equal {
-                            return Ok(Some(value.clone()));
-                        }
-                    }
+                    self.collect_partitioner_key_values(
+                        left_condition,
+                        &partitioner_keys,
+                        &mut result,
+                    );
                 }
             }
         }
 
-        // Retorna None si no se cumple `primary_key = algo` en la primera condición
-        Ok(None)
+        if result.is_empty() {
+            Err(CQLError::InvalidColumn)
+        } else {
+            Ok(result)
+        }
     }
 
-
+    /// Método auxiliar para recorrer las condiciones y recolectar los valores de las partitioner keys.
+    fn collect_partitioner_key_values(
+        &self,
+        condition: &Condition,
+        partitioner_keys: &[String],
+        result: &mut Vec<String>,
+    ) {
+        match condition {
+            Condition::Simple {
+                field,
+                operator,
+                value,
+            } => {
+                // Si la condición simple corresponde a una partitioner key
+                if partitioner_keys.contains(field) && *operator == Operator::Equal {
+                    result.push(value.clone());
+                }
+            }
+            Condition::Complex {
+                left,
+                operator,
+                right,
+            } => {
+                // Solo procesar si es un operador lógico AND
+                if *operator == LogicalOperator::And {
+                    if let Some(left_condition) = left.as_ref() {
+                        self.collect_partitioner_key_values(
+                            left_condition,
+                            partitioner_keys,
+                            result,
+                        );
+                    }
+                    self.collect_partitioner_key_values(right, partitioner_keys, result);
+                }
+            }
+        }
+    }
 }

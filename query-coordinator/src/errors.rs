@@ -17,6 +17,8 @@ pub enum CQLError {
     NoActualKeyspaceError,
     TableAlreadyExist,
     NoWhereCondition,
+    MissingPartitionOrClusteringColumns,
+    InvalidCondition,
     Error,
 }
 
@@ -27,18 +29,27 @@ impl Display for CQLError {
             CQLError::InvalidColumn => write!(f, "[InvalidColumn]: [Error to process column]"),
             CQLError::InvalidSyntax => write!(f, "[InvalidSyntax]: [Error to process query]"),
             CQLError::NoActualKeyspaceError => {
-                write!(f, "[NoActualKeyspace]: [There is not actual keyspace]")
+                write!(f, "[NoActualKeyspace]: [There is no current keyspace]")
             }
             CQLError::TableAlreadyExist => {
-                write!(f, "[TableAlreadyExist]: [The table already exist]")
+                write!(f, "[TableAlreadyExist]: [The table already exists]")
             }
             CQLError::NoWhereCondition => {
                 write!(
                     f,
-                    "[NoWhereCondition]: [The query has not WHERE and it is neccesary]"
+                    "[NoWhereCondition]: [The query requires a WHERE clause, but none was found]"
                 )
             }
-            CQLError::Error => write!(f, "[Error]: [An error occurred]"),
+            CQLError::MissingPartitionOrClusteringColumns => {
+                write!(f, "[MissingPartitionOrClusteringColumns]: [The query is missing required partition or clustering columns]")
+            }
+            CQLError::InvalidCondition => {
+                write!(
+                    f,
+                    "[InvalidCondition]: [The condition in the query is invalid]"
+                )
+            }
+            CQLError::Error => write!(f, "[Error]: [An unspecified error occurred]"),
         }
     }
 }

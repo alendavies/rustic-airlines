@@ -15,20 +15,28 @@ fn main() {
         // Crear el keyspace
         "CREATE KEYSPACE world WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
         // // Crear la tabla
-       
+
     "CREATE TABLE users (
         user_id INT,
         first_name TEXT,
         last_name TEXT,
         email TEXT,
         age INT,
-        PRIMARY KEY (user_id, age)
+        weight INT,
+        PRIMARY KEY (user_id, age, weight)
         )",
 
         // // // Insertar algunos elementos
-        "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (1, 'Michael', 'Brown', 'michael.brown@example.com', 40)",
-        "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (1, 'Emily', 'Davis', 'emily.davis@example.com', 28)",
-        "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (1, 'Negrazo', 'Davis', 'emily.davis@example.com', 28)",
+        "INSERT INTO users (user_id, age, weight) VALUES (1, 40, 80)",
+        "INSERT INTO users (user_id, age, weight) VALUES (2, 40, 80)",
+        "INSERT INTO users (user_id, age, weight) VALUES (3, 40, 90)",
+        "INSERT INTO users (user_id, first_name, email, age, weight) VALUES (1, 'Emily', 'emily.davis@example.com', 28, 91)",
+        //"DELETE FROM users WHERE user_id = 1 AND age < 30",
+        "DELETE FROM users WHERE user_id = 1 AND age < 30 AND age > 27",
+        "UPDATE users SET first_name = 'Narizon' WHERE user_id = 2 AND age = 40 AND weight = 80",
+        //"UPDATE users SET age = 21 WHERE user_id = 2 AND age = 40 ",
+        "SELECT age FROM users WHERE user_id = 1 AND weight > 75 AND weight < 450",
+        //"DELETE FROM users WHERE user_id = 1 AND age < 30 AND email = 's'"
         // "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (789, 'Daniel', 'Garcia', 'daniel.garcia@example.com', 22)",
         // "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (190, 'Sophia', 'Martinez', 'sophia.martinez@example.com', 31)",
         // "INSERT INTO users (user_id, first_name, last_name, email, age) VALUES (345, 'James', 'Rodriguez', 'james.rodriguez@example.com', 45)",

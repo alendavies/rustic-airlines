@@ -2,6 +2,7 @@
 use crate::table::Table;
 use crate::NodeError;
 use query_coordinator::clauses::insert_sql::Insert;
+use query_coordinator::clauses::types::column::Column;
 use query_coordinator::errors::CQLError;
 use std::fs::File;
 use std::fs::{self, OpenOptions};
@@ -48,6 +49,7 @@ impl QueryExecution {
             .collect();
 
         let clustering_columns_index: Vec<usize> = columns
+            .clone()
             .iter()
             .enumerate()
             .filter_map(|(index, column)| {
@@ -65,8 +67,8 @@ impl QueryExecution {
         }
 
         // Clonar los valores del query insert
-        let values = insert_query.values.clone();
-        println!("los values son {:?}", values);
+        let mut values = insert_query.values.clone();
+
         // Concatenar los valores de las columnas de la partition key para generar el hash
         let value_to_hash = keys_index
             .iter()
@@ -74,16 +76,17 @@ impl QueryExecution {
             .collect::<Vec<String>>()
             .join("");
 
-        println!("el insert es {:?}", insert_query);
-
-        println!("el valor para hashear es {:?}", value_to_hash);
         // Aquí puedes aplicar el algoritmo de hash al `value_to_hash` según lo necesites
 
         // Validate values before proceeding
+        values = self.complete_row(
+            columns.clone(),
+            insert_query.clone().into_clause.columns,
+            values,
+        )?;
         self.validate_values(columns, &values)?;
         let ip = node.get_partitioner().get_ip(value_to_hash)?;
 
-        println!("se lo tengo que mandar a {:?}", ip);
         // If not internode and the IP to insert is different, forward the insert
         if !internode && ip != node.get_ip() {
             let serialized_insert = insert_query.serialize();
@@ -100,7 +103,6 @@ impl QueryExecution {
 
         if !internode {
             self.execution_finished_itself = true;
-            println!("no soy internodo y tengo que insertar en mi mismo (soy el coordinador)")
         }
 
         keys_index.extend(&clustering_columns_index);
@@ -113,6 +115,46 @@ impl QueryExecution {
             node.actual_keyspace_name()
                 .ok_or(NodeError::KeyspaceError)?,
         )
+    }
+
+    fn complete_row(
+        &self,
+        columns: Vec<Column>,
+        specified_columns: Vec<String>,
+        values: Vec<String>,
+    ) -> Result<Vec<String>, NodeError> {
+        let mut complete_row = vec!["".to_string(); columns.len()]; // Crear una fila completa vacía con el tamaño de las columnas
+        let mut specified_keys = 0;
+
+        for (i, column) in columns.iter().enumerate() {
+            // Verificar si la columna es clave de partición o clave de clustering
+            if column.is_partition_key || column.is_clustering_column {
+                // Verificar si la columna está especificada en specified_columns
+                if let Some(pos) = specified_columns.iter().position(|c| c == &column.name) {
+                    // Si está, copiar el valor correspondiente en complete_row
+                    complete_row[i] = values[pos].clone();
+                    specified_keys += 1;
+                }
+            } else {
+                // Para columnas no clave, si están en specified_columns, copiar el valor
+                if let Some(pos) = specified_columns.iter().position(|c| c == &column.name) {
+                    complete_row[i] = values[pos].clone();
+                }
+            }
+        }
+
+        // Verificar si se especificaron todas las claves de partición y clustering
+        let total_keys = columns
+            .iter()
+            .filter(|c| c.is_partition_key || c.is_clustering_column)
+            .count();
+        if specified_keys != total_keys {
+            return Err(NodeError::CQLError(
+                CQLError::MissingPartitionOrClusteringColumns,
+            ));
+        }
+
+        Ok(complete_row)
     }
 
     /// Performs the actual insert operation in the current node

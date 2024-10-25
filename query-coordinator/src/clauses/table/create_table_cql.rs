@@ -25,6 +25,10 @@ impl CreateTable {
     pub fn remove_column(&mut self, column_name: &str) -> Result<(), CQLError> {
         let index = self.columns.iter().position(|col| col.name == column_name);
         if let Some(i) = index {
+            let column = &self.columns[i];
+            if column.is_partition_key || column.is_clustering_column {
+                return Err(CQLError::InvalidColumn);
+            }
             self.columns.remove(i);
             Ok(())
         } else {

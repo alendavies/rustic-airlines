@@ -2,6 +2,7 @@
 use crate::table::Table;
 use crate::NodeError;
 use query_coordinator::clauses::select_sql::Select;
+use query_coordinator::errors::CQLError;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
 
@@ -12,7 +13,7 @@ impl QueryExecution {
     /// within the library (defined as `pub(crate)`).
     pub(crate) fn execute_select(
         &mut self,
-        select_query: Select,
+        mut select_query: Select,
         internode: bool,
         open_query_id: i32,
     ) -> Result<Vec<String>, NodeError> {
@@ -27,19 +28,29 @@ impl QueryExecution {
 
             // Get the table and primary key
             table = node.get_table(table_name.clone())?;
-            let primary_key = table.get_primary_key()?;
-
-            // Validate the WHERE clause to ensure it contains the primary key
+            // Validate the primary key and where clause
+            let partition_keys = table.get_partition_keys()?;
+            let clustering_columns = table.get_clustering_columns()?;
             let where_clause = select_query
-                .where_clause
                 .clone()
-                .ok_or(NodeError::OtherError)?;
-            where_clause.validate_cql_conditions(&primary_key, "")?;
+                .where_clause
+                .ok_or(NodeError::CQLError(CQLError::NoWhereCondition))?;
 
-            // Get the value of the primary key condition to calculate the node location
+            where_clause.validate_cql_conditions(
+                &partition_keys,
+                &clustering_columns,
+                false,
+                false,
+            )?;
+
+            if select_query.columns[0] == String::from("*") {
+                select_query.columns = table.get_columns().iter().map(|c| c.name.clone()).collect();
+            }
+
+            // Get the value to hash and determine which node should handle the delete
             let value_to_hash = where_clause
-                .get_value_primary_condition(&primary_key)?
-                .ok_or(NodeError::OtherError)?;
+                .get_value_partitioner_key_condition(partition_keys)?
+                .join("");
             let node_to_query = node.partitioner.get_ip(value_to_hash.clone())?;
 
             // If this is not an internode operation, forward the query to the appropriate node

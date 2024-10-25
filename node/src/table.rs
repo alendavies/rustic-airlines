@@ -1,5 +1,5 @@
 use query_coordinator::clauses::{table::create_table_cql::CreateTable, types::column::Column};
-use std::fmt;
+use std::{fmt, vec};
 
 use crate::errors::NodeError;
 
@@ -72,14 +72,38 @@ impl Table {
     ///
     /// # Returns
     /// The name of the primary key column as a `String`, or an error if no primary key is found.
-    pub fn get_primary_key(&self) -> Result<String, NodeError> {
+    pub fn get_partition_keys(&self) -> Result<Vec<String>, NodeError> {
+        let mut partitioner_keys: Vec<String> = vec![];
         let columns = self.get_columns();
         for column in columns {
-            if column.is_primary_key {
-                return Ok(column.name.clone());
+            if column.is_partition_key {
+                partitioner_keys.push(column.name.clone());
             }
         }
-        Err(NodeError::OtherError)
+        if partitioner_keys.is_empty() {
+            Err(NodeError::OtherError)
+        } else {
+            Ok(partitioner_keys)
+        }
+    }
+
+    /// Gets the name of the primary key column.
+    ///
+    /// # Returns
+    /// The name of the primary key column as a `String`, or an error if no primary key is found.
+    pub fn get_clustering_columns(&self) -> Result<Vec<String>, NodeError> {
+        let mut clustering_columns: Vec<String> = vec![];
+        let columns = self.get_columns();
+        for column in columns {
+            if column.is_clustering_column {
+                clustering_columns.push(column.name.clone());
+            }
+        }
+        if clustering_columns.is_empty() {
+            Err(NodeError::OtherError)
+        } else {
+            Ok(clustering_columns)
+        }
     }
 }
 
@@ -137,7 +161,7 @@ mod tests {
     #[test]
     fn test_get_primary_key() {
         let table = create_sample_table();
-        assert_eq!(table.get_primary_key().unwrap(), "id");
+        assert_eq!(table.get_partition_keys().unwrap(), vec!["id"]);
     }
 
     #[test]

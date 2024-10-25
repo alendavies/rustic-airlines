@@ -29,17 +29,24 @@ impl QueryExecution {
             table = node.get_table(table_name.clone())?;
 
             // Validate the primary key and where clause
-            let primary_key = table.get_primary_key()?;
+            let partition_keys = table.get_partition_keys()?;
+            let clustering_columns = table.get_clustering_columns()?;
             let where_clause = delete_query
                 .clone()
                 .where_clause
                 .ok_or(NodeError::CQLError(CQLError::NoWhereCondition))?;
-            where_clause.validate_cql_conditions(&primary_key, "")?;
+
+            where_clause.validate_cql_conditions(
+                &partition_keys,
+                &clustering_columns,
+                true,
+                false,
+            )?;
 
             // Get the value to hash and determine which node should handle the delete
             let value_to_hash = where_clause
-                .get_value_primary_condition(&primary_key)?
-                .ok_or(NodeError::OtherError)?;
+                .get_value_partitioner_key_condition(partition_keys)?
+                .join("");
             let node_to_delete = node.partitioner.get_ip(value_to_hash.clone())?;
 
             // If this is not an internode operation and the node to delete is different, forward the delete
@@ -96,7 +103,6 @@ impl QueryExecution {
                 writeln!(temp_file, "{}", line)?;
             }
         }
-
         // Replace the original file with the temporary file
         self.replace_original_file(&temp_file_path, &file_path)?;
         Ok(())
