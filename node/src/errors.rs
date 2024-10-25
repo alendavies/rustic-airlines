@@ -5,7 +5,7 @@ use std::fmt::{self, Display};
 use std::io;
 
 use partitioner::errors::PartitionerError;
-use query_coordinator::errors::CQLError;
+use query_creator::errors::CQLError;
 
 /// Enum representing the possible errors that can occur within the `Node` and during query execution (`QueryExecution`).
 #[derive(Debug)]

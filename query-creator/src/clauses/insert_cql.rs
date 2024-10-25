@@ -1,4 +1,4 @@
-use super::into_sql::Into;
+use super::into_cql::Into;
 use crate::errors::CQLError;
 use crate::utils::{is_insert, is_values};
 
@@ -97,8 +97,8 @@ impl Insert {
         })
     }
 
-     /// Serializes the `Insert` struct into a JSON-like string representation.
-     pub fn serialize(&self) -> String {
+    /// Serializes the `Insert` struct into a JSON-like string representation.
+    pub fn serialize(&self) -> String {
         let values = self
             .values
             .iter()
@@ -161,7 +161,10 @@ impl Insert {
             .collect();
 
         // Deserialize the `values`
-        let values_str = parts[1].trim().trim_start_matches('[').trim_end_matches(']');
+        let values_str = parts[1]
+            .trim()
+            .trim_start_matches('[')
+            .trim_end_matches(']');
         let values: Vec<String> = values_str
             .split(',')
             .map(|v| v.trim().trim_matches('\"').to_string())
@@ -179,7 +182,7 @@ impl Insert {
 
 #[cfg(test)]
 mod test {
-    use crate::errors::CQLError;
+    use crate::{clauses::into_cql, errors::CQLError, Insert};
 
     #[test]
     fn new_1_token() {
@@ -213,9 +216,9 @@ mod test {
         let result = super::Insert::new_from_tokens(tokens).unwrap();
         assert_eq!(
             result,
-            super::Insert {
+            Insert {
                 values: vec![String::from("Alen")],
-                into_clause: super::Into {
+                into_clause: into_cql::Into {
                     table_name: String::from("table"),
                     columns: vec![String::from("name")]
                 }
@@ -236,9 +239,9 @@ mod test {
         let result = super::Insert::new_from_tokens(tokens).unwrap();
         assert_eq!(
             result,
-            super::Insert {
+            Insert {
                 values: vec![String::from("Alen"), String::from("25")],
-                into_clause: super::Into {
+                into_clause: into_cql::Into {
                     table_name: String::from("table"),
                     columns: vec![String::from("name"), String::from("age")]
                 }

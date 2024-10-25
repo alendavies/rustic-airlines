@@ -1,8 +1,8 @@
 // Ordered imports
 use crate::NodeError;
-use query_coordinator::clauses::table::alter_table_cql::AlterTable;
-use query_coordinator::clauses::types::alter_table_op::AlterTableOperation;
-use query_coordinator::errors::CQLError;
+use query_creator::clauses::table::alter_table_cql::AlterTable;
+use query_creator::clauses::types::alter_table_op::AlterTableOperation;
+use query_creator::errors::CQLError;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;

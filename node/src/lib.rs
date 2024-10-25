@@ -27,12 +27,12 @@ use native_protocol::frame::Frame;
 use native_protocol::Serializable;
 use open_query_handler::OpenQueryHandler;
 use partitioner::Partitioner;
-use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
-use query_coordinator::clauses::table::create_table_cql::CreateTable;
-use query_coordinator::clauses::types::column::Column;
-use query_coordinator::errors::CQLError;
-use query_coordinator::{GetTableName, Query};
-use query_coordinator::{NeededResponses, QueryCoordinator};
+use query_creator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
+use query_creator::clauses::table::create_table_cql::CreateTable;
+use query_creator::clauses::types::column::Column;
+use query_creator::errors::CQLError;
+use query_creator::{GetTableName, Query};
+use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
 
 const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
@@ -91,10 +91,8 @@ impl Node {
     ) -> Result<i32, NodeError> {
         let all_nodes = self.get_how_many_nodes_i_know();
         let needed_responses = match query.needed_responses() {
-            query_coordinator::NeededResponseCount::AllNodes => all_nodes,
-            query_coordinator::NeededResponseCount::Specific(specific_value) => {
-                specific_value as usize
-            }
+            query_creator::NeededResponseCount::AllNodes => all_nodes,
+            query_creator::NeededResponseCount::Specific(specific_value) => specific_value as usize,
         };
         Ok(self.open_query_handler.new_open_query(
             needed_responses as i32,
@@ -177,6 +175,22 @@ impl Node {
         }
 
         self.keyspaces = keyspaces;
+        Ok(())
+    }
+
+    fn set_actual_keyspace(&mut self, keyspace_name: String) -> Result<(), NodeError> {
+        // Clonar la lista de keyspaces para búsqueda
+        let mut keyspaces = self.keyspaces.clone();
+
+        // Buscar el índice del keyspace con el nombre dado
+        let index = keyspaces
+            .iter()
+            .position(|keyspace| keyspace.get_name() == keyspace_name)
+            .ok_or(NodeError::KeyspaceError)?;
+
+        // Configurar el keyspace actual usando el índice encontrado
+        self.actual_keyspace = Some(keyspaces.remove(index));
+
         Ok(())
     }
 
@@ -556,7 +570,7 @@ impl Node {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         client_connection: TcpStream,
     ) -> Result<(), NodeError> {
-        let query = QueryCoordinator::new()
+        let query = QueryCreator::new()
             .handle_query(query_str.to_string())
             .map_err(NodeError::CQLError)?;
 

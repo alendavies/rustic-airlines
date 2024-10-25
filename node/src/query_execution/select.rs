@@ -1,8 +1,8 @@
 // Ordered imports
 use crate::table::Table;
 use crate::NodeError;
-use query_coordinator::clauses::select_sql::Select;
-use query_coordinator::errors::CQLError;
+use query_creator::clauses::select_cql::Select;
+use query_creator::errors::CQLError;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
 
@@ -26,6 +26,9 @@ impl QueryExecution {
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
 
+            if node.has_no_actual_keyspace() {
+                return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
+            }
             // Get the table and primary key
             table = node.get_table(table_name.clone())?;
             // Validate the primary key and where clause

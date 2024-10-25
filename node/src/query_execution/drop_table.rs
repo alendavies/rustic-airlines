@@ -1,7 +1,7 @@
 // Ordered imports
 use crate::NodeError;
-use query_coordinator::clauses::table::drop_table_cql::DropTable;
-use query_coordinator::errors::CQLError;
+use query_creator::clauses::table::drop_table_cql::DropTable;
+use query_creator::errors::CQLError;
 
 use super::QueryExecution;
 

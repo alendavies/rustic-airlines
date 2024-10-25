@@ -1,4 +1,4 @@
-use crate::{errors::CQLError, QueryCoordinator};
+use crate::{errors::CQLError, QueryCreator};
 
 #[derive(Debug, Clone)]
 pub struct CreateKeyspace {
@@ -9,13 +9,19 @@ pub struct CreateKeyspace {
 
 impl CreateKeyspace {
     pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
-        if query.len() < 10 || query[0].to_uppercase() != "CREATE" || query[1].to_uppercase() != "KEYSPACE" {
+        if query.len() < 10
+            || query[0].to_uppercase() != "CREATE"
+            || query[1].to_uppercase() != "KEYSPACE"
+        {
             return Err(CQLError::InvalidSyntax);
         }
 
         let keyspace_name = query[2].to_string();
 
-        if query[3].to_uppercase() != "WITH" || query[4].to_uppercase() != "REPLICATION" || query[5] != "=" {
+        if query[3].to_uppercase() != "WITH"
+            || query[4].to_uppercase() != "REPLICATION"
+            || query[5] != "="
+        {
             return Err(CQLError::InvalidSyntax);
         }
 
@@ -64,27 +70,26 @@ impl CreateKeyspace {
         self.replication_factor.clone()
     }
 
-    pub fn update_replication_class(&mut self, replication_class: String){
+    pub fn update_replication_class(&mut self, replication_class: String) {
         self.replication_class = replication_class;
     }
 
-    pub fn update_replication_factor(&mut self, replication_factor: u32){
+    pub fn update_replication_factor(&mut self, replication_factor: u32) {
         self.replication_factor = replication_factor;
     }
 
-   /// Serializa la estructura `CreateKeyspace` a una consulta CQL
-pub fn serialize(&self) -> String {
-    format!(
-        "CREATE KEYSPACE {} WITH replication = {{'class': '{}', 'replication_factor': {}}};",
-        self.name, self.replication_class, self.replication_factor
-    )
-}
-
+    /// Serializa la estructura `CreateKeyspace` a una consulta CQL
+    pub fn serialize(&self) -> String {
+        format!(
+            "CREATE KEYSPACE {} WITH replication = {{'class': '{}', 'replication_factor': {}}};",
+            self.name, self.replication_class, self.replication_factor
+        )
+    }
 
     /// Deserializa una consulta CQL en formato `String` y convierte a la estructura `CreateKeyspace`
     pub fn deserialize(query: &str) -> Result<Self, CQLError> {
         // Divide la consulta en tokens y convierte a `Vec<String>`
-        let tokens = QueryCoordinator::tokens_from_query(query);
+        let tokens = QueryCreator::tokens_from_query(query);
         Self::new_from_tokens(tokens)
     }
 }

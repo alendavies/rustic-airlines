@@ -1,9 +1,9 @@
 // Ordered imports
 use crate::table::Table;
 use crate::NodeError;
-use query_coordinator::clauses::insert_sql::Insert;
-use query_coordinator::clauses::types::column::Column;
-use query_coordinator::errors::CQLError;
+use query_creator::clauses::insert_cql::Insert;
+use query_creator::clauses::types::column::Column;
+use query_creator::errors::CQLError;
 use std::fs::File;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -24,6 +24,7 @@ impl QueryExecution {
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         let node = self.node_that_execute.lock()?;
+
         // Check if the keyspace exists in the node
         if node.has_no_actual_keyspace() {
             return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));

@@ -9,7 +9,7 @@ pub enum DataType {
     Double,
     Timestamp,
     Uuid,
-    Blob,
+    // Blob,
 }
 
 impl DataType {
@@ -23,7 +23,7 @@ impl DataType {
             DataType::Double => "DOUBLE",
             DataType::Timestamp => "TIMESTAMP",
             DataType::Uuid => "UUID",
-            DataType::Blob => "BLOB",
+            // DataType::Blob => "BLOB",
         }
     }
 
@@ -39,7 +39,7 @@ impl DataType {
             DataType::Double => value.parse::<f64>().is_ok(), // Verifica si es un double válido
             DataType::Timestamp => self.is_valid_timestamp(value), // Verifica si es un timestamp válido
             DataType::Uuid => true,                                // Verifica si es un UUID válido
-            DataType::Blob => self.is_valid_blob(value), // Verifica si es un BLOB válido (hexadecimal)
+                                                                    // DataType::Blob => self.is_valid_blob(value), // Verifica si es un BLOB válido (hexadecimal)
         }
     }
 
@@ -54,7 +54,7 @@ impl DataType {
             "DOUBLE" => Ok(DataType::Double),
             "TIMESTAMP" => Ok(DataType::Timestamp),
             "UUID" => Ok(DataType::Uuid),
-            "BLOB" => Ok(DataType::Blob),
+            // "BLOB" => Ok(DataType::Blob),
             _ => Err(CQLError::InvalidSyntax),
         }
     }
@@ -65,8 +65,8 @@ impl DataType {
         // Cassandra también permite timestamps en milisegundos
     }
 
-    /// Verifica si una cadena es un BLOB válido (hexadecimal)
-    fn is_valid_blob(&self, value: &str) -> bool {
-        hex::decode(value).is_ok()
-    }
+    // /// Verifica si una cadena es un BLOB válido (hexadecimal)
+    // fn is_valid_blob(&self, value: &str) -> bool {
+    //     hex::decode(value).is_ok()
+    // }
 }

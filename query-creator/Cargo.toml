@@ -1,5 +1,5 @@
 [package]
-name = "query-coordinator"
+name = "query-creator"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,6 +8,5 @@ crate-type = ["lib"]
 
 [dependencies]
 chrono = "0.4.38"
-hex = "0.4.3"
 native_protocol = { path = "../native_protocol" }
 uuid = "1.11.0"

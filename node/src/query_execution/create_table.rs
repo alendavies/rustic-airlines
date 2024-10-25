@@ -1,7 +1,7 @@
 // Ordered imports
 use crate::NodeError;
-use query_coordinator::clauses::table::create_table_cql::CreateTable;
-use query_coordinator::errors::CQLError;
+use query_creator::clauses::table::create_table_cql::CreateTable;
+use query_creator::errors::CQLError;
 use std::fs::OpenOptions;
 use std::io::Write;
 

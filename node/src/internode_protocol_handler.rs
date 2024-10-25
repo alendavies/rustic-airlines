@@ -2,18 +2,19 @@ use crate::open_query_handler::OpenQueryHandler;
 use crate::utils::{connect, send_message};
 use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
 use native_protocol::Serializable;
-use query_coordinator::clauses::keyspace::{
+use query_creator::clauses::keyspace::{
     alter_keyspace_cql::AlterKeyspace, create_keyspace_cql::CreateKeyspace,
     drop_keyspace_cql::DropKeyspace,
 };
-use query_coordinator::clauses::table::{
+use query_creator::clauses::table::{
     alter_table_cql::AlterTable, create_table_cql::CreateTable, drop_table_cql::DropTable,
 };
-use query_coordinator::clauses::types::column::Column;
-use query_coordinator::clauses::{
-    delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update,
+use query_creator::clauses::types::column::Column;
+use query_creator::clauses::use_cql::Use;
+use query_creator::clauses::{
+    delete_cql::Delete, insert_cql::Insert, select_cql::Select, update_cql::Update,
 };
-use query_coordinator::CreateClientResponse;
+use query_creator::CreateClientResponse;
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
@@ -191,6 +192,13 @@ impl InternodeProtocolHandler {
                 open_query_id,
             ),
             "SELECT" => Self::handle_select_command(
+                node,
+                structure,
+                connections.clone(),
+                internode,
+                open_query_id,
+            ),
+            "USE" => Self::handle_use_command(
                 node,
                 structure,
                 connections.clone(),
@@ -473,6 +481,22 @@ impl InternodeProtocolHandler {
         let query = Select::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::Select(query),
+            internode,
+            open_query_id,
+        )
+    }
+
+    /// Handles an `INSERT` command.
+    fn handle_use_command(
+        node: &Arc<Mutex<Node>>,
+        structure: &str,
+        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+        internode: bool,
+        open_query_id: i32,
+    ) -> Result<Option<String>, NodeError> {
+        let query = Use::deserialize(structure).map_err(NodeError::CQLError)?;
+        QueryExecution::new(node.clone(), connections).execute(
+            Query::Use(query),
             internode,
             open_query_id,
         )

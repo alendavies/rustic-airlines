@@ -1,7 +1,7 @@
-﻿use super::where_sql::Where;
+﻿use super::where_cql::Where;
 use crate::errors::CQLError;
 use crate::utils::{is_delete, is_from, is_where};
-use crate::QueryCoordinator;
+use crate::QueryCreator;
 
 /// Struct that represents the `DELETE` SQL clause.
 /// The `DELETE` clause is used to delete records from a table.
@@ -14,7 +14,7 @@ use crate::QueryCoordinator;
 #[derive(PartialEq, Debug, Clone)]
 pub struct Delete {
     pub table_name: String,
-    pub columns: Option<Vec<String>>,  // Agregamos un vector opcional para las columnas
+    pub columns: Option<Vec<String>>, // Agregamos un vector opcional para las columnas
     pub where_clause: Option<Where>,
 }
 
@@ -104,7 +104,7 @@ impl Delete {
 
     /// Deserializa una cadena de texto en una instancia de `Delete`.
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
-        let tokens: Vec<String> = QueryCoordinator::tokens_from_query(serialized);
+        let tokens: Vec<String> = QueryCreator::tokens_from_query(serialized);
         Self::new_from_tokens(tokens)
     }
 }
@@ -114,7 +114,7 @@ mod tests {
 
     use super::Delete;
     use crate::{
-        clauses::{condition::Condition, where_sql::Where},
+        clauses::{condition::Condition, where_cql::Where},
         errors::CQLError,
         operator::Operator,
     };

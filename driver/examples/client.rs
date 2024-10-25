@@ -3,7 +3,7 @@ use std::{net::Ipv4Addr, str::FromStr};
 
 fn main() {
     // Reemplaza con la dirección IP y puerto correctos del servidor
-    let server_ip = "127.0.0.1";
+    let server_ip = "127.0.0.4";
     let ip = Ipv4Addr::from_str(&server_ip).unwrap();
 
     // Conectarse al servidor Cassandra
@@ -15,16 +15,29 @@ fn main() {
         // Crear el keyspace
         "CREATE KEYSPACE world WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
         // // Crear la tabla
+        "CREATE KEYSPACE persons WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 7}",
 
-    "CREATE TABLE users (
-        user_id INT,
-        first_name TEXT,
-        last_name TEXT,
-        email TEXT,
-        age INT,
-        weight INT,
-        PRIMARY KEY (user_id, age, weight)
-        )",
+        "CREATE TABLE users (
+            user_id INT,
+            first_name TEXT,
+            last_name TEXT,
+            email TEXT,
+            age INT,
+            weight INT,
+            PRIMARY KEY (user_id, age, weight)
+            )",
+
+        "USE world",
+
+        "CREATE TABLE users (
+            user_id INT,
+            first_name TEXT,
+            last_name TEXT,
+            email TEXT,
+            age INT,
+            weight INT,
+            PRIMARY KEY (user_id, age, weight)
+            )",
 
         // // // Insertar algunos elementos
         "INSERT INTO users (user_id, age, last_name , weight) VALUES (1, 40, 'perrazo',80)",

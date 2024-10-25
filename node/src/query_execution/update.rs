@@ -1,10 +1,10 @@
 // Ordered imports
 use crate::table::Table;
 use crate::NodeError;
-use query_coordinator::clauses::set_sql::Set;
-use query_coordinator::clauses::types::column::Column;
-use query_coordinator::clauses::update_sql::Update;
-use query_coordinator::errors::CQLError;
+use query_creator::clauses::set_cql::Set;
+use query_creator::clauses::types::column::Column;
+use query_creator::clauses::update_cql::Update;
+use query_creator::errors::CQLError;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
@@ -48,6 +48,10 @@ impl QueryExecution {
                 .node_that_execute
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
+
+            if node.has_no_actual_keyspace() {
+                return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
+            }
 
             table = node.get_table(table_name.clone())?;
 

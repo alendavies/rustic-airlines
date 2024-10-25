@@ -1,8 +1,8 @@
+use crate::QueryCreator;
 use crate::{
     errors::CQLError,
     utils::{is_by, is_order},
 };
-use crate::QueryCoordinator;
 
 /// Struct that epresents the `ORDER BY` SQL clause.
 /// The `ORDER BY` clause is used to sort the result set in ascending or descending order in a `SELECT` clause.
@@ -67,7 +67,7 @@ impl OrderBy {
         Ok(Self { columns, order })
     }
 
-    pub fn serialize(&self) -> String{
+    pub fn serialize(&self) -> String {
         let columns_str = self.columns.join(", ");
         if self.order.is_empty() {
             format!("ORDER BY {}", columns_str)
@@ -77,9 +77,7 @@ impl OrderBy {
     }
 
     pub fn deserialize(&mut self, query: &str) -> Result<OrderBy, CQLError> {
-        let tokens= QueryCoordinator::tokens_from_query(query);
+        let tokens = QueryCreator::tokens_from_query(query);
         Self::new_from_tokens(tokens)
     }
-    
-
 }

@@ -10,7 +10,7 @@ members = [
     "driver",
     "node",
     "partitioner",
-    "query-coordinator",
+    "query-creator",
     "testing",
     "native_protocol"
 ]

@@ -1,6 +1,6 @@
 // Ordered imports
 use crate::NodeError;
-use query_coordinator::clauses::keyspace::alter_keyspace_cql::AlterKeyspace;
+use query_creator::clauses::keyspace::alter_keyspace_cql::AlterKeyspace;
 
 use super::QueryExecution;
 

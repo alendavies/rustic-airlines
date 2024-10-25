@@ -1,9 +1,9 @@
-use super::{orderby_sql::OrderBy, where_sql::Where};
+use super::{order_by_cql::OrderBy, where_cql::Where};
+use crate::QueryCreator;
 use crate::{
     errors::CQLError,
     utils::{is_by, is_from, is_order, is_select, is_where},
 };
-use crate::QueryCoordinator;
 
 /// Struct that represents the `SELECT` SQL clause.
 /// The `SELECT` clause is used to select data from a table.
@@ -126,29 +126,28 @@ impl Select {
             orderby_clause,
         })
     }
-    
+
     /// Serializa la consulta `Select` a un `String`.
     pub fn serialize(&self) -> String {
         let mut result = format!("SELECT {} FROM {}", self.columns.join(","), self.table_name);
-        
+
         // Agrega el `WHERE` si existe
         if let Some(where_clause) = &self.where_clause {
             result.push_str(&format!(" WHERE {}", where_clause.serialize()));
         }
-        
+
         // Agrega el `ORDER BY` si existe
         if let Some(orderby_clause) = &self.orderby_clause {
             result.push_str(&format!(" ORDER BY {}", orderby_clause.serialize()));
         }
-        
+
         result
     }
 
-    pub fn deserialize(query: &str) -> Result<Self, CQLError>{
-        let tokens = QueryCoordinator::tokens_from_query(query);
+    pub fn deserialize(query: &str) -> Result<Self, CQLError> {
+        let tokens = QueryCreator::tokens_from_query(query);
         Self::new_from_tokens(tokens)
     }
-
 }
 
 #[cfg(test)]
@@ -156,7 +155,7 @@ mod tests {
 
     use super::Select;
     use crate::{
-        clauses::{condition::Condition, orderby_sql::OrderBy},
+        clauses::{condition::Condition, order_by_cql::OrderBy},
         errors::CQLError,
         operator::Operator,
     };

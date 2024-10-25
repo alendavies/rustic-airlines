@@ -13,7 +13,9 @@ use clauses::table::{
 };
 use clauses::types::column::Column;
 use clauses::types::datatype::DataType;
-use clauses::{delete_sql::Delete, insert_sql::Insert, select_sql::Select, update_sql::Update};
+use clauses::{
+    delete_cql::Delete, insert_cql::Insert, select_cql::Select, update_cql::Update, use_cql::Use,
+};
 use errors::CQLError;
 use native_protocol::frame::Frame;
 use native_protocol::messages::result::result;
@@ -65,6 +67,7 @@ pub enum Query {
     CreateKeyspace(CreateKeyspace),
     DropKeyspace(DropKeyspace),
     AlterKeyspace(AlterKeyspace),
+    Use(Use),
 }
 
 /// Implements the `fmt::Display` trait for `Query`. This allows the enum to be printed in a human-readable format.
@@ -81,6 +84,7 @@ impl fmt::Display for Query {
             Query::CreateKeyspace(_) => "CreateKeyspace",
             Query::DropKeyspace(_) => "DropKeyspace",
             Query::AlterKeyspace(_) => "AlterKeyspace",
+            Query::Use(_) => "Use",
         };
         write!(f, "{}", query_type)
     }
@@ -92,7 +96,7 @@ impl From<DataType> for ColumnType {
             DataType::Int => ColumnType::Int,
             DataType::String => ColumnType::Ascii,
             DataType::Boolean => ColumnType::Boolean,
-            DataType::Blob => ColumnType::Blob,
+            // DataType::Blob => ColumnType::Blob,
             DataType::Double => ColumnType::Double,
             DataType::Float => ColumnType::Float,
             DataType::Timestamp => ColumnType::Timestamp,
@@ -110,9 +114,9 @@ fn create_column_value_from_type(
         ColumnType::Bigint => Ok(ColumnValue::Bigint(
             value.parse::<i64>().map_err(|_| CQLError::Error)?,
         )),
-        ColumnType::Blob => Ok(ColumnValue::Blob(
-            hex::decode(value).map_err(|_| CQLError::Error)?,
-        )),
+        // ColumnType::Blob => Ok(ColumnValue::Blob(
+        //     hex::decode(value).map_err(|_| CQLError::Error)?,
+        // )),
         ColumnType::Boolean => Ok(ColumnValue::Boolean(
             value.parse::<bool>().map_err(|_| CQLError::Error)?,
         )),
@@ -242,6 +246,7 @@ impl CreateClientResponse for Query {
                     schema_change::Options::new(keyspace, None),
                 )))
             }
+            Query::Use(_) => Frame::Result(result::Result::SetKeyspace(keyspace)),
         };
 
         Ok(query_type)
@@ -263,6 +268,7 @@ impl NeededResponses for Query {
             Query::CreateKeyspace(_) => NeededResponseCount::AllNodes,
             Query::DropKeyspace(_) => NeededResponseCount::AllNodes,
             Query::AlterKeyspace(_) => NeededResponseCount::AllNodes,
+            Query::Use(_) => NeededResponseCount::AllNodes,
         }
     }
 }
@@ -283,21 +289,22 @@ impl GetTableName for Query {
                 Query::CreateKeyspace(_) => None,
                 Query::DropKeyspace(_) => None,
                 Query::AlterKeyspace(_) => None,
+                Query::Use(_) => None,
             }
         }
     }
 }
 
-/// The `QueryCoordinator` struct is responsible for coordinating the execution of queries.
+/// The `QueryCreator` struct is responsible for coordinating the execution of queries.
 /// It parses a query string into tokens, determines the type of query, and returns a corresponding
 /// `Query` enum variant.
 #[derive(Debug)]
-pub struct QueryCoordinator;
+pub struct QueryCreator;
 
-impl QueryCoordinator {
-    /// Creates a new instance of `QueryCoordinator`.
-    pub fn new() -> QueryCoordinator {
-        QueryCoordinator {}
+impl QueryCreator {
+    /// Creates a new instance of `QueryCreator`.
+    pub fn new() -> QueryCreator {
+        QueryCreator {}
     }
 
     /// Parses a query string and determines the type of query (e.g., `SELECT`, `INSERT`, `CREATE TABLE`).
@@ -361,6 +368,10 @@ impl QueryCoordinator {
                 }
                 _ => Err(CQLError::InvalidSyntax),
             },
+            "USE" => {
+                let use_cql = Use::new_from_tokens(tokens)?;
+                Ok(Query::Use(use_cql))
+            }
             _ => Err(CQLError::InvalidSyntax),
         }
     }
@@ -500,9 +511,9 @@ impl QueryCoordinator {
     ) -> usize {
         let mut paren_count = 1;
         index += 1; // Skip the opening parenthesis
-    
+
         // No agregamos el paréntesis de apertura al current
-    
+
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
             if char == '(' {
@@ -552,7 +563,7 @@ mod tests {
 
     #[test]
     fn test_create_select_query() {
-        let coordinator = QueryCoordinator::new();
+        let coordinator = QueryCreator::new();
         let query = "SELECT name, age FROM users WHERE age > 30;".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::Select(_))));
@@ -567,7 +578,7 @@ mod tests {
 
     #[test]
     fn test_create_insert_query() {
-        let coordinator = QueryCoordinator::new();
+        let coordinator = QueryCreator::new();
         let query = "INSERT INTO users (name, age) VALUES ('John', 28);".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::Insert(_))));
@@ -582,7 +593,7 @@ mod tests {
 
     #[test]
     fn test_create_update_query() {
-        let coordinator = QueryCoordinator::new();
+        let coordinator = QueryCreator::new();
         let query = "UPDATE users SET age = 29 WHERE name = 'John';".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::Update(_))));
@@ -597,7 +608,7 @@ mod tests {
 
     #[test]
     fn test_create_delete_query() {
-        let coordinator = QueryCoordinator::new();
+        let coordinator = QueryCreator::new();
         let query = "DELETE FROM users WHERE age < 20;".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::Delete(_))));
@@ -612,8 +623,9 @@ mod tests {
 
     #[test]
     fn test_create_table_query_success() {
-        let coordinator = QueryCoordinator::new();
-        let query = "CREATE TABLE t (a int, b int, c int, d int, PRIMARY KEY ((a, b), c, d));".to_string();
+        let coordinator = QueryCreator::new();
+        let query =
+            "CREATE TABLE t (a int, b int, c int, d int, PRIMARY KEY ((a, b), c, d));".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::CreateTable(_))));
 
@@ -627,7 +639,7 @@ mod tests {
 
     #[test]
     fn test_create_keyspace_query_success() {
-        let coordinator = QueryCoordinator::new();
+        let coordinator = QueryCreator::new();
         let query = "CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::CreateKeyspace(_))));
@@ -642,7 +654,7 @@ mod tests {
 
     #[test]
     fn test_drop_keyspace_query_success() {
-        let coordinator = QueryCoordinator::new();
+        let coordinator = QueryCreator::new();
         let query = "DROP KEYSPACE test;".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::DropKeyspace(_))));
@@ -657,7 +669,7 @@ mod tests {
 
     #[test]
     fn test_alter_keyspace_query_success() {
-        let coordinator = QueryCoordinator::new();
+        let coordinator = QueryCreator::new();
         let query = "ALTER KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::AlterKeyspace(_))));
@@ -670,4 +682,3 @@ mod tests {
         }
     }
 }
-

@@ -3,7 +3,7 @@ use crate::table::Table;
 use crate::utils::{connect, send_message};
 use crate::NodeError;
 use crate::{Node, INTERNODE_PORT};
-use query_coordinator::clauses::types::column::Column;
+use query_creator::clauses::types::column::Column;
 
 pub mod alter_keyspace;
 pub mod alter_table;
@@ -15,8 +15,9 @@ pub mod drop_table;
 pub mod insert;
 pub mod select;
 pub mod update;
-use query_coordinator::errors::CQLError;
-use query_coordinator::Query;
+pub mod use_cql;
+use query_creator::errors::CQLError;
+use query_creator::Query;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufRead;
@@ -100,6 +101,9 @@ impl QueryExecution {
             }
             Query::AlterKeyspace(alter_keyspace) => {
                 self.execute_alter_keyspace(alter_keyspace, internode, open_query_id)?;
+            }
+            Query::Use(use_cql) => {
+                self.execute_use(use_cql, internode, open_query_id)?;
             }
         }
 

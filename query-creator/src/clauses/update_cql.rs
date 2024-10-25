@@ -1,8 +1,8 @@
-use super::set_sql::Set;
-use super::where_sql::Where;
+use super::set_cql::Set;
+use super::where_cql::Where;
 use crate::errors::CQLError;
 use crate::utils::{is_set, is_update, is_where};
-use crate::QueryCoordinator;
+use crate::QueryCreator;
 
 /// Struct representing the `UPDATE` SQL clause.
 /// The `UPDATE` clause is used to modify records in a table.
@@ -97,28 +97,31 @@ impl Update {
 
     // Serializa el struct `Update` en un string
     pub fn serialize(&self) -> String {
-        let mut result = format!("UPDATE {} SET {}", self.table_name, self.set_clause.serialize());
-        
+        let mut result = format!(
+            "UPDATE {} SET {}",
+            self.table_name,
+            self.set_clause.serialize()
+        );
+
         if let Some(where_clause) = &self.where_clause {
             result.push_str(&format!(" WHERE {}", where_clause.serialize()));
         }
-        
+
         result
     }
 
     // Deserializa un string en una instancia de `Update`
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
-        let tokens: Vec<String> = QueryCoordinator::tokens_from_query(serialized);
+        let tokens: Vec<String> = QueryCreator::tokens_from_query(serialized);
         Self::new_from_tokens(tokens)
     }
-
 }
 
 #[cfg(test)]
 mod tests {
 
     use crate::{
-        clauses::{condition::Condition, set_sql::Set, update_sql::Update, where_sql::Where},
+        clauses::{condition::Condition, set_cql::Set, update_cql::Update, where_cql::Where},
         errors::CQLError,
         operator::Operator,
     };

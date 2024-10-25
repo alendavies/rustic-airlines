@@ -1,4 +1,4 @@
-use query_coordinator::clauses::{table::create_table_cql::CreateTable, types::column::Column};
+use query_creator::clauses::{table::create_table_cql::CreateTable, types::column::Column};
 use std::{fmt, vec};
 
 use crate::errors::NodeError;

@@ -3,8 +3,8 @@
 // Ordered imports
 use std::fmt;
 
-use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
-use query_coordinator::errors::CQLError;
+use query_creator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
+use query_creator::errors::CQLError;
 
 use crate::errors::NodeError;
 use crate::table::Table;
@@ -158,8 +158,8 @@ impl fmt::Debug for Keyspace {
 mod tests {
     use super::*;
     use crate::table::Table;
-    use query_coordinator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
-    use query_coordinator::clauses::table::create_table_cql::CreateTable;
+    use query_creator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
+    use query_creator::clauses::table::create_table_cql::CreateTable;
 
     #[test]
     fn test_create_keyspace() {

@@ -2,7 +2,7 @@
 use crate::table::Table;
 use crate::CQLError;
 use crate::NodeError;
-use query_coordinator::clauses::delete_sql::Delete;
+use query_creator::clauses::delete_cql::Delete;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::io::{BufRead, BufReader};
@@ -25,6 +25,10 @@ impl QueryExecution {
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
             table = node.get_table(table_name.clone())?;
+
+            if node.has_no_actual_keyspace() {
+                return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
+            }
 
             let partition_keys = table.get_partition_keys()?;
             let clustering_columns = table.get_clustering_columns()?;

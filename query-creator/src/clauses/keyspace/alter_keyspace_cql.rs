@@ -1,5 +1,5 @@
 use crate::errors::CQLError;
-use crate::QueryCoordinator;
+use crate::QueryCreator;
 
 #[derive(Debug, Clone)]
 pub struct AlterKeyspace {
@@ -10,13 +10,19 @@ pub struct AlterKeyspace {
 
 impl AlterKeyspace {
     pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
-        if query.len() < 10 || query[0].to_uppercase() != "ALTER" || query[1].to_uppercase() != "KEYSPACE" {
+        if query.len() < 10
+            || query[0].to_uppercase() != "ALTER"
+            || query[1].to_uppercase() != "KEYSPACE"
+        {
             return Err(CQLError::InvalidSyntax);
         }
 
         let keyspace_name = query[2].to_string();
 
-        if query[3].to_uppercase() != "WITH" || query[4].to_uppercase() != "REPLICATION" || query[5] != "=" {
+        if query[3].to_uppercase() != "WITH"
+            || query[4].to_uppercase() != "REPLICATION"
+            || query[5] != "="
+        {
             return Err(CQLError::InvalidSyntax);
         }
 
@@ -37,7 +43,8 @@ impl AlterKeyspace {
             match key {
                 "class" => replication_class = value.to_string(),
                 "replication_factor" => {
-                    replication_factor = value.parse::<u32>().map_err(|_| CQLError::InvalidSyntax)?;
+                    replication_factor =
+                        value.parse::<u32>().map_err(|_| CQLError::InvalidSyntax)?;
                 }
                 _ => return Err(CQLError::InvalidSyntax),
             }
@@ -75,7 +82,7 @@ impl AlterKeyspace {
     /// Deserializa una consulta CQL en formato `String` y convierte a la estructura `AlterKeyspace`
     pub fn deserialize(query: &str) -> Result<Self, CQLError> {
         // Divide la consulta en tokens y convierte a `Vec<String>`
-        let tokens: Vec<String> = QueryCoordinator::tokens_from_query(query);
+        let tokens: Vec<String> = QueryCreator::tokens_from_query(query);
         Self::new_from_tokens(tokens)
     }
 }

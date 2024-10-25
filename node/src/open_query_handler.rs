@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::net::TcpStream;
 
-use query_coordinator::Query;
+use query_creator::Query;
 
 use crate::errors::NodeError;
 use crate::table::Table;
@@ -231,8 +231,8 @@ impl fmt::Debug for OpenQueryHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use query_coordinator::clauses::table::create_table_cql::CreateTable;
-    use query_coordinator::Query;
+    use query_creator::clauses::table::create_table_cql::CreateTable;
+    use query_creator::Query;
     use std::net::TcpListener;
 
     // Helper function to create a dummy TCP stream for testing.
@@ -257,7 +257,7 @@ mod tests {
 
     // Helper function to create a dummy Query for testing.
     fn get_dummy_query() -> Query {
-        Query::Select(query_coordinator::clauses::select_sql::Select {
+        Query::Select(query_creator::clauses::select_cql::Select {
             table_name: "dummy_table".to_string(),
             columns: vec!["col1".to_string(), "col2".to_string()],
             where_clause: None,
