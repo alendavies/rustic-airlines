@@ -8,7 +8,7 @@ use crate::{
     Serializable, SerializationError,
 };
 
-use super::metadata::Metadata;
+use super::metadata::{self, Metadata};
 
 enum ColumnTypeCode {
     Custom = 0x0000,
@@ -243,7 +243,7 @@ impl OptionSerializable for ColumnType {
 type Uuid = [u8; 16];
 
 #[derive(Debug, PartialEq)]
-enum ColumnValue {
+pub enum ColumnValue {
     Custom(String),
     Ascii(String), // this is actually an ascii string
     Bigint(i64),
@@ -581,6 +581,18 @@ pub struct Rows {
     metadata: Metadata,
     rows_count: Int,
     rows_content: Vec<Row>,
+}
+
+impl Rows {
+    pub fn new(cols: Vec<(String, ColumnType)>, rows: Vec<Row>) -> Rows {
+        let metadata = Metadata::new(cols.len() as u32, cols);
+
+        Self {
+            metadata,
+            rows_count: Int::from(rows.len() as i32),
+            rows_content: rows,
+        }
+    }
 }
 
 impl Serializable for Rows {
