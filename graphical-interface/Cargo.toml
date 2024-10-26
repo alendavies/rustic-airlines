@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 egui = "0.29.0"
 eframe = "0.29.0"
+walkers = "0.25.0"
+driver = { path = "../driver" }

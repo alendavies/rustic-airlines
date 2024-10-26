@@ -12,5 +12,6 @@ members = [
     "partitioner",
     "query-creator",
     "native_protocol",
+    "graphical-interface",
     "node_launcher"
 ]
