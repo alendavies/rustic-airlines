@@ -48,10 +48,11 @@ impl InternodeProtocolHandler {
         query_type: &str,
         structure: &str,
         internode: bool,
+        replication: bool,
     ) -> String {
         format!(
-            "QUERY - {} - {} - {} - {} - {}",
-            id, open_query_id, query_type, structure, internode
+            "QUERY - {} - {} - {} - {} - {} - {}",
+            id, open_query_id, query_type, structure, internode, replication
         )
     }
 
@@ -112,9 +113,9 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
     ) -> Result<(), NodeError> {
-        let parts: Vec<&str> = message.splitn(5, " - ").collect();
+        let parts: Vec<&str> = message.splitn(6, " - ").collect();
 
-        if parts.len() < 5 {
+        if parts.len() < 6 {
             return Err(NodeError::InternodeProtocolError);
         }
 
@@ -125,6 +126,7 @@ impl InternodeProtocolHandler {
         let query_type = parts[2];
         let structure = parts[3];
         let internode = parts[4] == "true";
+        let replication = parts[5] == "true";
 
         let result = match query_type {
             "HANDSHAKE" => {
@@ -177,6 +179,7 @@ impl InternodeProtocolHandler {
                 structure,
                 connections.clone(),
                 internode,
+                replication,
                 open_query_id,
             ),
             "UPDATE" => Self::handle_update_command(
@@ -184,6 +187,7 @@ impl InternodeProtocolHandler {
                 structure,
                 connections.clone(),
                 internode,
+                replication,
                 open_query_id,
             ),
             "DELETE" => Self::handle_delete_command(
@@ -191,6 +195,7 @@ impl InternodeProtocolHandler {
                 structure,
                 connections.clone(),
                 internode,
+                replication,
                 open_query_id,
             ),
             "SELECT" => Self::handle_select_command(
@@ -198,6 +203,7 @@ impl InternodeProtocolHandler {
                 structure,
                 connections.clone(),
                 internode,
+                replication,
                 open_query_id,
             ),
             "USE" => Self::handle_use_command(
@@ -324,7 +330,6 @@ impl InternodeProtocolHandler {
                 keyspace_name,
                 content.split("/").map(|s| s.to_string()).collect(),
             )?;
-            println!("el frame a devolver es {:?}", frame);
             connection.write(&frame.to_bytes())?;
             Ok(())
         } else {
@@ -385,12 +390,14 @@ impl InternodeProtocolHandler {
         structure: &str,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
+        replication: bool,
         open_query_id: i32,
     ) -> Result<Option<String>, NodeError> {
         let query = Insert::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::Insert(query),
             internode,
+            replication,
             open_query_id,
         )
     }
@@ -407,6 +414,7 @@ impl InternodeProtocolHandler {
         QueryExecution::new(node.clone(), connections).execute(
             Query::CreateTable(query),
             internode,
+            false,
             open_query_id,
         )
     }
@@ -423,6 +431,7 @@ impl InternodeProtocolHandler {
         QueryExecution::new(node.clone(), connections).execute(
             Query::DropTable(query),
             internode,
+            false,
             open_query_id,
         )
     }
@@ -439,6 +448,7 @@ impl InternodeProtocolHandler {
         QueryExecution::new(node.clone(), connections).execute(
             Query::AlterTable(query),
             internode,
+            false,
             open_query_id,
         )
     }
@@ -455,6 +465,7 @@ impl InternodeProtocolHandler {
         QueryExecution::new(node.clone(), connections).execute(
             Query::CreateKeyspace(query),
             internode,
+            false,
             open_query_id,
         )
     }
@@ -471,6 +482,7 @@ impl InternodeProtocolHandler {
         QueryExecution::new(node.clone(), connections).execute(
             Query::DropKeyspace(query),
             internode,
+            false,
             open_query_id,
         )
     }
@@ -487,6 +499,7 @@ impl InternodeProtocolHandler {
         QueryExecution::new(node.clone(), connections).execute(
             Query::AlterKeyspace(query),
             internode,
+            false,
             open_query_id,
         )
     }
@@ -497,12 +510,14 @@ impl InternodeProtocolHandler {
         structure: &str,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
+        replication: bool,
         open_query_id: i32,
     ) -> Result<Option<String>, NodeError> {
         let query = Update::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::Update(query),
             internode,
+            replication,
             open_query_id,
         )
     }
@@ -513,12 +528,14 @@ impl InternodeProtocolHandler {
         structure: &str,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
+        replication: bool,
         open_query_id: i32,
     ) -> Result<Option<String>, NodeError> {
         let query = Delete::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::Delete(query),
             internode,
+            replication,
             open_query_id,
         )
     }
@@ -529,12 +546,14 @@ impl InternodeProtocolHandler {
         structure: &str,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
+        replication: bool,
         open_query_id: i32,
     ) -> Result<Option<String>, NodeError> {
         let query = Select::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::Select(query),
             internode,
+            replication,
             open_query_id,
         )
     }
@@ -551,6 +570,7 @@ impl InternodeProtocolHandler {
         QueryExecution::new(node.clone(), connections).execute(
             Query::Use(query),
             internode,
+            false,
             open_query_id,
         )
     }
@@ -580,10 +600,11 @@ mod tests {
             "CREATE_TABLE",
             "table_structure",
             true,
+            true,
         );
         assert_eq!(
             message,
-            "QUERY - 127.0.0.1 - 1 - CREATE_TABLE - table_structure - true"
+            "QUERY - 127.0.0.1 - 1 - CREATE_TABLE - table_structure - true - true"
         );
     }
 
@@ -629,7 +650,7 @@ mod tests {
 
         let result = handler.handle_command(
             &node,
-            "QUERY - 127.0.0.1 - 1 - HANDSHAKE - structure - true",
+            "QUERY - 127.0.0.1 - 1 - HANDSHAKE - structure - true - true",
             &mut Arc::new(Mutex::new(client_stream)),
             connections,
             true,

@@ -50,6 +50,7 @@ impl QueryExecution {
         &mut self,
         query: Query,
         internode: bool,
+        replication: bool,
         open_query_id: i32,
     ) -> Result<Option<String>, NodeError> {
         let mut content: Result<Option<String>, NodeError> = Ok(Some(String::from("_")));
@@ -57,7 +58,7 @@ impl QueryExecution {
         let query_result = {
             match query {
                 Query::Select(select_query) => {
-                    match self.execute_select(select_query, internode, open_query_id) {
+                    match self.execute_select(select_query, internode, replication, open_query_id) {
                         Ok(select_querys) => {
                             content = Ok(Some(select_querys.join("/")));
                             Ok(())
@@ -74,10 +75,10 @@ impl QueryExecution {
                     self.execute_insert(insert_query, table, internode, open_query_id)
                 }
                 Query::Update(update_query) => {
-                    self.execute_update(update_query, internode, open_query_id)
+                    self.execute_update(update_query, internode, replication, open_query_id)
                 }
                 Query::Delete(delete_query) => {
-                    self.execute_delete(delete_query, internode, open_query_id)
+                    self.execute_delete(delete_query, internode, replication, open_query_id)
                 }
                 Query::CreateTable(create_table) => {
                     if self
@@ -154,6 +155,7 @@ impl QueryExecution {
             header,
             &serialized_message,
             internode,
+            false,
         );
 
         // Bloquea el nodo para obtener el partitioner y la IP
@@ -186,11 +188,63 @@ impl QueryExecution {
             header,
             serialized_message,
             internode,
+            false,
         );
 
         // Conecta y envía el mensaje al nodo específico
         let stream = connect(target_ip, INTERNODE_PORT, self.connections.clone())?;
         send_message(&stream, &message)?;
+        Ok(())
+    }
+
+    // Función auxiliar para enviar un mensaje a todos los nodos en el partitioner
+    fn send_to_replication_nodes(
+        &self,
+        local_node: MutexGuard<'_, Node>,
+        value_to_hash: String,
+        header: &str,
+        serialized_message: &str,
+        internode: bool,
+        open_query_id: i32,
+    ) -> Result<(), NodeError> {
+        // Serializa el objeto que se quiere enviar
+        let message = InternodeProtocolHandler::create_protocol_message(
+            &&local_node.get_ip_string(),
+            open_query_id,
+            header,
+            &serialized_message,
+            internode,
+            true,
+        );
+
+        // Bloquea el nodo para obtener el partitioner y la IP
+        let current_ip = local_node.get_ip();
+        let replication_factor = local_node
+            .get_replication_factor()
+            .ok_or(NodeError::KeyspaceError)?;
+
+        println!("el replication factor es {:?}", replication_factor);
+        println!(
+            "los nodos donde voy a replicar son {:?}",
+            local_node
+                .get_partitioner()
+                .get_n_successors(value_to_hash.clone(), (replication_factor - 1) as usize,)?
+        );
+
+        // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
+        for ip in local_node
+            .get_partitioner()
+            .get_n_successors(value_to_hash, (replication_factor - 1) as usize)?
+        {
+            if ip != current_ip {
+                println!(
+                    "voy a replicar la info de la open query: {:?} en {:?}",
+                    open_query_id, ip
+                );
+                let stream = connect(ip, INTERNODE_PORT, self.connections.clone())?;
+                send_message(&stream, &message)?;
+            }
+        }
         Ok(())
     }
 
@@ -211,18 +265,32 @@ impl QueryExecution {
     }
 
     /// Obtiene las rutas del archivo principal y del temporal.
-    fn get_file_paths(&self, table_name: &str) -> Result<(String, String), NodeError> {
+    /// Si `replication` es `true`, coloca los archivos dentro de una carpeta "replication" en el keyspace.
+    fn get_file_paths(
+        &self,
+        table_name: &str,
+        replication: bool,
+    ) -> Result<(String, String), NodeError> {
         let node = self
             .node_that_execute
             .lock()
             .map_err(|_| NodeError::LockError)?;
+
         let add_str = node.get_ip_string().replace(".", "_");
-        let folder_name = format!(
+        let base_folder = format!(
             "keyspaces_{}/{}",
             add_str,
             node.actual_keyspace_name()
                 .ok_or(NodeError::KeyspaceError)?
         );
+
+        // Agrega la carpeta "replication" si el parámetro es verdadero
+        let folder_name = if replication {
+            format!("{}/replication", base_folder)
+        } else {
+            base_folder
+        };
+
         let file_path = format!("{}/{}.csv", folder_name, table_name);
 
         let timestamp = SystemTime::now()

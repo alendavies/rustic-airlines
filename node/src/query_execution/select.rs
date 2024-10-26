@@ -15,9 +15,13 @@ impl QueryExecution {
         &mut self,
         mut select_query: Select,
         internode: bool,
+        replication: bool,
         open_query_id: i32,
     ) -> Result<Vec<String>, NodeError> {
         let table;
+        let rf;
+        let mut do_in_this_node = true;
+
         {
             // Get the table name and reference the node
             let table_name = select_query.table_name.clone();
@@ -31,6 +35,11 @@ impl QueryExecution {
             }
             // Get the table and primary key
             table = node.get_table(table_name.clone())?;
+
+            rf = node
+                .get_replication_factor()
+                .ok_or(NodeError::KeyspaceError)?;
+
             // Validate the primary key and where clause
             let partition_keys = table.get_partition_keys()?;
             let clustering_columns = table.get_clustering_columns()?;
@@ -67,16 +76,31 @@ impl QueryExecution {
                     true,
                     open_query_id,
                 )?;
-                return Ok(vec![]);
+                do_in_this_node = false;
+            }
+            if !internode {
+                let serialized_delete = select_query.serialize();
+                self.send_to_replication_nodes(
+                    node,
+                    value_to_hash,
+                    "UPDATE",
+                    &serialized_delete,
+                    true,
+                    open_query_id,
+                )?;
             }
         }
 
-        if !internode {
+        if !internode && rf == 1 {
             self.execution_finished_itself = true;
         }
 
+        if !do_in_this_node {
+            return Ok(vec![]);
+        }
+
         // Execute the SELECT locally if this is not an internode operation
-        let result = self.execute_select_in_this_node(select_query, table)?;
+        let result = self.execute_select_in_this_node(select_query, table, replication)?;
         Ok(result)
     }
 
@@ -85,8 +109,9 @@ impl QueryExecution {
         &self,
         select_query: Select,
         table: Table,
+        replication: bool,
     ) -> Result<Vec<String>, NodeError> {
-        let (file_path, _) = self.get_file_paths(&select_query.table_name)?;
+        let (file_path, _) = self.get_file_paths(&select_query.table_name, replication)?;
         let file = OpenOptions::new().read(true).open(&file_path)?;
         let reader = BufReader::new(file);
         let mut results = Vec::new();

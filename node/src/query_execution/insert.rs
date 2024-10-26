@@ -24,6 +24,10 @@ impl QueryExecution {
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         let node = self.node_that_execute.lock()?;
+        let rf = node
+            .get_replication_factor()
+            .ok_or(NodeError::KeyspaceError)?;
+        let mut do_in_this_node = true;
 
         // Check if the keyspace exists in the node
         if node.has_no_actual_keyspace() {
@@ -86,35 +90,54 @@ impl QueryExecution {
             values,
         )?;
         self.validate_values(columns, &values)?;
-        let ip = node.get_partitioner().get_ip(value_to_hash)?;
-
+        let node_to_insert = node.get_partitioner().get_ip(value_to_hash.clone())?;
+        let self_ip = node.get_ip().clone();
+        let keyspace_name = node
+            .actual_keyspace_name()
+            .ok_or(NodeError::KeyspaceError)?;
         // If not internode and the IP to insert is different, forward the insert
-        if !internode && ip != node.get_ip() {
+        if !internode && node_to_insert != self_ip {
             let serialized_insert = insert_query.serialize();
             self.send_to_single_node(
                 node.get_ip(),
-                ip,
+                node_to_insert,
                 "INSERT",
                 &serialized_insert,
                 true,
                 open_query_id,
             )?;
-            return Ok(());
+            do_in_this_node = false;
         }
 
         if !internode {
+            println!("voy a mandar replicacion");
+            let serialized_delete = insert_query.serialize();
+            self.send_to_replication_nodes(
+                node,
+                value_to_hash,
+                "INSERT",
+                &serialized_delete,
+                true,
+                open_query_id,
+            )?;
+        }
+
+        if !internode && rf == 1 {
             self.execution_finished_itself = true;
+        }
+
+        if !do_in_this_node {
+            return Ok(());
         }
 
         keys_index.extend(&clustering_columns_index);
         // Perform the insert in this node
         QueryExecution::insert_in_this_node(
             values,
-            node.get_ip(),
+            self_ip,
             insert_query.into_clause.table_name,
             keys_index,
-            node.actual_keyspace_name()
-                .ok_or(NodeError::KeyspaceError)?,
+            keyspace_name,
         )
     }
 

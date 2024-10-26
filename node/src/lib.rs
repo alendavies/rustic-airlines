@@ -91,9 +91,14 @@ impl Node {
         table: Option<Table>,
     ) -> Result<i32, NodeError> {
         let all_nodes = self.get_how_many_nodes_i_know();
+
+        let replication_factor = self.get_replication_factor().unwrap_or(1);
+
         let needed_responses = match query.needed_responses() {
             query_creator::NeededResponseCount::AllNodes => all_nodes,
-            query_creator::NeededResponseCount::Specific(specific_value) => specific_value as usize,
+            query_creator::NeededResponseCount::Specific(specific_value) => {
+                specific_value as usize * replication_factor as usize
+            }
         };
         Ok(self.open_query_handler.new_open_query(
             needed_responses as i32,
@@ -135,6 +140,13 @@ impl Node {
             .map(|keyspace| keyspace.get_name()) // Gets the name if it exists // If None, returns an error
     }
 
+    fn get_replication_factor(&self) -> Option<u32> {
+        if let Some(keyspace) = self.actual_keyspace.clone() {
+            Some(keyspace.get_replication_factor())
+        } else {
+            None
+        }
+    }
     fn get_open_handle_query(&mut self) -> &mut OpenQueryHandler {
         &mut self.open_query_handler
     }
@@ -302,6 +314,7 @@ impl Node {
                         "HANDSHAKE",
                         "_",
                         true,
+                        false,
                     );
                     let mut stream_guard = stream.lock()?;
                     send_message(&mut stream_guard, &message)?;
@@ -450,6 +463,7 @@ impl Node {
             "HANDSHAKE",
             "_",
             true,
+            false,
         );
 
         send_message(&mut tcp, &message)?;
@@ -606,6 +620,7 @@ impl Node {
 
         let response = QueryExecution::new(node.clone(), connections.clone()).execute(
             query.clone(),
+            false,
             false,
             open_query_id,
         )?;

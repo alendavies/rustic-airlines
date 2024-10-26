@@ -38,9 +38,12 @@ impl QueryExecution {
         &mut self,
         update_query: Update,
         internode: bool,
+        replication: bool,
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         let table;
+        let rf;
+        let mut do_in_this_node = true;
         {
             // Get the table name and the file path
             let table_name = update_query.table_name.clone();
@@ -54,6 +57,10 @@ impl QueryExecution {
             }
 
             table = node.get_table(table_name.clone())?;
+
+            rf = node
+                .get_replication_factor()
+                .ok_or(NodeError::KeyspaceError)?;
 
             // Validate the primary key and where clause
             let partition_keys = table.get_partition_keys()?;
@@ -87,16 +94,33 @@ impl QueryExecution {
                     true,
                     open_query_id,
                 )?;
-                return Ok(());
+                do_in_this_node = false;
+            }
+
+            if !internode {
+                let serialized_delete = update_query.serialize();
+                self.send_to_replication_nodes(
+                    node,
+                    value_to_hash,
+                    "UPDATE",
+                    &serialized_delete,
+                    true,
+                    open_query_id,
+                )?;
             }
         }
 
-        if !internode {
+        if !internode && rf == 1 {
             self.execution_finished_itself = true;
         }
 
+        if !do_in_this_node {
+            return Ok(());
+        }
+
         // Execute the update on this node
-        let (file_path, temp_file_path) = self.get_file_paths(&update_query.table_name)?;
+        let (file_path, temp_file_path) =
+            self.get_file_paths(&update_query.table_name, replication)?;
         if let Err(e) = self.update_in_this_node(update_query, table, &file_path, &temp_file_path) {
             let _ = std::fs::remove_file(temp_file_path);
             return Err(e);

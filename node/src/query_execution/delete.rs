@@ -15,9 +15,12 @@ impl QueryExecution {
         &mut self,
         delete_query: Delete,
         internode: bool,
+        replication: bool,
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         let table;
+        let rf;
+        let mut do_in_this_node = true;
         {
             let table_name = delete_query.table_name.clone();
             let node = self
@@ -25,6 +28,10 @@ impl QueryExecution {
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
             table = node.get_table(table_name.clone())?;
+
+            rf = node
+                .get_replication_factor()
+                .ok_or(NodeError::KeyspaceError)?;
 
             if node.has_no_actual_keyspace() {
                 return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
@@ -69,15 +76,33 @@ impl QueryExecution {
                     true,
                     open_query_id,
                 )?;
-                return Ok(());
+                do_in_this_node = false;
+            }
+
+            if !internode {
+                let serialized_delete = delete_query.serialize();
+                self.send_to_replication_nodes(
+                    node,
+                    value_to_hash,
+                    "DELETE",
+                    &serialized_delete,
+                    true,
+                    open_query_id,
+                )?;
             }
         }
 
-        if !internode {
+        if !internode && rf == 1 {
             self.execution_finished_itself = true;
         }
 
-        let (file_path, temp_file_path) = self.get_file_paths(&delete_query.table_name)?;
+        if !do_in_this_node {
+            return Ok(());
+        }
+
+        let (file_path, temp_file_path) =
+            self.get_file_paths(&delete_query.table_name, replication)?;
+
         if self
             .delete_in_this_node(delete_query, table, &file_path, &temp_file_path)
             .is_err()
