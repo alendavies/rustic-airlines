@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::f32::consts::E;
 use std::io::Cursor;
 use std::{io::Read, net::IpAddr};
 
@@ -574,9 +575,9 @@ type Row = BTreeMap<String, ColumnValue>;
 #[derive(Debug, PartialEq)]
 /// Indicates a set of rows.
 pub struct Rows {
-    metadata: Metadata,
-    rows_count: Int,
-    rows_content: Vec<Row>,
+    pub metadata: Metadata,
+    pub rows_count: Int,
+    pub rows_content: Vec<Row>,
 }
 
 impl Rows {
@@ -625,7 +626,7 @@ impl Serializable for Rows {
                 let bytes_ = if let Bytes::Vec(bytes) = value_bytes {
                     bytes
                 } else {
-                    vec![]
+                    Err(SerializationError)?
                 };
 
                 let mut cursor2 = Cursor::new(bytes_.as_slice());
@@ -729,7 +730,7 @@ mod tests {
         let rows = Rows {
             metadata: Metadata {
                 flags: MetadataFlags {
-                    global_tables_spec: true,
+                    global_table_spec: true,
                     has_more_pages: false,
                     no_metadata: false,
                 },
@@ -773,7 +774,7 @@ mod tests {
         let expected_rows = Rows {
             metadata: Metadata {
                 flags: MetadataFlags {
-                    global_tables_spec: true,
+                    global_table_spec: true,
                     has_more_pages: false,
                     no_metadata: false,
                 },
@@ -808,18 +809,15 @@ mod tests {
         let rows = Rows {
             metadata: Metadata {
                 flags: MetadataFlags {
-                    global_tables_spec: false,
+                    global_table_spec: false,
                     has_more_pages: false,
                     no_metadata: false,
                 },
                 columns_count: 1,
-                global_table_spec: Some(TableSpec {
-                    keyspace: "test_keyspace".to_string(),
-                    table_name: "test_table".to_string(),
-                }),
+                global_table_spec: None,
                 col_spec_i: vec![ColumnSpec {
-                    keyspace: Some("test_keyspace".to_string()),
-                    table_name: Some("test_table".to_string()),
+                    keyspace: None,
+                    table_name: None,
                     name: "test_column".to_string(),
                     type_: ColumnType::Int,
                 }],
