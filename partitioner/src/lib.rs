@@ -31,7 +31,6 @@ impl Partitioner {
             return Err(PartitionerError::NodeAlreadyExists);
         }
         self.nodes.insert(hash, ip);
-        println!("{:?}", self);
         Ok(())
     }
 
