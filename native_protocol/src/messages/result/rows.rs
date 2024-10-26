@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
+use std::f32::consts::E;
 use std::io::Cursor;
-use std::{collections::HashMap, io::Read, net::IpAddr};
+use std::{io::Read, net::IpAddr};
 
 use crate::types::FromCursorDeserializable;
 use crate::{
@@ -8,7 +9,7 @@ use crate::{
     Serializable, SerializationError,
 };
 
-use super::metadata::{self, Metadata};
+use super::metadata::Metadata;
 
 enum ColumnTypeCode {
     Custom = 0x0000,
@@ -64,10 +65,6 @@ pub enum ColumnType {
 }
 
 impl OptionSerializable for ColumnType {
-    /* fn get_option_code(&self) -> u16 {
-        todo!()
-    } */
-
     fn serialize_option(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
 
@@ -578,9 +575,9 @@ type Row = BTreeMap<String, ColumnValue>;
 #[derive(Debug, PartialEq)]
 /// Indicates a set of rows.
 pub struct Rows {
-    metadata: Metadata,
-    rows_count: Int,
-    rows_content: Vec<Row>,
+    pub metadata: Metadata,
+    pub rows_count: Int,
+    pub rows_content: Vec<Row>,
 }
 
 impl Rows {
@@ -629,7 +626,7 @@ impl Serializable for Rows {
                 let bytes_ = if let Bytes::Vec(bytes) = value_bytes {
                     bytes
                 } else {
-                    vec![]
+                    Err(SerializationError)?
                 };
 
                 let mut cursor2 = Cursor::new(bytes_.as_slice());
@@ -733,7 +730,7 @@ mod tests {
         let rows = Rows {
             metadata: Metadata {
                 flags: MetadataFlags {
-                    global_tables_spec: true,
+                    global_table_spec: true,
                     has_more_pages: false,
                     no_metadata: false,
                 },
@@ -777,7 +774,7 @@ mod tests {
         let expected_rows = Rows {
             metadata: Metadata {
                 flags: MetadataFlags {
-                    global_tables_spec: true,
+                    global_table_spec: true,
                     has_more_pages: false,
                     no_metadata: false,
                 },
@@ -799,6 +796,73 @@ mod tests {
                 BTreeMap::from([("test_column".to_string(), ColumnValue::Int(2))]),
             ],
         };
+
+        let bytes = expected_rows.to_bytes();
+
+        let rows = Rows::from_bytes(&bytes).unwrap();
+
+        assert_eq!(rows, expected_rows)
+    }
+
+    #[test]
+    fn rows_to_bytes_() {
+        let rows = Rows {
+            metadata: Metadata {
+                flags: MetadataFlags {
+                    global_table_spec: false,
+                    has_more_pages: false,
+                    no_metadata: false,
+                },
+                columns_count: 1,
+                global_table_spec: None,
+                col_spec_i: vec![ColumnSpec {
+                    keyspace: None,
+                    table_name: None,
+                    name: "test_column".to_string(),
+                    type_: ColumnType::Int,
+                }],
+            },
+            rows_count: Int::from(2),
+            rows_content: vec![BTreeMap::from([(
+                "test_column".to_string(),
+                ColumnValue::Int(1),
+            )])],
+        };
+
+        let bytes = rows.to_bytes();
+
+        let mut expected_bytes = Vec::new();
+        let metadata_bytes = rows.metadata.to_bytes();
+        let rows_count_bytes = rows.rows_count.to_be_bytes();
+
+        let row_content_bytes =
+            vec![Bytes::Vec(ColumnValue::Int(1).to_bytes()).to_bytes()].concat();
+
+        expected_bytes.extend_from_slice(&metadata_bytes);
+        expected_bytes.extend_from_slice(&rows_count_bytes);
+        expected_bytes.extend_from_slice(&row_content_bytes);
+
+        assert_eq!(bytes, expected_bytes)
+    }
+
+    #[test]
+    fn rows_from_bytes_() {
+        let cols = vec![
+            ("age".to_string(), ColumnType::Int),
+            ("name".to_string(), ColumnType::Varchar),
+        ];
+        let rows = vec![
+            BTreeMap::from([
+                ("age".to_string(), ColumnValue::Int(1)),
+                ("name".to_string(), ColumnValue::Varchar("John".to_string())),
+            ]),
+            BTreeMap::from([
+                ("age".to_string(), ColumnValue::Int(2)),
+                ("name".to_string(), ColumnValue::Varchar("Doe".to_string())),
+            ]),
+        ];
+
+        let expected_rows = Rows::new(cols, rows);
 
         let bytes = expected_rows.to_bytes();
 

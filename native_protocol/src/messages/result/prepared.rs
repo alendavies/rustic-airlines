@@ -64,7 +64,7 @@ mod tests {
     fn mock_metadata() -> Metadata {
         Metadata {
             flags: MetadataFlags {
-                global_tables_spec: true,
+                global_table_spec: true,
                 has_more_pages: false,
                 no_metadata: false,
             },
