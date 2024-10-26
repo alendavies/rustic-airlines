@@ -38,7 +38,7 @@ impl QueryExecution {
         &mut self,
         update_query: Update,
         internode: bool,
-        replication: bool,
+        mut replication: bool,
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         let table;
@@ -97,25 +97,31 @@ impl QueryExecution {
                 do_in_this_node = false;
             }
 
+            let self_ip = node.get_ip().clone();
+
             if !internode {
                 let serialized_delete = update_query.serialize();
-                self.send_to_replication_nodes(
+                replication = self.send_to_replication_nodes(
                     node,
-                    value_to_hash,
+                    node_to_update,
                     "UPDATE",
                     &serialized_delete,
                     true,
                     open_query_id,
                 )?;
             }
+
+            if !internode && rf == 1 && node_to_update != self_ip {
+                self.execution_finished_itself = true;
+            }
         }
 
-        if !internode && rf == 1 {
-            self.execution_finished_itself = true;
-        }
-
-        if !do_in_this_node {
+        if !do_in_this_node && !replication {
             return Ok(());
+        }
+
+        if replication {
+            self.execution_replicate_itself = true;
         }
 
         // Execute the update on this node

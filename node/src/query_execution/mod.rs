@@ -30,6 +30,7 @@ pub struct QueryExecution {
     node_that_execute: Arc<Mutex<Node>>,
     connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     execution_finished_itself: bool,
+    execution_replicate_itself: bool,
 }
 
 impl QueryExecution {
@@ -42,6 +43,7 @@ impl QueryExecution {
             node_that_execute,
             connections,
             execution_finished_itself: false,
+            execution_replicate_itself: false,
         }
     }
 
@@ -52,7 +54,7 @@ impl QueryExecution {
         internode: bool,
         replication: bool,
         open_query_id: i32,
-    ) -> Result<Option<String>, NodeError> {
+    ) -> Result<Option<(i32, String)>, NodeError> {
         let mut content: Result<Option<String>, NodeError> = Ok(Some(String::from("_")));
 
         let query_result = {
@@ -72,7 +74,7 @@ impl QueryExecution {
                 Query::Insert(insert_query) => {
                     let table_name = insert_query.into_clause.table_name.clone();
                     let table = self.node_that_execute.lock()?.get_table(table_name)?;
-                    self.execute_insert(insert_query, table, internode, open_query_id)
+                    self.execute_insert(insert_query, table, internode, replication, open_query_id)
                 }
                 Query::Update(update_query) => {
                     self.execute_update(update_query, internode, replication, open_query_id)
@@ -124,16 +126,26 @@ impl QueryExecution {
                     ),
                 }
             };
-            Ok(Some(response))
+            Ok(Some((0, response)))
         } else {
             match query_result {
                 Ok(_) => {
-                    if self.execution_finished_itself {
-                        return content;
+                    let status_code = match (
+                        self.execution_finished_itself,
+                        self.execution_replicate_itself,
+                    ) {
+                        (true, true) => 2,
+                        (true, false) | (false, true) => 1,
+                        (false, false) => 0,
+                    };
+
+                    if status_code > 0 {
+                        return Ok(Some((status_code, content?.unwrap_or("_".to_string()))));
                     } else {
                         Ok(None)
                     }
                 }
+
                 Err(e) => return Err(e),
             }
         }
@@ -201,12 +213,12 @@ impl QueryExecution {
     fn send_to_replication_nodes(
         &self,
         local_node: MutexGuard<'_, Node>,
-        value_to_hash: String,
+        node_to_get_succesor: Ipv4Addr,
         header: &str,
         serialized_message: &str,
         internode: bool,
         open_query_id: i32,
-    ) -> Result<(), NodeError> {
+    ) -> Result<bool, NodeError> {
         // Serializa el objeto que se quiere enviar
         let message = InternodeProtocolHandler::create_protocol_message(
             &&local_node.get_ip_string(),
@@ -223,29 +235,21 @@ impl QueryExecution {
             .get_replication_factor()
             .ok_or(NodeError::KeyspaceError)?;
 
-        println!("el replication factor es {:?}", replication_factor);
-        println!(
-            "los nodos donde voy a replicar son {:?}",
-            local_node
-                .get_partitioner()
-                .get_n_successors(value_to_hash.clone(), (replication_factor - 1) as usize,)?
-        );
-
-        // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
-        for ip in local_node
+        let n_succesors = local_node
             .get_partitioner()
-            .get_n_successors(value_to_hash, (replication_factor - 1) as usize)?
-        {
+            .get_n_successors(node_to_get_succesor, (replication_factor - 1) as usize)?;
+
+        let mut the_node_has_to_replicate = false;
+        // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
+        for ip in n_succesors {
             if ip != current_ip {
-                println!(
-                    "voy a replicar la info de la open query: {:?} en {:?}",
-                    open_query_id, ip
-                );
                 let stream = connect(ip, INTERNODE_PORT, self.connections.clone())?;
                 send_message(&stream, &message)?;
+            } else {
+                the_node_has_to_replicate = true;
             }
         }
-        Ok(())
+        Ok(the_node_has_to_replicate)
     }
 
     fn validate_values(&self, columns: Vec<Column>, values: &[String]) -> Result<(), CQLError> {

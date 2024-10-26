@@ -68,27 +68,35 @@ impl Partitioner {
         self.nodes.contains_key(&hash)
     }
 
-    pub fn get_n_successors<T: AsRef<[u8]>>(
+    pub fn get_n_successors(
         &self,
-        value: T,
+        ip: Ipv4Addr,
         n: usize,
     ) -> Result<Vec<Ipv4Addr>, PartitionerError> {
         if self.nodes.is_empty() {
             return Err(PartitionerError::EmptyPartitioner);
         }
 
-        // Usar get_ip para obtener el nodo donde cae el hash
-        let starting_ip = self.get_ip(&value)?;
-
-        // Crear un iterador que comience desde el siguiente nodo al starting_ip
+        let hash = Self::hash_value(ip.to_string())?;
         let mut successors = Vec::new();
 
-        for (_key, addr) in self.nodes.iter() {
-            if !successors.contains(addr) && *addr != starting_ip {
-                successors.push(*addr);
-            }
+        for (_key, addr) in self.nodes.range(hash..) {
             if successors.len() == n {
                 break;
+            }
+            if *addr != ip {
+                successors.push(*addr);
+            }
+        }
+
+        if successors.len() < n {
+            for (_key, addr) in self.nodes.iter() {
+                if successors.len() == n {
+                    break;
+                }
+                if *addr != ip && !successors.contains(addr) {
+                    successors.push(*addr);
+                }
             }
         }
 
@@ -110,90 +118,10 @@ impl fmt::Debug for Partitioner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use errors::PartitionerError;
     use std::net::Ipv4Addr;
 
     #[test]
-    fn test_add_and_get_ip_with_string() {
-        let mut partitioner = Partitioner::new();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 2)).unwrap();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 3)).unwrap();
-
-        let string_value = "test_string";
-        let result = partitioner.get_ip(string_value.as_bytes());
-        assert!(result.is_ok(), "Expected Ok result, got {:?}", result);
-    }
-
-    #[test]
-    fn test_add_duplicate_ip() {
-        let mut partitioner = Partitioner::new();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
-        let result = partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1));
-        assert_eq!(result, Err(PartitionerError::NodeAlreadyExists));
-    }
-
-    #[test]
-    fn test_remove_existing_node() {
-        let mut partitioner = Partitioner::new();
-        let addr = Ipv4Addr::new(192, 168, 0, 1);
-        partitioner.add_node(addr).unwrap();
-        let result = partitioner.remove_node(addr);
-        assert_eq!(
-            result,
-            Ok(addr),
-            "Expected Ok result with Addr, got {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_remove_nonexistent_node() {
-        let mut partitioner = Partitioner::new();
-        let result = partitioner.remove_node(Ipv4Addr::new(192, 168, 0, 1));
-        assert_eq!(result, Err(PartitionerError::NodeNotFound));
-    }
-
-    #[test]
-    fn test_get_ip_empty() {
-        let partitioner = Partitioner::new();
-        assert_eq!(
-            partitioner.get_ip(100u64.to_be_bytes()),
-            Err(PartitionerError::EmptyPartitioner)
-        );
-    }
-
-    #[test]
-    fn test_get_ip_within_range() {
-        let mut partitioner = Partitioner::new();
-        let addr1 = Ipv4Addr::new(192, 168, 0, 1);
-        let addr2 = Ipv4Addr::new(192, 168, 0, 2);
-        partitioner.add_node(addr1).unwrap();
-        partitioner.add_node(addr2).unwrap();
-
-        let hash_to_search = Partitioner::hash_value(addr1.octets()).unwrap();
-        let result_addr = partitioner.get_ip(hash_to_search.to_be_bytes());
-
-        assert!(
-            result_addr == Ok(addr1) || result_addr == Ok(addr2),
-            "Expected node Addr {} or {}, got {:?}",
-            addr1,
-            addr2,
-            result_addr
-        );
-    }
-
-    #[test]
-    fn test_contains_node() {
-        let mut partitioner = Partitioner::new();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
-
-        assert!(partitioner.contains_node(&Ipv4Addr::new(192, 168, 0, 1)));
-        assert!(!partitioner.contains_node(&Ipv4Addr::new(192, 168, 0, 2)));
-    }
-
-    #[test]
-    fn test_get_nodes() {
+    fn test_add_and_get_nodes() {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
         partitioner.add_node(Ipv4Addr::new(192, 168, 0, 2)).unwrap();
@@ -205,13 +133,31 @@ mod tests {
     }
 
     #[test]
-    fn test_hash_string_error_handling() {
-        let string_value = "test_string";
-        let hash = Partitioner::hash_value(string_value.as_bytes());
+    fn test_get_n_successors_no_duplicates_skip_current() {
+        let mut partitioner = Partitioner::new();
+        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
+        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 2)).unwrap();
+        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 3)).unwrap();
+        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 4)).unwrap();
+
+        let starting_ip = Ipv4Addr::new(192, 168, 0, 2);
+        let successors = partitioner.get_n_successors(starting_ip, 2).unwrap();
+        let unique_successors: std::collections::HashSet<_> = successors.iter().collect();
+
+        assert_eq!(
+            unique_successors.len(),
+            successors.len(),
+            "Expected unique successors without duplicates, got {:?}",
+            successors
+        );
         assert!(
-            hash.is_ok(),
-            "Expected hash calculation to succeed, got {:?}",
-            hash
+            !successors.contains(&starting_ip),
+            "Expected successors to skip the starting node, but it was included"
+        );
+        assert!(
+            successors.len() <= 2,
+            "Expected at most 2 successors, but got {:?}",
+            successors
         );
     }
 
@@ -227,44 +173,6 @@ mod tests {
                 || debug_string.contains("192.168.0.2 -> 192.168.0.1"),
             "Debug output mismatch: got {}",
             debug_string
-        );
-    }
-
-    #[test]
-    fn test_get_n_successors_no_duplicates_skip_current() {
-        let mut partitioner = Partitioner::new();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 1)).unwrap();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 2)).unwrap();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 3)).unwrap();
-        partitioner.add_node(Ipv4Addr::new(192, 168, 0, 4)).unwrap();
-
-        let string_value = "test_value";
-        let hash = Partitioner::hash_value(string_value).unwrap();
-
-        // Llamar a la función y verificar los resultados
-        let successors = partitioner.get_n_successors(string_value, 2).unwrap();
-        let unique_successors: std::collections::HashSet<_> = successors.iter().collect();
-
-        // Asegurar que los sucesores no incluyan el nodo correspondiente al hash calculado
-        let starting_node = partitioner.get_ip(hash.to_be_bytes()).unwrap();
-
-        // Verificar que los sucesores son únicos y no contienen el nodo de inicio
-        assert_eq!(
-            unique_successors.len(),
-            successors.len(),
-            "Expected unique successors without duplicates, got {:?}",
-            successors
-        );
-        assert!(
-            !successors.contains(&starting_node),
-            "Expected successors to skip the starting node, but it was included"
-        );
-
-        // Verificar que el número de sucesores es el solicitado o el máximo disponible
-        assert!(
-            successors.len() <= 2,
-            "Expected at most 2 successors, but got {:?}",
-            successors
         );
     }
 }

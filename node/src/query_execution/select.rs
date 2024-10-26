@@ -15,7 +15,7 @@ impl QueryExecution {
         &mut self,
         mut select_query: Select,
         internode: bool,
-        replication: bool,
+        mut replication: bool,
         open_query_id: i32,
     ) -> Result<Vec<String>, NodeError> {
         let table;
@@ -65,8 +65,10 @@ impl QueryExecution {
                 .join("");
             let node_to_query = node.partitioner.get_ip(value_to_hash.clone())?;
 
+            let self_ip = node.get_ip().clone();
+
             // If this is not an internode operation, forward the query to the appropriate node
-            if !internode && node_to_query != node.get_ip() {
+            if !internode && node_to_query != self_ip {
                 let serialized_query = select_query.serialize();
                 self.send_to_single_node(
                     node.get_ip(),
@@ -78,25 +80,30 @@ impl QueryExecution {
                 )?;
                 do_in_this_node = false;
             }
+
             if !internode {
                 let serialized_delete = select_query.serialize();
-                self.send_to_replication_nodes(
+                replication = self.send_to_replication_nodes(
                     node,
-                    value_to_hash,
-                    "UPDATE",
+                    node_to_query,
+                    "SELECT",
                     &serialized_delete,
                     true,
                     open_query_id,
                 )?;
             }
+
+            if !internode && rf == 1 && node_to_query != self_ip {
+                self.execution_finished_itself = true;
+            }
         }
 
-        if !internode && rf == 1 {
-            self.execution_finished_itself = true;
-        }
-
-        if !do_in_this_node {
+        if !do_in_this_node && !replication {
             return Ok(vec![]);
+        }
+
+        if replication {
+            self.execution_replicate_itself = true;
         }
 
         // Execute the SELECT locally if this is not an internode operation
