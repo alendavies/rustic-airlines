@@ -14,6 +14,7 @@ use crate::utils::{is_insert, is_values};
 pub struct Insert {
     pub values: Vec<String>,
     pub into_clause: Into,
+    pub if_not_exists: bool,
 }
 
 impl Insert {
@@ -83,6 +84,15 @@ impl Insert {
             for val in vals {
                 values.push(val);
             }
+            i += 1;
+        }
+
+        let mut if_not_exists = false;
+
+        if i < tokens.len() {
+            if tokens[i] == "IF" && tokens[i + 1] == "NOT" && tokens[i + 2] == "EXISTS" {
+                if_not_exists = true;
+            }
         }
 
         if into_tokens.is_empty() || values.is_empty() {
@@ -94,6 +104,7 @@ impl Insert {
         Ok(Self {
             values,
             into_clause,
+            if_not_exists,
         })
     }
 
@@ -114,9 +125,15 @@ impl Insert {
             .collect::<Vec<String>>()
             .join(", ");
 
+        let if_not_exists = if self.if_not_exists {
+            ", \"if_not_exists\": true"
+        } else {
+            ", \"if_not_exists\": false"
+        };
+
         format!(
-            "{{ \"into_clause\": {{ \"table_name\": \"{}\", \"columns\": [{}] }}, \"values\": [{}] }}",
-            self.into_clause.table_name, columns, values
+            "{{ \"into_clause\": {{ \"table_name\": \"{}\", \"columns\": [{}] }}, \"values\": [{}], \"if_not_exists\": {} }}",
+            self.into_clause.table_name, columns, values, if_not_exists
         )
     }
 
@@ -170,12 +187,16 @@ impl Insert {
             .map(|v| v.trim().trim_matches('\"').to_string())
             .collect();
 
+        // Deserialize the `if_not_exists` flag
+        let if_not_exists = s.contains("\"if_not_exists\": true");
+
         Ok(Insert {
             values,
             into_clause: Into {
                 table_name,
                 columns,
             },
+            if_not_exists,
         })
     }
 }
@@ -221,7 +242,8 @@ mod test {
                 into_clause: into_cql::Into {
                     table_name: String::from("table"),
                     columns: vec![String::from("name")]
-                }
+                },
+                if_not_exists: false
             }
         );
     }
@@ -244,7 +266,35 @@ mod test {
                 into_clause: into_cql::Into {
                     table_name: String::from("table"),
                     columns: vec![String::from("name"), String::from("age")]
-                }
+                },
+                if_not_exists: false
+            }
+        );
+    }
+
+    #[test]
+    fn new_with_if_not_exist() {
+        let tokens = vec![
+            String::from("INSERT"),
+            String::from("INTO"),
+            String::from("table"),
+            String::from("name, age"),
+            String::from("VALUES"),
+            String::from("Alen, 25"),
+            String::from("IF"),
+            String::from("NOT"),
+            String::from("EXISTS"),
+        ];
+        let result = super::Insert::new_from_tokens(tokens).unwrap();
+        assert_eq!(
+            result,
+            Insert {
+                values: vec![String::from("Alen"), String::from("25")],
+                into_clause: into_cql::Into {
+                    table_name: String::from("table"),
+                    columns: vec![String::from("name"), String::from("age")]
+                },
+                if_not_exists: true
             }
         );
     }
