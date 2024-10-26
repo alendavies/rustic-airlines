@@ -117,7 +117,7 @@ impl Serializable for Frame {
             Opcode::Query => Self::Query(Query::from_bytes(&body)),
             Opcode::Error => Self::Error(Error::from_bytes(&body).unwrap()),
             Opcode::Result => Self::Result(Result::from_bytes(&body)?),
-            _ => unimplemented!(),
+            _ => return Err(SerializationError),
         };
 
         Ok(frame)
@@ -126,7 +126,12 @@ impl Serializable for Frame {
 
 #[cfg(test)]
 mod tests {
-    use crate::messages::query::{Consistency, QueryParams};
+    use std::collections::HashMap;
+
+    use crate::messages::{
+        query::{Consistency, QueryParams},
+        result::rows::Rows,
+    };
 
     use super::*;
 

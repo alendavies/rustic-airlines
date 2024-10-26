@@ -88,6 +88,7 @@ impl CassandraString for String {
 
         let mut string_bytes = vec![0u8; len];
         cursor.read_exact(&mut string_bytes).unwrap();
+
         String::from_utf8(string_bytes).unwrap()
     }
 
@@ -183,6 +184,16 @@ mod tests {
         let result = Bytes::from_bytes(&mut cursor).unwrap();
 
         assert_eq!(result, Bytes::Vec(vec![0x01, 0x02, 0x03, 0x00]));
+    }
+
+    #[test]
+    fn string_from_to_bytes() {
+        let string = "test_column".to_string();
+        let bytes = string.to_string_bytes();
+
+        let string_ = String::from_string_bytes(&mut std::io::Cursor::new(bytes.as_slice()));
+
+        assert_eq!(string, string_);
     }
 
     #[test]
