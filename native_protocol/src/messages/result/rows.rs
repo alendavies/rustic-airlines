@@ -870,4 +870,45 @@ mod tests {
 
         assert_eq!(rows, expected_rows)
     }
+
+    #[test]
+    fn rows_from_bytes_empty() {
+        let cols = vec![
+            ("user_id".to_string(), ColumnType::Int),
+            ("age".to_string(), ColumnType::Int),
+            ("last_name".to_string(), ColumnType::Ascii),
+            ("weight".to_string(), ColumnType::Int),
+            //("email".to_string(), ColumnType::Ascii),
+        ];
+        let rows = vec![
+            BTreeMap::from([
+                ("user_id".to_string(), ColumnValue::Int(1)),
+                ("age".to_string(), ColumnValue::Int(2)),
+                (
+                    "last_name".to_string(),
+                    ColumnValue::Ascii("Doe".to_string()),
+                ),
+                ("weight".to_string(), ColumnValue::Int(70)),
+                //("email".to_string(), ColumnValue::Ascii("".to_string())),
+            ]),
+            BTreeMap::from([
+                ("user_id".to_string(), ColumnValue::Int(2)),
+                ("age".to_string(), ColumnValue::Int(3)),
+                (
+                    "last_name".to_string(),
+                    ColumnValue::Ascii("Smith".to_string()),
+                ),
+                ("weight".to_string(), ColumnValue::Int(80)),
+                //("email".to_string(), ColumnValue::Ascii("".to_string())),
+            ]),
+        ];
+
+        let expected_rows = Rows::new(cols, rows);
+
+        let bytes = expected_rows.to_bytes();
+
+        let rows = Rows::from_bytes(&bytes).unwrap();
+
+        assert_eq!(rows, expected_rows)
+    }
 }
