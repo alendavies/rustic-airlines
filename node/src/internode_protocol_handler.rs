@@ -183,7 +183,9 @@ impl InternodeProtocolHandler {
         if let Some(open_query) = query_handler.close_query_and_get_if_closed(open_query_id) {
             let mut connection = open_query.get_connection();
 
-            let error_frame = Frame::Error(error::Error::ServerError("error".to_string()));
+            let error_frame = Frame::Error(error::Error::ServerError(
+                "A node failed to execute the request.".to_string(),
+            ));
 
             connection.write(&error_frame.to_bytes()?)?;
             Ok(())

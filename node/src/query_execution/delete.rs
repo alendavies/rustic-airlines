@@ -10,7 +10,6 @@ use std::io::{BufRead, BufReader};
 use super::QueryExecution;
 
 impl QueryExecution {
-
     pub(crate) fn execute_delete(
         &mut self,
         delete_query: Delete,
@@ -119,7 +118,6 @@ impl QueryExecution {
         Ok(())
     }
 
-   
     fn delete_in_this_node(
         &self,
         delete_query: Delete,
@@ -171,18 +169,20 @@ impl QueryExecution {
         let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
         let column_value_map = self.create_column_value_map(table, &columns, false);
 
+        let columns = table.get_columns();
+
         // Verify the `WHERE` clause
         if let Some(where_clause) = &delete_query.where_clause {
             if where_clause
                 .condition
-                .execute(&column_value_map)
+                .execute(&column_value_map, columns.clone())
                 .unwrap_or(false)
             {
                 // Check `IF` clause if present
                 if let Some(if_clause) = &delete_query.if_clause {
                     if !if_clause
                         .condition
-                        .execute(&column_value_map)
+                        .execute(&column_value_map, columns.clone())
                         .unwrap_or(false)
                     {
                         // `IF` clause exists but does not match; do not delete

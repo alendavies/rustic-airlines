@@ -189,11 +189,13 @@ impl QueryExecution {
         let mut columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
         let column_value_map = self.create_column_value_map(table, &columns, false);
 
+        let columns_ = table.get_columns();
+
         // Verificar la cláusula `WHERE`
         if let Some(where_clause) = &update_query.where_clause {
             if where_clause
                 .condition
-                .execute(&column_value_map)
+                .execute(&column_value_map, columns_.clone())
                 .unwrap_or(false)
             {
                 // Verificar la cláusula `IF` si está presente
@@ -204,7 +206,7 @@ impl QueryExecution {
 
                     if !if_clause
                         .condition
-                        .execute(&column_value_map)
+                        .execute(&column_value_map, columns_.clone())
                         .unwrap_or(false)
                     {
                         // Si la cláusula `IF` está presente pero no se cumple, no actualizar
@@ -233,7 +235,7 @@ impl QueryExecution {
                 if let Some(if_clause) = &update_query.if_clause {
                     if if_clause
                         .condition
-                        .execute(&column_value_map)
+                        .execute(&column_value_map, columns_.clone())
                         .unwrap_or(false)
                     {
                         // IF está y se cumple, devolver false para indicar que hay que crear una nueva fila
