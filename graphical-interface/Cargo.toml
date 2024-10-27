@@ -9,6 +9,7 @@ eframe = "0.29.0"
 walkers = "0.25.0"
 driver = { path = "../driver" }
 native_protocol = { path = "../native_protocol" }
+egui_extras = "0.29.1"
 
 [lib]
 name = "graphical_interface"
