@@ -567,7 +567,6 @@ impl Node {
                 }
                 Ok(_) => {
                     // Process the command with the protocol, passing the buffer and the necessary parameters
-
                     let result = internode_protocol_handler.handle_command(
                         &node,
                         &buffer.trim().to_string(),

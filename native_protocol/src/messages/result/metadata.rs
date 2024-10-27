@@ -54,9 +54,8 @@ impl ColumnSpec {
         }
 
         let name = String::from_string_bytes(cursor);
-        dbg!(&name);
+
         let type_ = ColumnType::from_option_bytes(cursor).unwrap();
-        dbg!(&type_);
 
         ColumnSpec {
             keyspace,
