@@ -157,7 +157,7 @@ impl InternodeProtocolHandler {
 
             println!("Returning frame: {:?}", frame);
 
-            connection.write(&frame.to_bytes())?;
+            connection.write(&frame.to_bytes()?)?;
             Ok(())
         } else {
             Ok(())
@@ -185,7 +185,7 @@ impl InternodeProtocolHandler {
 
             let error_frame = Frame::Error(error::Error::ServerError("error".to_string()));
 
-            connection.write(&error_frame.to_bytes())?;
+            connection.write(&error_frame.to_bytes()?)?;
             Ok(())
         } else {
             Ok(())

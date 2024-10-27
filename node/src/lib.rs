@@ -454,8 +454,16 @@ impl Node {
 
                                 let frame =
                                     Frame::Error(error::Error::ServerError("error ".to_string()));
+
                                 if let Ok(mut client_stream) = stream.lock() {
-                                    if let Err(write_err) = client_stream.write(&frame.to_bytes()) {
+
+                                    let frame_bytes_result = &frame.to_bytes();
+                                    let mut frame_bytes = &vec![];
+                                    if let Ok(value) = frame_bytes_result {
+                                        frame_bytes = value;
+                                    }
+
+                                    if let Err(write_err) = client_stream.write(&frame_bytes) {
                                         eprintln!(
                                             "Error writing to client stream: {:?}",
                                             write_err
@@ -533,7 +541,7 @@ impl Node {
                     match query {
                         Request::Startup => {
                             // let mut stream_guard = stream.lock()?;
-                            stream_guard.write(Frame::Ready.to_bytes().as_slice())?;
+                            stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
                             stream_guard.flush()?;
                         }
                         Request::Query(query) => {
