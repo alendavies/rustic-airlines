@@ -438,6 +438,7 @@ impl ColumnValue {
             }
             ColumnType::Int => {
                 let mut int_bytes = [0u8; 4];
+                //dbg!("el cursor es {:?}", &cursor);
                 cursor.read_exact(&mut int_bytes).unwrap();
                 let int = i32::from_be_bytes(int_bytes);
                 ColumnValue::Int(int)
@@ -632,6 +633,7 @@ impl Serializable for Rows {
                 let mut cursor2 = Cursor::new(bytes_.as_slice());
 
                 let value = ColumnValue::from_bytes(&mut cursor2, &col_spec.type_);
+                //dbg!("el column value es {:?}", &value);
                 row.insert(col_spec.name.clone(), value);
             }
             rows_content.push(row);

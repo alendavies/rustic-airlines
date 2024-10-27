@@ -424,7 +424,8 @@ impl Node {
                             Err(e) => {
                                 eprintln!("Error handling query: [{:?}]", e);
 
-                                let frame = Frame::Error(error::Error::ServerError("".to_string()));
+                                let frame =
+                                    Frame::Error(error::Error::ServerError("error ".to_string()));
                                 if let Ok(mut client_stream) = stream.lock() {
                                     if let Err(write_err) = client_stream.write(&frame.to_bytes()) {
                                         eprintln!(

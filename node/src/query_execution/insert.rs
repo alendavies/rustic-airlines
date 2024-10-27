@@ -187,21 +187,19 @@ impl QueryExecution {
 
         Ok(complete_row)
     }
-
-    /// Performs the actual insert operation in the current node
     fn insert_in_this_node(
         values: Vec<String>,
         ip: Ipv4Addr,
         table_name: String,
-        index_of_keys: Vec<usize>, // Ahora acepta un vector de índices para las partition keys
+        index_of_keys: Vec<usize>, // Vector de índices para las partition keys
         actual_keyspace_name: String,
         replication: bool,
         if_not_exist: bool,
     ) -> Result<(), NodeError> {
-        // Convert the IP to a string to use in the folder name
+        // Convertir IP a string para usar en el nombre de la carpeta
         let add_str = ip.to_string().replace(".", "_");
 
-        // Generate the folder path, adding "replication" if it's a replication insert
+        // Generar la ruta de la carpeta, agregando "replication" si es una inserción de replicación
         let folder_name = if replication {
             format!("keyspaces_{}/{}/replication", add_str, actual_keyspace_name)
         } else {
@@ -209,15 +207,15 @@ impl QueryExecution {
         };
         let folder_path = Path::new(&folder_name);
 
-        // Create the folder if it doesn't exist
+        // Crear la carpeta si no existe
         if !folder_path.exists() {
             fs::create_dir_all(&folder_path).map_err(|_| NodeError::OtherError)?;
         }
 
-        // Table file name with ".csv" extension
+        // Nombre del archivo de la tabla con extensión ".csv"
         let file_path = folder_path.join(format!("{}.csv", table_name));
 
-        // Generate a unique name for the temporary file
+        // Generar un nombre único para el archivo temporal
         let temp_file_path = folder_path.join(format!(
             "{}.tmp",
             SystemTime::now()
@@ -226,43 +224,49 @@ impl QueryExecution {
                 .as_nanos()
         ));
 
-        // Open the temporary file in write mode
+        // Abrir el archivo temporal en modo escritura
         let mut temp_file = File::create(&temp_file_path).map_err(NodeError::IoError)?;
 
-        // If the table file exists, open it in read mode
+        // Si el archivo de la tabla existe, abrirlo en modo lectura
         let file = OpenOptions::new().read(true).open(&file_path);
         let mut key_exists = false;
 
         if let Ok(file) = file {
             let reader = BufReader::new(file);
 
-            // Iterate through the existing file to check for partition key conflicts
+            // Iterar por el archivo existente para verificar conflictos de clave de partición
             for line in reader.lines() {
                 let line = line.map_err(NodeError::IoError)?;
                 let row_values: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
 
-                // Check if all partition keys match
+                // Verificar si todas las claves de partición coinciden
                 let all_keys_match = index_of_keys
                     .iter()
                     .all(|&index| row_values.get(index) == Some(&values[index].as_str()));
 
-                // If all partition keys match, overwrite the old row
-                if all_keys_match && !if_not_exist {
-                    writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
-                    key_exists = true;
+                if all_keys_match {
+                    // Si `if_not_exist` es `true` y las claves coinciden, solo copia la fila original sin sobrescribirla
+                    if if_not_exist {
+                        writeln!(temp_file, "{}", line).map_err(NodeError::IoError)?;
+                        key_exists = true;
+                    } else {
+                        // Si `if_not_exist` es `false`, sobrescribe la fila existente
+                        writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
+                        key_exists = true;
+                    }
                 } else {
-                    // Otherwise, copy the old row to the temp file
+                    // Copiar la fila original al archivo temporal
                     writeln!(temp_file, "{}", line).map_err(NodeError::IoError)?;
                 }
             }
         }
 
-        // If no matching primary key exists, append the new row at the end
-        if !key_exists && if_not_exist {
+        // Si no existe ninguna clave de partición coincidente, añadir la nueva fila al final
+        if !key_exists {
             writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
         }
 
-        // Rename the temp file to replace the original table file
+        // Renombrar el archivo temporal para reemplazar el archivo original de la tabla
         fs::rename(&temp_file_path, &file_path).map_err(NodeError::IoError)?;
         Ok(())
     }
