@@ -25,13 +25,13 @@ fn main() {
     client.startup().unwrap();
 
     let queries = vec![
-        "CREATE KEYSPACE airports WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
-        "USE airports",
+        "CREATE KEYSPACE sky WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
+        "USE sky",
         "CREATE TABLE airports (
-            iata TEXT PRIMARY KEY,
+            iata TEXT,
             lat DOUBLE,
-            lon DOUBLE
-            PRIMARY KEY (iata)
+            lon DOUBLE,
+            PRIMARY KEY (iata, lon)
             )",
         "INSERT INTO airports (iata, lat, lon) VALUES ('MAD', 40.5, -3.5)",
         "INSERT INTO airports (iata, lat, lon) VALUES ('BCN', 41.3, 2.1)",
