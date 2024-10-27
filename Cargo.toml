@@ -11,6 +11,6 @@ members = [
     "node",
     "partitioner",
     "query-creator",
-    "testing",
-    "native_protocol"
+    "native_protocol",
+    "node_launcher"
 ]

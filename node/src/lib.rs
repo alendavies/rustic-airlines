@@ -453,10 +453,9 @@ impl Node {
                                 eprintln!("Error handling query: [{:?}]", e);
 
                                 let frame =
-                                    Frame::Error(error::Error::ServerError("error ".to_string()));
+                                    Frame::Error(error::Error::ProtocolError(e.to_string()));
 
                                 if let Ok(mut client_stream) = stream.lock() {
-
                                     let frame_bytes_result = &frame.to_bytes();
                                     let mut frame_bytes = &vec![];
                                     if let Ok(value) = frame_bytes_result {
