@@ -14,8 +14,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::QueryExecution;
 
 impl QueryExecution {
-    /// Executes an INSERT operation. This function is public only for internal use
-    /// within the library (defined as `pub(crate)`).
     pub(crate) fn execute_insert(
         &mut self,
         insert_query: Insert,

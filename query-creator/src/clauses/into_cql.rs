@@ -42,6 +42,10 @@ impl Into {
             for col in cols {
                 columns.push(col);
             }
+
+            if columns.is_empty() {
+                return Err(CQLError::InvalidSyntax);
+            }
         } else {
             return Err(CQLError::InvalidSyntax);
         }
@@ -50,5 +54,51 @@ impl Into {
             table_name,
             columns,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::errors::CQLError;
+
+    #[test]
+    fn test_new_from_tokens_valid_simple() {
+        let tokens = vec!["INTO", "users", "id,name,age"];
+        let into_clause = Into::new_from_tokens(tokens).unwrap();
+
+        assert_eq!(into_clause.table_name, "users".to_string());
+        assert_eq!(
+            into_clause.columns,
+            vec!["id".to_string(), "name".to_string(), "age".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_new_from_tokens_valid_with_whitespace() {
+        let tokens = vec!["INTO", "employees", "id, name , salary"];
+        let into_clause = Into::new_from_tokens(tokens).unwrap();
+
+        assert_eq!(into_clause.table_name, "employees".to_string());
+        assert_eq!(
+            into_clause.columns,
+            vec!["id".to_string(), "name".to_string(), "salary".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_new_from_tokens_missing_into_keyword() {
+        let tokens = vec!["users", "id,name,age"];
+        let result = Into::new_from_tokens(tokens);
+
+        assert!(matches!(result, Err(CQLError::InvalidSyntax)));
+    }
+
+    #[test]
+    fn test_new_from_tokens_missing_table_name() {
+        let tokens = vec!["INTO", "id,name,age"];
+        let result = Into::new_from_tokens(tokens);
+
+        assert!(matches!(result, Err(CQLError::InvalidSyntax)));
     }
 }

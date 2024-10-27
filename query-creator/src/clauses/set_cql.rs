@@ -68,3 +68,80 @@ impl Set {
             .join(", ")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::errors::CQLError;
+
+    #[test]
+    fn test_new_from_tokens_single_pair() {
+        let tokens = vec!["SET", "age", "=", "18"];
+        let set_clause = Set::new_from_tokens(tokens).unwrap();
+        assert_eq!(set_clause, Set(vec![("age".to_string(), "18".to_string())]));
+    }
+
+    #[test]
+    fn test_new_from_tokens_multiple_pairs() {
+        let tokens = vec!["SET", "age", "=", "18", "name", "=", "John"];
+        let set_clause = Set::new_from_tokens(tokens).unwrap();
+        assert_eq!(
+            set_clause,
+            Set(vec![
+                ("age".to_string(), "18".to_string()),
+                ("name".to_string(), "John".to_string())
+            ])
+        );
+    }
+
+    #[test]
+    fn test_new_from_tokens_missing_equals_sign() {
+        let tokens = vec!["SET", "age", "18"];
+        let result = Set::new_from_tokens(tokens);
+        assert!(matches!(result, Err(CQLError::InvalidSyntax)));
+    }
+
+    #[test]
+    fn test_new_from_tokens_missing_set_keyword() {
+        let tokens = vec!["age", "=", "18"];
+        let result = Set::new_from_tokens(tokens);
+        assert!(matches!(result, Err(CQLError::InvalidSyntax)));
+    }
+
+    #[test]
+    fn test_serialize_with_numbers() {
+        let set_clause = Set(vec![("age".to_string(), "18".to_string())]);
+        assert_eq!(set_clause.serialize(), "age = 18");
+    }
+
+    #[test]
+    fn test_serialize_with_strings() {
+        let set_clause = Set(vec![("name".to_string(), "John".to_string())]);
+        assert_eq!(set_clause.serialize(), "name = 'John'");
+    }
+
+    #[test]
+    fn test_serialize_mixed_types() {
+        let set_clause = Set(vec![
+            ("age".to_string(), "18".to_string()),
+            ("name".to_string(), "John".to_string()),
+        ]);
+        assert_eq!(set_clause.serialize(), "age = 18, name = 'John'");
+    }
+
+    #[test]
+    fn test_get_pairs() {
+        let set_clause = Set(vec![
+            ("age".to_string(), "18".to_string()),
+            ("name".to_string(), "John".to_string()),
+        ]);
+        let pairs = set_clause.get_pairs();
+        assert_eq!(
+            pairs,
+            &vec![
+                ("age".to_string(), "18".to_string()),
+                ("name".to_string(), "John".to_string())
+            ]
+        );
+    }
+}

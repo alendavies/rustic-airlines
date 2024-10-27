@@ -26,6 +26,8 @@ use std::net::{Ipv4Addr, TcpStream};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Struct for executing various database queries across nodes with support
+/// for distributed communication and replication.
 pub struct QueryExecution {
     node_that_execute: Arc<Mutex<Node>>,
     connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
@@ -34,7 +36,15 @@ pub struct QueryExecution {
 }
 
 impl QueryExecution {
-    // Constructor de QueryExecution
+    /// Constructs a new `QueryExecution` instance, initializing the node and
+    /// connection attributes required for handling and distributing queries.
+    ///
+    /// # Arguments
+    /// * `node_that_execute` - A thread-safe reference to the `Node` responsible for executing the query.
+    /// * `connections` - A thread-safe map of active connections to other nodes.
+    ///
+    /// # Returns
+    /// * `QueryExecution` - The new instance configured for query execution.
     pub fn new(
         node_that_execute: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
@@ -46,6 +56,28 @@ impl QueryExecution {
             execution_replicate_itself: false,
         }
     }
+
+    /// Executes a database query by determining the query type and applying the necessary operations
+    /// within a distributed setting. Handles various query types such as `SELECT`, `INSERT`,
+    /// `DELETE`, and others, ensuring node-specific execution as well as inter-node
+    /// communication and replication when required.
+    ///
+    /// # Arguments
+    /// * `query` - The `Query` object specifying the type and details of the query.
+    /// * `internode` - Boolean indicating if the query originates from another node.
+    /// * `replication` - Boolean indicating whether replication is required.
+    /// * `open_query_id` - ID used to track open queries for inter-node communication.
+    ///
+    /// # Returns
+    /// * `Result<Option<(i32, String)>, NodeError>` - Returns:
+    ///   - `Ok(Some((how_many_internode_query_has_finish, response)))`: On successful execution, with `how_many_internode_query_has_finish` representing the number of internode queries that have completed, and `response` containing any resulting message.
+    ///   - `Ok(None)`: If no additional response is required.
+    ///   - `Err(NodeError)`: If an error occurs during execution.
+    ///
+    /// # Errors
+    /// This function may return `NodeError` in cases such as:
+    /// - Connection issues between nodes.
+    /// - Invalid query structure or unsupported query types.
 
     // Método para ejecutar la query según su tipo
     pub fn execute(

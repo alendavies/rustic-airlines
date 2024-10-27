@@ -9,8 +9,6 @@ use std::io::{BufRead, BufReader};
 use super::QueryExecution;
 
 impl QueryExecution {
-    /// Executes a SELECT operation. This function is public only for internal use
-    /// within the library (defined as `pub(crate)`).
     pub(crate) fn execute_select(
         &mut self,
         mut select_query: Select,
