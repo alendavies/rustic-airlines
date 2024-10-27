@@ -13,10 +13,7 @@ pub struct Airport {
 
 /// Get the airports to display on the map.
 pub(crate) fn get_airports(driver: &mut CassandraClient) -> Vec<Airport> {
-    let query = "SELECT iata, lat, lon FROM airports";
-
-    dbg!("call");
-    thread::sleep(Duration::from_millis(200));
+    let query = "SELECT iata, lat, lon FROM airports WHERE iata = 'JFK'";
 
     /* if let QueryResult::Result(Result::Rows(res)) = driver.execute(query).unwrap() {
         // obtener airports de las rows
@@ -35,18 +32,15 @@ pub(crate) fn get_airports(driver: &mut CassandraClient) -> Vec<Airport> {
 
     let result = driver.execute(query).unwrap();
 
+    let mut airports: Vec<Airport> = Vec::new();
     match result {
         QueryResult::Result(Result::Rows(res)) => {
-            // obtener airports de las rows
-            let mut airports: Vec<Airport> = Vec::new();
-
-            let rows = res.rows_content;
-
-            for row in rows {
+            for row in res.rows_content {
                 let mut airport = Airport {
                     iata: String::new(),
                     position: Position::from_lat_lon(0.0, 0.0),
                 };
+
                 let iata = row.get("iata").unwrap();
                 match iata {
                     rows::ColumnValue::Ascii(iata) => {
@@ -54,6 +48,8 @@ pub(crate) fn get_airports(driver: &mut CassandraClient) -> Vec<Airport> {
                     }
                     _ => {}
                 }
+
+                dbg!(iata);
 
                 let lat = row.get("lat").unwrap();
                 let lon = row.get("lon").unwrap();
@@ -65,13 +61,18 @@ pub(crate) fn get_airports(driver: &mut CassandraClient) -> Vec<Airport> {
                     _ => {}
                 }
 
+                dbg!(lat, lon);
+                dbg!(&airport);
+
                 airports.push(airport);
             }
         }
         _ => {}
     }
 
-    vec![
+    airports
+
+    /*  vec![
         Airport {
             iata: "AEP".to_string(),
             position: Position::from_lat_lon(-34.557571, -58.418577),
@@ -80,5 +81,5 @@ pub(crate) fn get_airports(driver: &mut CassandraClient) -> Vec<Airport> {
             iata: "PMY".to_string(),
             position: Position::from_lat_lon(-42.759000, -65.103000),
         },
-    ]
+    ] */
 }
