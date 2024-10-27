@@ -578,9 +578,9 @@ type Row = BTreeMap<String, ColumnValue>;
 #[derive(Debug, PartialEq)]
 /// Indicates a set of rows.
 pub struct Rows {
-    metadata: Metadata,
-    rows_count: Int,
-    rows_content: Vec<Row>,
+    pub metadata: Metadata,
+    pub rows_count: Int,
+    pub rows_content: Vec<Row>,
 }
 
 impl Rows {
