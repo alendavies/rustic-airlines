@@ -88,7 +88,10 @@ impl CassandraString for String {
 
         let mut string_bytes = vec![0u8; len];
         cursor.read_exact(&mut string_bytes).unwrap();
-        String::from_utf8(string_bytes).unwrap()
+
+        let string = String::from_utf8(string_bytes).unwrap();
+
+        string
     }
 
     fn to_string_bytes(&self) -> Vec<u8> {
@@ -186,6 +189,16 @@ mod tests {
     }
 
     #[test]
+    fn string_from_to_bytes() {
+        let string = "test_column".to_string();
+        let bytes = string.to_string_bytes();
+
+        let string_ = String::from_string_bytes(&mut std::io::Cursor::new(bytes.as_slice()));
+
+        assert_eq!(string, string_);
+    }
+
+    #[test]
     fn string_from_string_bytes() {
         let input = [0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8, 'd' as u8];
 
@@ -238,10 +251,6 @@ mod tests {
             fn serialize_option(&self) -> Vec<u8> {
                 todo!()
             }
-
-            /* fn get_option_code(&self) -> u16 {
-                todo!()
-            } */
         }
 
         let input = [0x00, 0x02, 0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8];
@@ -286,13 +295,6 @@ mod tests {
                     }
                 }
             }
-
-            /* fn get_option_code(&self) -> u16 {
-                match self {
-                    Options::Something => 0x0001,
-                    Options::SomethinElse(_) => 0x0002,
-                }
-            } */
         }
 
         let option = Options::SomethinElse("abc".to_string());

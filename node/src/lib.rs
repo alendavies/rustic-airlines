@@ -567,7 +567,6 @@ impl Node {
                 }
                 Ok(_) => {
                     // Process the command with the protocol, passing the buffer and the necessary parameters
-
                     let result = internode_protocol_handler.handle_command(
                         &node,
                         &buffer.trim().to_string(),
@@ -625,7 +624,7 @@ impl Node {
             open_query_id,
         )?;
 
-        if let Some(content) = response {
+        if let Some((finished_responses, content)) = response {
             let mut guard_node = node.lock()?;
             let keyspace_name = guard_node
                 .actual_keyspace_name()
@@ -646,13 +645,16 @@ impl Node {
                 }
             };
             let query_handler = guard_node.get_open_handle_query();
-            InternodeProtocolHandler::add_response_to_open_query_and_send_response_if_closed(
-                query_handler,
-                &content,
-                open_query_id,
-                keyspace_name.clone(),
-                columns.clone(),
-            )?;
+
+            for _ in [..finished_responses] {
+                InternodeProtocolHandler::add_response_to_open_query_and_send_response_if_closed(
+                    query_handler,
+                    &content,
+                    open_query_id,
+                    keyspace_name.clone(),
+                    columns.clone(),
+                )?;
+            }
         }
 
         Ok(())

@@ -1,3 +1,4 @@
+use super::if_cql::If;
 use super::set_cql::Set;
 use super::where_cql::Where;
 use crate::errors::CQLError;
@@ -18,6 +19,7 @@ pub struct Update {
     pub table_name: String,
     pub set_clause: Set,
     pub where_clause: Option<Where>,
+    pub if_clause: Option<If>,
 }
 
 impl Update {
@@ -49,6 +51,7 @@ impl Update {
         let mut where_tokens = Vec::new();
         let mut set_tokens = Vec::new();
         let mut table_name = String::new();
+        let mut if_tokens = Vec::new();
 
         let mut i = 0;
 
@@ -67,8 +70,14 @@ impl Update {
                     i += 1;
                 }
                 if i < tokens.len() && is_where(&tokens[i]) {
-                    while i < tokens.len() {
+                    while i < tokens.len() && tokens[i] != "IF" {
                         where_tokens.push(tokens[i].as_str());
+                        i += 1;
+                    }
+                }
+                if i < tokens.len() && tokens[i] == "IF" {
+                    while i < tokens.len() {
+                        if_tokens.push(tokens[i].as_str());
                         i += 1;
                     }
                 }
@@ -80,18 +89,25 @@ impl Update {
             return Err(CQLError::InvalidSyntax);
         }
 
+        let set_clause = Set::new_from_tokens(set_tokens)?;
+
         let mut where_clause = None;
 
         if !where_tokens.is_empty() {
             where_clause = Some(Where::new_from_tokens(where_tokens)?);
         }
 
-        let set_clause = Set::new_from_tokens(set_tokens)?;
+        let mut if_clause = None;
+
+        if !if_tokens.is_empty() {
+            if_clause = Some(If::new_from_tokens(if_tokens)?);
+        }
 
         Ok(Self {
             table_name,
             where_clause,
             set_clause,
+            if_clause,
         })
     }
 
@@ -105,6 +121,10 @@ impl Update {
 
         if let Some(where_clause) = &self.where_clause {
             result.push_str(&format!(" WHERE {}", where_clause.serialize()));
+        }
+
+        if let Some(if_clause) = &self.if_clause {
+            result.push_str(&format!(" IF {}", if_clause.serialize()));
         }
 
         result
@@ -121,7 +141,9 @@ impl Update {
 mod tests {
 
     use crate::{
-        clauses::{condition::Condition, set_cql::Set, update_cql::Update, where_cql::Where},
+        clauses::{
+            condition::Condition, if_cql::If, set_cql::Set, update_cql::Update, where_cql::Where,
+        },
         errors::CQLError,
         operator::Operator,
     };
@@ -160,7 +182,8 @@ mod tests {
             Update {
                 table_name: String::from("table"),
                 set_clause: Set(vec![(String::from("nombre"), String::from("Alen"))]),
-                where_clause: None
+                where_clause: None,
+                if_clause: None,
             }
         );
     }
@@ -190,6 +213,49 @@ mod tests {
                         field: String::from("edad"),
                         operator: Operator::Lesser,
                         value: String::from("30"),
+                    },
+                }),
+                if_clause: None,
+            }
+        );
+    }
+
+    #[test]
+    fn new_with_if() {
+        let tokens = vec![
+            String::from("UPDATE"),
+            String::from("table"),
+            String::from("SET"),
+            String::from("nombre"),
+            String::from("="),
+            String::from("Alen"),
+            String::from("WHERE"),
+            String::from("edad"),
+            String::from("="),
+            String::from("30"),
+            String::from("IF"),
+            String::from("name"),
+            String::from("="),
+            String::from("john"),
+        ];
+        let update = Update::new_from_tokens(tokens).unwrap();
+        assert_eq!(
+            update,
+            Update {
+                table_name: String::from("table"),
+                set_clause: Set(vec![(String::from("nombre"), String::from("Alen"))]),
+                where_clause: Some(Where {
+                    condition: Condition::Simple {
+                        field: String::from("edad"),
+                        operator: Operator::Equal,
+                        value: String::from("30"),
+                    },
+                }),
+                if_clause: Some(If {
+                    condition: Condition::Simple {
+                        field: String::from("name"),
+                        operator: Operator::Equal,
+                        value: String::from("john"),
                     },
                 }),
             }

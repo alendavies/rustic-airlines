@@ -1,5 +1,6 @@
 pub mod condition;
 pub mod delete_cql;
+pub mod if_cql;
 pub mod insert_cql;
 pub mod into_cql;
 pub mod order_by_cql;

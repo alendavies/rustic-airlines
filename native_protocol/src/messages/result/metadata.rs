@@ -20,14 +20,15 @@ impl ColumnSpec {
         if let Some(keyspace) = &self.keyspace {
             bytes.extend_from_slice(keyspace.to_string_bytes().as_slice());
         } else {
-            bytes.extend_from_slice(&[0u8, 0u8]);
+            bytes.extend_from_slice("".to_string().to_string_bytes().as_slice());
         }
         if let Some(table_name) = &self.table_name {
             bytes.extend_from_slice(table_name.to_string_bytes().as_slice());
         } else {
-            bytes.extend_from_slice(&[0u8, 0u8]);
+            bytes.extend_from_slice("".to_string().to_string_bytes().as_slice());
         }
-        bytes.extend_from_slice(self.name.to_string_bytes().as_slice());
+
+        bytes.extend_from_slice(&self.name.to_string_bytes().as_slice());
         bytes.extend_from_slice(&self.type_.to_option_bytes());
 
         bytes
@@ -35,16 +36,25 @@ impl ColumnSpec {
 
     pub fn from_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> Self {
         let keyspace_string = String::from_string_bytes(cursor);
-        let mut keyspace = None;
-        if !keyspace_string.is_empty() {
+        let keyspace: Option<String>;
+
+        if keyspace_string.is_empty() {
+            keyspace = None;
+        } else {
             keyspace = Some(keyspace_string);
         }
+
         let table_name_string = String::from_string_bytes(cursor);
-        let mut table_name = None;
-        if !table_name_string.is_empty() {
+        let table_name: Option<String>;
+
+        if table_name_string.is_empty() {
+            table_name = None;
+        } else {
             table_name = Some(table_name_string);
         }
+
         let name = String::from_string_bytes(cursor);
+
         let type_ = ColumnType::from_option_bytes(cursor).unwrap();
 
         ColumnSpec {
@@ -70,7 +80,7 @@ enum MetadataFlagsCode {
 
 #[derive(Debug, PartialEq)]
 pub struct MetadataFlags {
-    pub global_tables_spec: bool,
+    pub global_table_spec: bool,
     pub has_more_pages: bool,
     pub no_metadata: bool,
 }
@@ -78,7 +88,7 @@ pub struct MetadataFlags {
 impl MetadataFlags {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut flags = 0u32;
-        if self.global_tables_spec {
+        if self.global_table_spec {
             flags |= MetadataFlagsCode::GlobalTablesSpec as u32;
         }
         if self.has_more_pages {
@@ -96,7 +106,7 @@ impl MetadataFlags {
         let flags = u32::from_be_bytes(flag_bytes);
 
         MetadataFlags {
-            global_tables_spec: (flags & MetadataFlagsCode::GlobalTablesSpec as u32) != 0,
+            global_table_spec: (flags & MetadataFlagsCode::GlobalTablesSpec as u32) != 0,
             has_more_pages: (flags & MetadataFlagsCode::HasMorePages as u32) != 0,
             no_metadata: (flags & MetadataFlagsCode::NoMetadata as u32) != 0,
         }
@@ -114,7 +124,7 @@ pub struct Metadata {
 impl Metadata {
     pub fn new(columns_count: u32, col_spec: Vec<(String, ColumnType)>) -> Self {
         let flags = MetadataFlags {
-            global_tables_spec: false,
+            global_table_spec: false,
             has_more_pages: false,
             no_metadata: false,
         };
@@ -137,6 +147,7 @@ impl Metadata {
             col_spec_i,
         }
     }
+
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
 
@@ -147,6 +158,9 @@ impl Metadata {
         if let Some(table_spec) = &self.global_table_spec {
             bytes.extend_from_slice(table_spec.keyspace.to_string_bytes().as_slice());
             bytes.extend_from_slice(table_spec.table_name.to_string_bytes().as_slice());
+        } else {
+            bytes.extend_from_slice("".to_string().to_string_bytes().as_slice());
+            bytes.extend_from_slice("".to_string().to_string_bytes().as_slice());
         }
 
         for col_spec in &self.col_spec_i {
@@ -163,20 +177,24 @@ impl Metadata {
         cursor.read_exact(&mut columns_count_bytes).unwrap();
         let columns_count = u32::from_be_bytes(columns_count_bytes);
 
-        let global_table_spec = if flags.global_tables_spec {
-            let keyspace = String::from_string_bytes(cursor);
-            let table_name = String::from_string_bytes(cursor);
-            Some(TableSpec {
+        let global_table_spec: Option<TableSpec>;
+
+        let keyspace = String::from_string_bytes(cursor);
+        let table_name = String::from_string_bytes(cursor);
+
+        if keyspace.is_empty() && table_name.is_empty() {
+            global_table_spec = None;
+        } else {
+            global_table_spec = Some(TableSpec {
                 keyspace,
                 table_name,
-            })
-        } else {
-            None
-        };
+            });
+        }
 
         let mut col_spec_i = Vec::new();
         for _ in 0..columns_count {
-            col_spec_i.push(ColumnSpec::from_bytes(cursor));
+            let col = ColumnSpec::from_bytes(cursor);
+            col_spec_i.push(col);
         }
 
         Metadata {
@@ -213,12 +231,12 @@ mod tests {
         let keyspace_bytes = if let Some(keyspace) = &col_spec.keyspace {
             keyspace.to_string_bytes()
         } else {
-            vec![]
+            vec![0u8, 0u8]
         };
         let table_name_bytes = if let Some(table_name) = &col_spec.table_name {
             table_name.to_string_bytes()
         } else {
-            vec![]
+            vec![0u8, 0u8]
         };
         let expected_bytes = [
             keyspace_bytes.as_slice(),
@@ -248,9 +266,58 @@ mod tests {
     }
 
     #[test]
+    fn test_column_spec_to_bytes_with_none() {
+        let col_spec = ColumnSpec {
+            keyspace: None,
+            table_name: None,
+            name: "test_column".to_string(),
+            type_: ColumnType::Int,
+        };
+
+        let bytes = col_spec.to_bytes();
+        let keyspace_bytes = if let Some(keyspace) = &col_spec.keyspace {
+            keyspace.to_string_bytes()
+        } else {
+            vec![0u8, 0u8]
+        };
+
+        let table_name_bytes = if let Some(table_name) = &col_spec.table_name {
+            table_name.to_string_bytes()
+        } else {
+            vec![0u8, 0u8]
+        };
+
+        let expected_bytes = [
+            keyspace_bytes.as_slice(),
+            table_name_bytes.as_slice(),
+            col_spec.name.to_string_bytes().as_slice(),
+            col_spec.type_.to_option_bytes().as_slice(),
+        ]
+        .concat();
+
+        assert_eq!(bytes, expected_bytes);
+    }
+
+    #[test]
+    fn test_column_spec_from_bytes_with_none() {
+        let expected_col_spec = ColumnSpec {
+            keyspace: None,
+            table_name: None,
+            name: "test_column".to_string(),
+            type_: ColumnType::Int,
+        };
+
+        let bytes = expected_col_spec.to_bytes();
+        let mut cursor = Cursor::new(bytes.as_slice());
+        let col_spec = ColumnSpec::from_bytes(&mut cursor);
+
+        assert_eq!(expected_col_spec, col_spec);
+    }
+
+    #[test]
     fn test_metadata_flags_to_bytes() {
         let flags = MetadataFlags {
-            global_tables_spec: true,
+            global_table_spec: true,
             has_more_pages: false,
             no_metadata: false,
         };
@@ -263,7 +330,7 @@ mod tests {
     #[test]
     fn test_metadata_flags_to_from_bytes() {
         let expected_flags = MetadataFlags {
-            global_tables_spec: true,
+            global_table_spec: true,
             has_more_pages: false,
             no_metadata: false,
         };
@@ -278,7 +345,7 @@ mod tests {
     fn test_metadata_to_bytes() {
         let metadata = Metadata {
             flags: MetadataFlags {
-                global_tables_spec: true,
+                global_table_spec: true,
                 has_more_pages: false,
                 no_metadata: false,
             },
@@ -314,7 +381,7 @@ mod tests {
     fn test_metadata_from_bytes() {
         let expected_metadata = Metadata {
             flags: MetadataFlags {
-                global_tables_spec: true,
+                global_table_spec: true,
                 has_more_pages: false,
                 no_metadata: false,
             },
@@ -332,6 +399,63 @@ mod tests {
         };
 
         let bytes = expected_metadata.to_bytes();
+        let mut cursor = Cursor::new(bytes.as_slice());
+        let metadata = Metadata::from_bytes(&mut cursor);
+
+        assert_eq!(expected_metadata, metadata);
+    }
+
+    #[test]
+    fn test_metadata_to_bytes_with_none() {
+        let metadata = Metadata {
+            flags: MetadataFlags {
+                global_table_spec: false,
+                has_more_pages: false,
+                no_metadata: false,
+            },
+            columns_count: 1,
+            global_table_spec: None,
+            col_spec_i: vec![ColumnSpec {
+                keyspace: None,
+                table_name: None,
+                name: "test_column".to_string(),
+                type_: ColumnType::Int,
+            }],
+        };
+        let bytes = metadata.to_bytes();
+
+        let expected_bytes = [
+            metadata.flags.to_bytes(),
+            metadata.columns_count.to_be_bytes().to_vec(),
+            "".to_string().to_string_bytes(),
+            "".to_string().to_string_bytes(),
+            metadata.col_spec_i[0].to_bytes(),
+        ]
+        .concat();
+
+        assert_eq!(bytes, expected_bytes);
+    }
+
+    #[test]
+    fn test_metadata_from_bytes_with_none() {
+        let expected_metadata = Metadata {
+            flags: MetadataFlags {
+                global_table_spec: false,
+                has_more_pages: false,
+                no_metadata: false,
+            },
+            columns_count: 1,
+            global_table_spec: None,
+            col_spec_i: vec![ColumnSpec {
+                keyspace: None,
+                table_name: None,
+                name: "test_column".to_string(),
+                type_: ColumnType::Int,
+            }],
+        };
+
+        let bytes = expected_metadata.to_bytes();
+
         let mut cursor = Cursor::new(bytes.as_slice());
         let metadata = Metadata::from_bytes(&mut cursor);
 

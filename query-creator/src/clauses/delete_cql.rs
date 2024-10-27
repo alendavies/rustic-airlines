@@ -1,4 +1,5 @@
-﻿use super::where_cql::Where;
+﻿use super::if_cql::If;
+use super::where_cql::Where;
 use crate::errors::CQLError;
 use crate::utils::{is_delete, is_from, is_where};
 use crate::QueryCreator;
@@ -16,6 +17,8 @@ pub struct Delete {
     pub table_name: String,
     pub columns: Option<Vec<String>>, // Agregamos un vector opcional para las columnas
     pub where_clause: Option<Where>,
+    pub if_clause: Option<If>,
+    pub if_exist: bool,
 }
 
 impl Delete {
@@ -25,9 +28,11 @@ impl Delete {
     ///
     /// - `tokens`: a `Vec<String>` that holds the tokens that form the `DELETE` clause.
     ///
-    /// The tokens must be in the following order: `DELETE`, `column(s)_optional`, `FROM`, `table_name`, `WHERE`, `condition`.
+    /// The tokens must be in the following order: `DELETE`, `column(s)_optional`, `FROM`, `table_name`, `WHERE`, `condition` `IF` `condition`.
     ///
     /// If the `WHERE` clause is not present, the `where_clause` field will be `None`.
+    ///
+    /// If the `IF` clause is not present, the `if_clause` field will be `None`.
     ///
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 3 {
@@ -38,6 +43,7 @@ impl Delete {
         let mut columns = None;
         let table_name: String;
         let mut where_tokens: Vec<&str> = Vec::new();
+        let mut if_tokens: Vec<&str> = Vec::new();
 
         // Verificamos que la primera palabra sea DELETE
         if !is_delete(&tokens[i]) {
@@ -65,7 +71,7 @@ impl Delete {
 
         // Procesamos la cláusula WHERE, si está presente
         if i < tokens.len() && is_where(&tokens[i]) {
-            while i < tokens.len() {
+            while i < tokens.len() && tokens[i] != "IF" {
                 where_tokens.push(tokens[i].as_str());
                 i += 1;
             }
@@ -77,10 +83,32 @@ impl Delete {
             None
         };
 
+        // Procesamos la cláusula IF, si está presente
+        if i < tokens.len() && tokens[i] == "IF" {
+            while i < tokens.len() {
+                if_tokens.push(tokens[i].as_str());
+                i += 1;
+            }
+        }
+
+        let mut if_clause = None;
+
+        let mut if_exist = false;
+
+        if !if_tokens.is_empty() {
+            if if_tokens[1] == "EXIST" {
+                if_exist = true;
+            } else if if_tokens.len() > 2 {
+                if_clause = Some(If::new_from_tokens(if_tokens)?);
+            }
+        }
+
         Ok(Self {
             table_name,
             columns,
             where_clause,
+            if_clause,
+            if_exist,
         })
     }
 
@@ -99,6 +127,10 @@ impl Delete {
             serialized.push_str(&format!(" WHERE {}", where_clause.serialize()));
         }
 
+        if let Some(if_clause) = &self.if_clause {
+            serialized.push_str(&format!(" IF {}", if_clause.serialize()));
+        }
+
         serialized
     }
 
@@ -114,7 +146,7 @@ mod tests {
 
     use super::Delete;
     use crate::{
-        clauses::{condition::Condition, where_cql::Where},
+        clauses::{condition::Condition, if_cql::If, where_cql::Where},
         errors::CQLError,
         operator::Operator,
     };
@@ -146,7 +178,9 @@ mod tests {
             Delete {
                 table_name: String::from("table"),
                 where_clause: None,
-                columns: None
+                columns: None,
+                if_clause: None,
+                if_exist: false,
             }
         );
     }
@@ -186,7 +220,9 @@ mod tests {
                         value: String::from("1")
                     }
                 }),
-                columns: None
+                columns: None,
+                if_clause: None,
+                if_exist: false,
             }
         );
     }
@@ -217,6 +253,86 @@ mod tests {
                         value: String::from("1")
                     }
                 }),
+                if_clause: None,
+                if_exist: false,
+            }
+        );
+    }
+
+    #[test]
+    fn new_with_if() {
+        let tokens = vec![
+            String::from("DELETE"),
+            String::from("columna_a"),
+            String::from("columna_b"),
+            String::from("FROM"),
+            String::from("table"),
+            String::from("WHERE"),
+            String::from("id"),
+            String::from("="),
+            String::from("1234"),
+            String::from("IF"),
+            String::from("user"),
+            String::from("="),
+            String::from("jhon"),
+        ];
+
+        let delete = Delete::new_from_tokens(tokens).unwrap();
+        assert_eq!(
+            delete,
+            Delete {
+                table_name: String::from("table"),
+                columns: Some(vec![String::from("columna_a"), String::from("columna_b")]),
+                where_clause: Some(Where {
+                    condition: Condition::Simple {
+                        field: String::from("id"),
+                        operator: Operator::Equal,
+                        value: String::from("1234")
+                    }
+                }),
+                if_clause: Some(If {
+                    condition: Condition::Simple {
+                        field: String::from("user"),
+                        operator: Operator::Equal,
+                        value: String::from("jhon")
+                    }
+                }),
+                if_exist: false,
+            }
+        );
+    }
+
+    #[test]
+    fn new_with_if_exist() {
+        let tokens = vec![
+            String::from("DELETE"),
+            String::from("columna_a"),
+            String::from("columna_b"),
+            String::from("FROM"),
+            String::from("table"),
+            String::from("WHERE"),
+            String::from("id"),
+            String::from("="),
+            String::from("1234"),
+            String::from("IF"),
+            String::from("EXIST"),
+        ];
+
+        let delete = Delete::new_from_tokens(tokens).unwrap();
+        assert_eq!(
+            delete,
+            Delete {
+                table_name: String::from("table"),
+                columns: Some(vec![String::from("columna_a"), String::from("columna_b")]),
+                where_clause: Some(Where {
+                    condition: Condition::Simple {
+                        field: String::from("id"),
+                        operator: Operator::Equal,
+                        value: String::from("1234")
+                    }
+                }),
+                if_clause: None,
+                if_exist: true,
             }
         );
     }

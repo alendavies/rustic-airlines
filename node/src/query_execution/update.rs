@@ -38,7 +38,7 @@ impl QueryExecution {
         &mut self,
         update_query: Update,
         internode: bool,
-        replication: bool,
+        mut replication: bool,
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         let table;
@@ -97,25 +97,31 @@ impl QueryExecution {
                 do_in_this_node = false;
             }
 
+            let self_ip = node.get_ip().clone();
+
             if !internode {
                 let serialized_delete = update_query.serialize();
-                self.send_to_replication_nodes(
+                replication = self.send_to_replication_nodes(
                     node,
-                    value_to_hash,
+                    node_to_update,
                     "UPDATE",
                     &serialized_delete,
                     true,
                     open_query_id,
                 )?;
             }
+
+            if !internode && rf == 1 && node_to_update != self_ip {
+                self.execution_finished_itself = true;
+            }
         }
 
-        if !internode && rf == 1 {
-            self.execution_finished_itself = true;
-        }
-
-        if !do_in_this_node {
+        if !do_in_this_node && !replication {
             return Ok(());
+        }
+
+        if replication {
+            self.execution_replicate_itself = true;
         }
 
         // Execute the update on this node
@@ -167,7 +173,7 @@ impl QueryExecution {
         Ok(())
     }
 
-    /// Updates or writes the line to the temporary file, depending on whether it matches the `WHERE` clause
+    /// Updates or writes the line to the temporary file, depending on whether it matches both the `WHERE` and optional `IF` clauses.
     fn update_or_write_line(
         &self,
         table: &Table,
@@ -178,30 +184,47 @@ impl QueryExecution {
         let mut columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
         let column_value_map = self.create_column_value_map(table, &columns, true);
 
-        let mut found_match = false;
+        // Verificar la cláusula `WHERE`
         if let Some(where_clause) = &update_query.where_clause {
             if where_clause
                 .condition
                 .execute(&column_value_map)
                 .unwrap_or(false)
             {
-                found_match = true;
+                // Verificar la cláusula `IF` si está presente
+                if let Some(if_clause) = &update_query.if_clause {
+                    if !if_clause
+                        .condition
+                        .execute(&column_value_map)
+                        .unwrap_or(false)
+                    {
+                        // Si la cláusula `IF` está presente pero no se cumple, no actualizar
+                        writeln!(temp_file, "{}", line)?;
+                        return Ok(false);
+                    }
+                }
+
+                // Realizar la actualización si se cumple `WHERE` y, si existe, la `IF`
                 for (column, new_value) in update_query.clone().set_clause.get_pairs() {
                     if table.is_primary_key(&column)? {
-                        return Err(NodeError::OtherError);
+                        return Err(NodeError::OtherError); // No se permite actualizar claves primarias
                     }
                     let index = table
                         .get_column_index(&column)
                         .ok_or(NodeError::CQLError(CQLError::InvalidColumn))?;
                     columns[index] = new_value.clone();
                 }
+                writeln!(temp_file, "{}", columns.join(","))?;
+                return Ok(true);
+            } else {
+                // Si `WHERE` no se cumple, escribir línea original en el archivo
+                writeln!(temp_file, "{}", line)?;
+                return Ok(false);
             }
         } else {
+            // Si falta la cláusula `WHERE`, retornar un error
             return Err(NodeError::OtherError);
         }
-
-        writeln!(temp_file, "{}", columns.join(",")).map_err(|e| NodeError::from(e))?;
-        Ok(found_match)
     }
 
     /// Adds a new row to the table if no matching row was found during the update

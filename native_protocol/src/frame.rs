@@ -117,7 +117,7 @@ impl Serializable for Frame {
             Opcode::Query => Self::Query(Query::from_bytes(&body)),
             Opcode::Error => Self::Error(Error::from_bytes(&body).unwrap()),
             Opcode::Result => Self::Result(Result::from_bytes(&body)?),
-            _ => unimplemented!(),
+            _ => return Err(SerializationError),
         };
 
         Ok(frame)
@@ -126,7 +126,13 @@ impl Serializable for Frame {
 
 #[cfg(test)]
 mod tests {
-    use crate::messages::query::{Consistency, QueryParams};
+
+    use std::collections::BTreeMap;
+
+    use crate::messages::{
+        query::{Consistency, QueryParams},
+        result::rows::{ColumnType, ColumnValue, Rows},
+    };
 
     use super::*;
 
@@ -227,5 +233,56 @@ mod tests {
 
         assert_eq!(query.query, query_string);
         assert_eq!(query.params, query_params);
+    }
+
+    #[test]
+    fn bytes_to_frame_result() {
+        let cols = vec![
+            ("age".to_string(), ColumnType::Int),
+            ("name".to_string(), ColumnType::Varchar),
+        ];
+        let rows_content = vec![
+            BTreeMap::from([
+                ("age".to_string(), ColumnValue::Int(1)),
+                ("name".to_string(), ColumnValue::Varchar("John".to_string())),
+            ]),
+            BTreeMap::from([
+                ("age".to_string(), ColumnValue::Int(2)),
+                ("name".to_string(), ColumnValue::Varchar("Doe".to_string())),
+            ]),
+        ];
+
+        let rows = Rows::new(cols, rows_content);
+
+        let frame_bytes = Frame::Result(Result::Rows(rows)).to_bytes();
+
+        let frame = Frame::from_bytes(&frame_bytes).unwrap();
+
+        assert!(matches!(frame, Frame::Result(_)));
+
+        let result = match frame {
+            Frame::Result(result) => result,
+            _ => panic!(),
+        };
+
+        assert!(matches!(result, Result::Rows(_)));
+    }
+
+    #[test]
+    fn bytes_to_frame_error() {
+        let error_message = "Error".to_string();
+        let error = Error::ServerError(error_message.clone());
+        let bytes = Frame::Error(error).to_bytes();
+
+        let frame = Frame::from_bytes(&bytes).unwrap();
+
+        assert!(matches!(frame, Frame::Error(_)));
+
+        let error = match frame {
+            Frame::Error(error) => error,
+            _ => panic!(),
+        };
+
+        assert_eq!(error, Error::ServerError(error_message));
     }
 }

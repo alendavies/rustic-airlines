@@ -201,7 +201,6 @@ impl Condition {
                 }
             },
         };
-        println!("{:?}", op_result);
         op_result
     }
 

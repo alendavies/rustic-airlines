@@ -21,6 +21,7 @@ impl QueryExecution {
         insert_query: Insert,
         table_to_insert: Table,
         internode: bool,
+        mut replication: bool,
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         let node = self.node_that_execute.lock()?;
@@ -95,6 +96,7 @@ impl QueryExecution {
         let keyspace_name = node
             .actual_keyspace_name()
             .ok_or(NodeError::KeyspaceError)?;
+
         // If not internode and the IP to insert is different, forward the insert
         if !internode && node_to_insert != self_ip {
             let serialized_insert = insert_query.serialize();
@@ -110,11 +112,10 @@ impl QueryExecution {
         }
 
         if !internode {
-            println!("voy a mandar replicacion");
             let serialized_delete = insert_query.serialize();
-            self.send_to_replication_nodes(
+            replication = self.send_to_replication_nodes(
                 node,
-                value_to_hash,
+                node_to_insert,
                 "INSERT",
                 &serialized_delete,
                 true,
@@ -122,12 +123,16 @@ impl QueryExecution {
             )?;
         }
 
-        if !internode && rf == 1 {
+        if !internode && rf == 1 && node_to_insert == self_ip {
             self.execution_finished_itself = true;
         }
 
-        if !do_in_this_node {
+        if !do_in_this_node && !replication {
             return Ok(());
+        }
+
+        if replication {
+            self.execution_replicate_itself = true;
         }
 
         keys_index.extend(&clustering_columns_index);
@@ -138,6 +143,8 @@ impl QueryExecution {
             insert_query.into_clause.table_name,
             keys_index,
             keyspace_name,
+            replication,
+            insert_query.if_not_exists,
         )
     }
 
@@ -188,14 +195,21 @@ impl QueryExecution {
         table_name: String,
         index_of_keys: Vec<usize>, // Ahora acepta un vector de índices para las partition keys
         actual_keyspace_name: String,
+        replication: bool,
+        if_not_exist: bool,
     ) -> Result<(), NodeError> {
         // Convert the IP to a string to use in the folder name
         let add_str = ip.to_string().replace(".", "_");
 
-        // Generate the folder and file paths for storing the table data
-        let folder_name = format!("keyspaces_{}/{}", add_str, actual_keyspace_name);
+        // Generate the folder path, adding "replication" if it's a replication insert
+        let folder_name = if replication {
+            format!("keyspaces_{}/{}/replication", add_str, actual_keyspace_name)
+        } else {
+            format!("keyspaces_{}/{}", add_str, actual_keyspace_name)
+        };
         let folder_path = Path::new(&folder_name);
 
+        // Create the folder if it doesn't exist
         if !folder_path.exists() {
             fs::create_dir_all(&folder_path).map_err(|_| NodeError::OtherError)?;
         }
@@ -233,7 +247,7 @@ impl QueryExecution {
                     .all(|&index| row_values.get(index) == Some(&values[index].as_str()));
 
                 // If all partition keys match, overwrite the old row
-                if all_keys_match {
+                if all_keys_match && !if_not_exist {
                     writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
                     key_exists = true;
                 } else {
@@ -244,7 +258,7 @@ impl QueryExecution {
         }
 
         // If no matching primary key exists, append the new row at the end
-        if !key_exists {
+        if !key_exists && if_not_exist {
             writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
         }
 
