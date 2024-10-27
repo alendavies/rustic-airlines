@@ -634,8 +634,12 @@ impl Serializable for Rows {
         bytes.extend_from_slice(&self.rows_count.to_be_bytes());
 
         for row in &self.rows_content {
-            for (_, value) in row {
+            for col in &self.metadata.col_spec_i {
+                let col_name = &col.name;
+
+                let value = row.get(col_name).unwrap();
                 let value_bytes = Bytes::Vec(value.to_bytes()?).to_bytes()?;
+
                 bytes.extend_from_slice(&value_bytes);
             }
         }
