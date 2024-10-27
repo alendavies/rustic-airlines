@@ -82,10 +82,9 @@ impl CassandraString for String {
         cursor.read_exact(&mut len_bytes).unwrap();
         let len = u16::from_be_bytes(len_bytes) as usize;
 
-        if len == 0 {
-            return String::new();
-        }
-
+        // if len == 0 {
+        //     return String::new();
+        // }
         let mut string_bytes = vec![0u8; len];
         cursor.read_exact(&mut string_bytes).unwrap();
 
@@ -97,7 +96,10 @@ impl CassandraString for String {
     fn to_string_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&(self.len() as u16).to_be_bytes());
+        //if !self.is_empty() {
         bytes.extend_from_slice(self.as_bytes());
+        //}
+        //dbg!("{:?}", &bytes);
         bytes
     }
 }

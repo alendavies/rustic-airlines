@@ -353,7 +353,7 @@ impl InternodeProtocolHandler {
             let mut connection = open_query.get_connection();
 
             // Crear un frame de error para el cliente.
-            let error_frame = Frame::Error(error::Error::ServerError("".to_string()));
+            let error_frame = Frame::Error(error::Error::ServerError("error ".to_string()));
 
             connection.write(&error_frame.to_bytes())?;
             Ok(())
