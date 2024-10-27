@@ -12,25 +12,10 @@ pub struct Airport {
 }
 
 /// Get the airports to display on the map.
-pub(crate) fn get_airports(driver: &mut CassandraClient) -> Vec<Airport> {
-    let query = "SELECT iata, lat, lon FROM airports WHERE iata = 'JFK'";
+pub fn get_airports(driver: &mut CassandraClient, country: &str) -> Vec<Airport> {
+    let query = format!("SELECT iata, name, lat, lon FROM airports WHERE country = {country}");
 
-    /* if let QueryResult::Result(Result::Rows(res)) = driver.execute(query).unwrap() {
-        // obtener airports de las rows
-        let airports: Vec<_> = res
-            .rows_content
-            .iter()
-            .map(|record| Airport {
-                iata: record.get("iata").unwrap(),
-                position: Position::from_lat_lon(
-                    record.get("lat").unwrap(),
-                    record.get("lon").unwrap(),
-                ),
-            })
-            .collect();
-    } */
-
-    let result = driver.execute(query).unwrap();
+    let result = driver.execute(query.as_str()).unwrap();
 
     let mut airports: Vec<Airport> = Vec::new();
     match result {
@@ -49,8 +34,6 @@ pub(crate) fn get_airports(driver: &mut CassandraClient) -> Vec<Airport> {
                     _ => {}
                 }
 
-                dbg!(iata);
-
                 let lat = row.get("lat").unwrap();
                 let lon = row.get("lon").unwrap();
 
@@ -61,9 +44,6 @@ pub(crate) fn get_airports(driver: &mut CassandraClient) -> Vec<Airport> {
                     _ => {}
                 }
 
-                dbg!(lat, lon);
-                dbg!(&airport);
-
                 airports.push(airport);
             }
         }
@@ -71,15 +51,4 @@ pub(crate) fn get_airports(driver: &mut CassandraClient) -> Vec<Airport> {
     }
 
     airports
-
-    /*  vec![
-        Airport {
-            iata: "AEP".to_string(),
-            position: Position::from_lat_lon(-34.557571, -58.418577),
-        },
-        Airport {
-            iata: "PMY".to_string(),
-            position: Position::from_lat_lon(-42.759000, -65.103000),
-        },
-    ] */
 }
