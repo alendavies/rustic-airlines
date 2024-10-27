@@ -162,7 +162,7 @@ impl Condition {
                             Operator::Equal => return Ok(x == y),
                         }
                     }
-
+                    println!("vamos a comparar {:?} con {:?}", x, y);
                     match operator {
                         Operator::Lesser => Ok(x < y),
                         Operator::Greater => Ok(x > y),

@@ -276,4 +276,80 @@ impl Where {
             }
         }
     }
+
+    /// Retorna los valores de las clustering columns de las condiciones en la cláusula `WHERE`.
+    pub fn get_value_clustering_column_condition(
+        &self,
+        clustering_columns: Vec<String>,
+    ) -> Result<Vec<String>, CQLError> {
+        let mut result = vec![];
+
+        match &self.condition {
+            Condition::Simple {
+                field,
+                operator,
+                value,
+            } => {
+                // Si es una condición simple y la clave está en clustering_columns y el operador es `=`
+                if clustering_columns.contains(field) && *operator == Operator::Equal {
+                    result.push(value.clone());
+                }
+            }
+            Condition::Complex { left, right, .. } => {
+                // Recorremos la condición izquierda
+                if let Some(left_condition) = left.as_ref() {
+                    self.collect_clustering_column_values(
+                        left_condition,
+                        &clustering_columns,
+                        &mut result,
+                    );
+                }
+                self.collect_clustering_column_values(right, &clustering_columns, &mut result);
+            }
+        }
+
+        if result.is_empty() {
+            Err(CQLError::InvalidColumn)
+        } else {
+            Ok(result)
+        }
+    }
+
+    /// Método auxiliar para recorrer las condiciones y recolectar los valores de las clustering columns.
+    fn collect_clustering_column_values(
+        &self,
+        condition: &Condition,
+        clustering_columns: &[String],
+        result: &mut Vec<String>,
+    ) {
+        match condition {
+            Condition::Simple {
+                field,
+                operator,
+                value,
+            } => {
+                // Si la condición simple corresponde a una clustering column
+                if clustering_columns.contains(field) && *operator == Operator::Equal {
+                    result.push(value.clone());
+                }
+            }
+            Condition::Complex {
+                left,
+                operator,
+                right,
+            } => {
+                // Solo procesar si es un operador lógico AND
+                if *operator == LogicalOperator::And {
+                    if let Some(left_condition) = left.as_ref() {
+                        self.collect_clustering_column_values(
+                            left_condition,
+                            clustering_columns,
+                            result,
+                        );
+                    }
+                    self.collect_clustering_column_values(right, clustering_columns, result);
+                }
+            }
+        }
+    }
 }

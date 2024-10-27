@@ -65,16 +65,22 @@ impl QueryExecution {
             // Validate the primary key and where clause
             let partition_keys = table.get_partition_keys()?;
             let clustering_columns = table.get_clustering_columns()?;
+
             let where_clause = update_query
                 .clone()
                 .where_clause
                 .ok_or(NodeError::CQLError(CQLError::NoWhereCondition))?;
+
             where_clause.validate_cql_conditions(
                 &partition_keys,
                 &clustering_columns,
                 false,
                 true,
             )?;
+
+            if let Some(if_clause) = update_query.clone().if_clause {
+                if_clause.validate_cql_conditions(&partition_keys, &clustering_columns)?;
+            }
 
             // Get the value to hash and determine which node should handle the delete
             let value_to_hash = where_clause
@@ -173,7 +179,6 @@ impl QueryExecution {
         Ok(())
     }
 
-    /// Updates or writes the line to the temporary file, depending on whether it matches both the `WHERE` and optional `IF` clauses.
     fn update_or_write_line(
         &self,
         table: &Table,
@@ -182,7 +187,7 @@ impl QueryExecution {
         temp_file: &mut File,
     ) -> Result<bool, NodeError> {
         let mut columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
-        let column_value_map = self.create_column_value_map(table, &columns, true);
+        let column_value_map = self.create_column_value_map(table, &columns, false);
 
         // Verificar la cláusula `WHERE`
         if let Some(where_clause) = &update_query.where_clause {
@@ -193,14 +198,19 @@ impl QueryExecution {
             {
                 // Verificar la cláusula `IF` si está presente
                 if let Some(if_clause) = &update_query.if_clause {
+                    println!("la condicion es {:?}", if_clause.condition);
+
+                    println!("el column value map es {:?}", column_value_map);
+
                     if !if_clause
                         .condition
                         .execute(&column_value_map)
                         .unwrap_or(false)
                     {
                         // Si la cláusula `IF` está presente pero no se cumple, no actualizar
+                        println!("IF está y no se cumple, no actualizo");
                         writeln!(temp_file, "{}", line)?;
-                        return Ok(false);
+                        return Ok(true);
                     }
                 }
 
@@ -214,32 +224,54 @@ impl QueryExecution {
                         .ok_or(NodeError::CQLError(CQLError::InvalidColumn))?;
                     columns[index] = new_value.clone();
                 }
+                println!("IF está y se cumple, actualizo");
                 writeln!(temp_file, "{}", columns.join(","))?;
                 return Ok(true);
             } else {
-                // Si `WHERE` no se cumple, escribir línea original en el archivo
+                // Si `WHERE` no se cumple, verificar si hay `IF`
                 writeln!(temp_file, "{}", line)?;
-                return Ok(false);
+                if let Some(if_clause) = &update_query.if_clause {
+                    if if_clause
+                        .condition
+                        .execute(&column_value_map)
+                        .unwrap_or(false)
+                    {
+                        // IF está y se cumple, devolver false para indicar que hay que crear una nueva fila
+                        println!(
+                            "WHERE no se cumple y IF se cumple, se debería crear una nueva fila"
+                        );
+
+                        return Ok(false);
+                    } else {
+                        // IF está y no se cumple, devolver true para no crear una nueva fila
+                        println!("WHERE no se cumple y IF no se cumple, no se debería crear una nueva fila");
+                        return Ok(true);
+                    }
+                } else {
+                    // Si no hay `IF`, devolver false para indicar que hay que crear una nueva fila
+                    println!("WHERE no se cumple y no hay IF, se debería crear una nueva fila");
+
+                    return Ok(false);
+                }
             }
         } else {
             // Si falta la cláusula `WHERE`, retornar un error
             return Err(NodeError::OtherError);
         }
     }
-
-    /// Adds a new row to the table if no matching row was found during the update
     fn add_new_row(
         &self,
         table: &Table,
         update_query: &Update,
         temp_file: &mut File,
     ) -> Result<(), NodeError> {
+        println!("entra a add_new_row");
+
         // Crea una fila nueva vacía con el tamaño de las columnas de la tabla
         let mut new_row: Vec<String> = vec!["".to_string(); table.get_columns().len()];
 
         // Obtener todas las claves primarias (pueden ser múltiples)
-        let primary_keys = table.get_partition_keys()?; // Supongo que get_primary_keys devuelve Vec<String>
-
+        let primary_keys = table.get_partition_keys()?;
         // Obtener los valores de las claves primarias desde la cláusula `WHERE`
         let primary_key_values = update_query
             .where_clause
@@ -248,7 +280,6 @@ impl QueryExecution {
                 where_clause.get_value_partitioner_key_condition(primary_keys.clone())
             })
             .ok_or(NodeError::OtherError)??;
-
         // Verifica que la cantidad de valores coincida con la cantidad de claves primarias
         if primary_key_values.len() != primary_keys.len() {
             return Err(NodeError::OtherError);
@@ -263,18 +294,44 @@ impl QueryExecution {
             new_row[primary_key_index] = primary_key_values[i].clone();
         }
 
+        // Obtener todas las clustering columns
+        let clustering_keys = table.get_clustering_columns()?;
+
+        // Obtener los valores de las clustering columns desde la cláusula `WHERE`
+        let clustering_key_values = update_query
+            .where_clause
+            .as_ref()
+            .map(|where_clause| {
+                where_clause.get_value_clustering_column_condition(clustering_keys.clone())
+            })
+            .ok_or(NodeError::OtherError)??;
+
+        // Coloca cada valor de la clustering column en la posición correcta en `new_row`
+        for (i, clustering_key) in clustering_keys.iter().enumerate() {
+            let clustering_key_index = table
+                .get_column_index(clustering_key)
+                .ok_or(NodeError::OtherError)?;
+
+            new_row[clustering_key_index] = clustering_key_values[i].clone();
+        }
+
         // Setea los nuevos valores basados en la cláusula `SET`
         for (column, new_value) in update_query.set_clause.get_pairs() {
             if table.is_primary_key(&column)? {
-                return Err(NodeError::OtherError); // No se permite modificar una clave primaria
+                return Err(NodeError::OtherError); // No se permite modificar claves primarias
             }
             let index = table
                 .get_column_index(&column)
                 .ok_or(NodeError::CQLError(CQLError::InvalidColumn))?;
+
             new_row[index] = new_value.clone();
         }
 
+        println!("la nueva fila es {:?}", new_row);
         // Escribe la nueva fila en el archivo temporal
-        writeln!(temp_file, "{}", new_row.join(",")).map_err(|e| NodeError::from(e))
+        writeln!(temp_file, "{}", new_row.join(",")).map_err(|e| {
+            println!("Error al escribir en el archivo temporal: {:?}", e);
+            NodeError::from(e)
+        })
     }
 }

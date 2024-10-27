@@ -169,7 +169,7 @@ impl QueryExecution {
         line: &str,
     ) -> Result<bool, NodeError> {
         let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
-        let column_value_map = self.create_column_value_map(table, &columns, true);
+        let column_value_map = self.create_column_value_map(table, &columns, false);
 
         // Verificar la cláusula `WHERE`
         if let Some(where_clause) = &delete_query.where_clause {
