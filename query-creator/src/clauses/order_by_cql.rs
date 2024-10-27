@@ -49,7 +49,7 @@ impl OrderBy {
         let mut order = String::new();
         let mut i = 0;
 
-        if !is_order(&tokens[i]) && !is_by(&tokens[i + 1]) {
+        if !is_order(&tokens[i]) || !is_by(&tokens[i + 1]) {
             return Err(CQLError::InvalidSyntax);
         }
 
@@ -79,5 +79,146 @@ impl OrderBy {
     pub fn deserialize(&mut self, query: &str) -> Result<OrderBy, CQLError> {
         let tokens = QueryCreator::tokens_from_query(query);
         Self::new_from_tokens(tokens)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::errors::CQLError;
+
+    #[test]
+    fn test_new_from_tokens_valid_desc() {
+        let tokens = vec![
+            "ORDER".to_string(),
+            "BY".to_string(),
+            "name".to_string(),
+            "DESC".to_string(),
+        ];
+        let order_by = OrderBy::new_from_tokens(tokens).unwrap();
+
+        assert_eq!(
+            order_by,
+            OrderBy {
+                columns: vec!["name".to_string()],
+                order: "DESC".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_new_from_tokens_valid_asc() {
+        let tokens = vec![
+            "ORDER".to_string(),
+            "BY".to_string(),
+            "age".to_string(),
+            "ASC".to_string(),
+        ];
+        let order_by = OrderBy::new_from_tokens(tokens).unwrap();
+
+        assert_eq!(
+            order_by,
+            OrderBy {
+                columns: vec!["age".to_string()],
+                order: "ASC".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_new_from_tokens_multiple_columns() {
+        let tokens = vec![
+            "ORDER".to_string(),
+            "BY".to_string(),
+            "age".to_string(),
+            "name".to_string(),
+            "DESC".to_string(),
+        ];
+        let order_by = OrderBy::new_from_tokens(tokens).unwrap();
+
+        assert_eq!(
+            order_by,
+            OrderBy {
+                columns: vec!["age".to_string(), "name".to_string()],
+                order: "DESC".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_new_from_tokens_no_order_specified() {
+        let tokens = vec!["ORDER".to_string(), "BY".to_string(), "name".to_string()];
+        let order_by = OrderBy::new_from_tokens(tokens).unwrap();
+
+        assert_eq!(
+            order_by,
+            OrderBy {
+                columns: vec!["name".to_string()],
+                order: "".to_string(), // Defaults to ascending order if none is specified
+            }
+        );
+    }
+
+    #[test]
+    fn test_new_from_tokens_missing_by_keyword() {
+        let tokens = vec!["ORDER".to_string(), "name".to_string(), "ASC".to_string()];
+        let result = OrderBy::new_from_tokens(tokens);
+
+        assert!(matches!(result, Err(CQLError::InvalidSyntax)));
+    }
+
+    #[test]
+    fn test_new_from_tokens_missing_order_keyword() {
+        let tokens = vec!["BY".to_string(), "name".to_string(), "ASC".to_string()];
+        let result = OrderBy::new_from_tokens(tokens);
+
+        assert!(matches!(result, Err(CQLError::InvalidSyntax)));
+    }
+
+    #[test]
+    fn test_serialize_with_order() {
+        let order_by = OrderBy {
+            columns: vec!["age".to_string(), "name".to_string()],
+            order: "DESC".to_string(),
+        };
+
+        assert_eq!(order_by.serialize(), "ORDER BY age, name DESC");
+    }
+
+    #[test]
+    fn test_serialize_without_order() {
+        let order_by = OrderBy {
+            columns: vec!["age".to_string()],
+            order: "".to_string(),
+        };
+
+        assert_eq!(order_by.serialize(), "ORDER BY age");
+    }
+
+    #[test]
+    fn test_deserialize_valid_query() {
+        let mut order_by = OrderBy {
+            columns: vec![],
+            order: "".to_string(),
+        };
+        let result = order_by.deserialize("ORDER BY age DESC").unwrap();
+
+        assert_eq!(
+            result,
+            OrderBy {
+                columns: vec!["age".to_string()],
+                order: "DESC".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_deserialize_invalid_query() {
+        let mut order_by = OrderBy {
+            columns: vec![],
+            order: "".to_string(),
+        };
+        let result = order_by.deserialize("ORDER age DESC");
+        assert!(matches!(result, Err(CQLError::InvalidSyntax)));
     }
 }

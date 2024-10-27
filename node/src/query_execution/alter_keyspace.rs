@@ -7,21 +7,6 @@ use super::QueryExecution;
 /// Executes the alteration of a keyspace. This function is public only for internal use
 /// within the library (defined as `pub(crate)`).
 impl QueryExecution {
-    /// Executes the alteration of a keyspace.
-    ///
-    /// This method updates the replication class and factor for an existing keyspace.
-    /// If there are no changes in the replication settings, it will skip the operation.
-    /// If it's not an internode operation, it will communicate the changes to other nodes.
-    ///
-    /// # Arguments
-    ///
-    /// * `alter_keyspace` - The `AlterKeyspace` object containing the updated replication settings.
-    /// * `internode` - A boolean indicating if this is an internode operation.
-    /// * `open_query_id` - The ID of the open query for tracking purposes.
-    ///
-    /// # Returns
-    /// Returns `Ok(())` if the keyspace was successfully altered or skipped. If an error occurs,
-    /// it returns a `NodeError`.
     pub(crate) fn execute_alter_keyspace(
         &self,
         alter_keyspace: AlterKeyspace,

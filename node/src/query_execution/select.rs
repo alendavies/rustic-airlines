@@ -9,8 +9,6 @@ use std::io::{BufRead, BufReader};
 use super::QueryExecution;
 
 impl QueryExecution {
-    /// Executes a SELECT operation. This function is public only for internal use
-    /// within the library (defined as `pub(crate)`).
     pub(crate) fn execute_select(
         &mut self,
         mut select_query: Select,
@@ -153,11 +151,13 @@ impl QueryExecution {
         // Convert the line into a map of column to value
         let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
         let column_value_map = self.create_column_value_map(table, &columns, true);
+
+        let columns_ = table.get_columns();
         // Check the WHERE clause condition in the SELECT query
         if let Some(where_clause) = &select_query.where_clause {
             Ok(where_clause
                 .condition
-                .execute(&column_value_map)
+                .execute(&column_value_map, columns_)
                 .unwrap_or(false))
         } else {
             Ok(true) // If no WHERE clause, consider the line as matching

@@ -3,7 +3,7 @@
 /// - `Greater`: Greater than operator
 /// - `Lesser`: Lesser than operator
 ///
-/// 
+///
 ///
 use crate::CQLError;
 #[derive(Debug, PartialEq, Clone)]

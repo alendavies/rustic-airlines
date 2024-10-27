@@ -10,7 +10,6 @@ use std::io::{BufRead, BufReader};
 use super::QueryExecution;
 
 impl QueryExecution {
-    // Función pública de ejecución de DELETE
     pub(crate) fn execute_delete(
         &mut self,
         delete_query: Delete,
@@ -21,6 +20,7 @@ impl QueryExecution {
         let table;
         let rf;
         let mut do_in_this_node = true;
+
         {
             let table_name = delete_query.table_name.clone();
             let node = self
@@ -118,7 +118,6 @@ impl QueryExecution {
         Ok(())
     }
 
-    /// Ejecuta la eliminación en este nodo, reemplazando el archivo CSV de la tabla
     fn delete_in_this_node(
         &self,
         delete_query: Delete,
@@ -130,38 +129,37 @@ impl QueryExecution {
         let mut reader = BufReader::new(file);
         let mut temp_file = self.create_temp_file(&temp_file_path)?;
 
-        // Escribe el encabezado en el archivo temporal
+        // Write header to the temporary file
         self.write_header(&mut reader, &mut temp_file)?;
 
-        // Itera sobre cada línea en el archivo original y ejecuta la eliminación
+        // Iterate over each line in the original file and apply the delete condition
         for line in reader.lines() {
             let line = line?;
             let mut columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
 
             if let Some(columns_to_delete) = &delete_query.columns {
-                // Si hay columnas específicas para eliminar, actualiza esas columnas
+                // If specific columns are to be deleted, clear those column values
                 if self.should_delete_line(&table, &delete_query, &line)? {
                     for column_name in columns_to_delete {
                         if let Some(index) = table.get_column_index(column_name) {
-                            columns[index] = "".to_string(); // Borra el valor de la columna específica
+                            columns[index] = "".to_string(); // Clear the value of the specified column
                         }
                     }
                 }
-                // Escribe la fila modificada en el archivo temporal
+                // Write the modified row to the temporary file
                 writeln!(temp_file, "{}", columns.join(","))?;
             } else {
-                // Si no hay columnas específicas, elimina la fila completa si debe eliminarse
+                // If no specific columns, delete the entire row if conditions are met
                 if !self.should_delete_line(&table, &delete_query, &line)? {
                     writeln!(temp_file, "{}", line)?;
                 }
             }
         }
-        // Reemplaza el archivo original con el archivo temporal
+        // Replace the original file with the updated temporary file
         self.replace_original_file(&temp_file_path, &file_path)?;
         Ok(())
     }
 
-    /// Verifica si la línea debe ser eliminada según la condición `where_clause` y `if_clause`
     fn should_delete_line(
         &self,
         table: &Table,
@@ -169,34 +167,36 @@ impl QueryExecution {
         line: &str,
     ) -> Result<bool, NodeError> {
         let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
-        let column_value_map = self.create_column_value_map(table, &columns, true);
+        let column_value_map = self.create_column_value_map(table, &columns, false);
 
-        // Verificar la cláusula `WHERE`
+        let columns = table.get_columns();
+
+        // Verify the `WHERE` clause
         if let Some(where_clause) = &delete_query.where_clause {
             if where_clause
                 .condition
-                .execute(&column_value_map)
+                .execute(&column_value_map, columns.clone())
                 .unwrap_or(false)
             {
-                // Verificar la cláusula `IF` si está presente
+                // Check `IF` clause if present
                 if let Some(if_clause) = &delete_query.if_clause {
                     if !if_clause
                         .condition
-                        .execute(&column_value_map)
+                        .execute(&column_value_map, columns.clone())
                         .unwrap_or(false)
                     {
-                        // Si la cláusula `IF` está presente pero no se cumple, no eliminar
+                        // `IF` clause exists but does not match; do not delete
                         return Ok(false);
                     }
                 }
-                // Eliminar si se cumple `WHERE` y, si existe, `IF`
+                // Delete if `WHERE` is met and, if it exists, `IF` is also met
                 return Ok(true);
             } else {
-                // La condición `WHERE` no se cumple, no se elimina
+                // `WHERE` condition not met; do not delete
                 return Ok(false);
             }
         } else {
-            // Si falta la cláusula `WHERE`, retornar un error
+            // `WHERE` clause is missing, return an error
             return Err(NodeError::OtherError);
         }
     }

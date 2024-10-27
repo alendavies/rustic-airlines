@@ -4,8 +4,6 @@ use query_creator::clauses::use_cql::Use;
 
 use super::QueryExecution;
 
-/// Executes the selection of a keyspace. This function is public only for internal use
-/// within the library (defined as `pub(crate)`).
 impl QueryExecution {
     pub(crate) fn execute_use(
         &self,

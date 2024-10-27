@@ -151,14 +151,6 @@ impl Node {
         &mut self.open_query_handler
     }
 
-    /// Adds a new keyspace to this node.
-    ///
-    /// # Arguments
-    ///
-    /// * `new_keyspace` - The keyspace to be added.
-    ///
-    /// # Returns
-    /// Returns a `Result` with `Ok(())` if the keyspace was successfully added, or a `NodeError` if it failed.
     fn add_keyspace(&mut self, new_keyspace: CreateKeyspace) -> Result<(), NodeError> {
         let new_keyspace = Keyspace::new(new_keyspace);
         if self.keyspaces.contains(&new_keyspace) {
@@ -292,6 +284,42 @@ impl Node {
         Ok(false)
     }
 
+    /// Starts the primary internode and client connection handlers for a `Node`.
+    ///
+    /// This function sets up the initial internode communication, establishing a handshake
+    /// with a seed node if the current node is not a seed. It then spawns two threads:
+    /// one to handle connections with other nodes (internode connections) and another to
+    /// manage client connections. Both threads are joined, ensuring that any errors encountered
+    /// are captured and handled appropriately.
+    ///
+    /// # Parameters
+    /// - `node`: An `Arc<Mutex<Node>>` representing the node for which the communication is being established.
+    /// - `connections`: An `Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>` storing active TCP connections,
+    ///   allowing both node and client connections to be shared and synchronized.
+    ///
+    /// # Returns
+    /// * `Result<(), NodeError>` - Returns `Ok(())` if both threads execute and join successfully, or
+    ///   `NodeError` if an error occurs during the connection setup, handshake, or in joining the threads.
+    ///
+    /// # Workflow
+    /// 1. **Initialization and Seed Connection**:
+    ///     - Acquires a lock on `node` to check if the node is a seed and retrieve the seed IP and node's IP.
+    ///     - If the node is not a seed, attempts to connect to the seed node's IP using the `INTERNODE_PORT`.
+    ///     - Sends a handshake message (`HANDSHAKE` query) to the seed node, establishing initial communication
+    ///       and adding the seed node to the partitioner.
+    /// 2. **Thread Creation**:
+    ///     - Creates two threads:
+    ///         * **Node Connection Handler**: Manages internode connections and handles commands and messages
+    ///           between nodes.
+    ///         * **Client Connection Handler**: Manages connections with clients that send queries to the node.
+    /// 3. **Thread Execution**:
+    ///     - Each thread is executed and joined. Errors during the thread's execution are printed to `stderr`.
+    ///
+    /// # Errors
+    /// - This function returns `NodeError` in the following cases:
+    ///   - `NodeError::InternodeError`: If there is an error in the internode thread handling connections.
+    ///   - `NodeError::ClientError`: If there is an error in the client thread handling connections.
+    ///   - `NodeError::LockError`: If there is an issue locking the node for accessing seed and IP information.
     pub fn start(
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
@@ -424,10 +452,16 @@ impl Node {
                             Err(e) => {
                                 eprintln!("Error handling query: [{:?}]", e);
 
-                                let frame =
-                                    Frame::Error(error::Error::ServerError("error ".to_string()));
+                                let frame = Frame::Error(error::Error::ServerError(e.to_string()));
+
                                 if let Ok(mut client_stream) = stream.lock() {
-                                    if let Err(write_err) = client_stream.write(&frame.to_bytes()) {
+                                    let frame_bytes_result = &frame.to_bytes();
+                                    let mut frame_bytes = &vec![];
+                                    if let Ok(value) = frame_bytes_result {
+                                        frame_bytes = value;
+                                    }
+
+                                    if let Err(write_err) = client_stream.write(&frame_bytes) {
                                         eprintln!(
                                             "Error writing to client stream: {:?}",
                                             write_err
@@ -505,7 +539,7 @@ impl Node {
                     match query {
                         Request::Startup => {
                             // let mut stream_guard = stream.lock()?;
-                            stream_guard.write(Frame::Ready.to_bytes().as_slice())?;
+                            stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
                             stream_guard.flush()?;
                         }
                         Request::Query(query) => {

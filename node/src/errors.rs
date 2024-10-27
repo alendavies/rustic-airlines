@@ -4,6 +4,7 @@
 use std::fmt::{self, Display};
 use std::io;
 
+use native_protocol::errors::NativeError;
 use partitioner::errors::PartitionerError;
 use query_creator::errors::CQLError;
 
@@ -32,6 +33,8 @@ pub enum NodeError {
     OpenQueryError,
     /// Error related to the inter-node communication protocol.
     InternodeProtocolError,
+    /// Error related to native protocol operations.
+    NativeError(NativeError),
 }
 
 impl Display for NodeError {
@@ -49,6 +52,7 @@ impl Display for NodeError {
             NodeError::ClientError => write!(f, "Client Error"),
             NodeError::OpenQueryError => write!(f, "Open Query Error"),
             NodeError::InternodeProtocolError => write!(f, "Internode Protocol Error"),
+            NodeError::NativeError(e) => write!(f, "Native Protocol Error: {}", e),
         }
     }
 }
@@ -78,5 +82,12 @@ impl<T> From<std::sync::PoisonError<T>> for NodeError {
     /// Conversion from a lock error (`PoisonError`) to `NodeError`.
     fn from(_: std::sync::PoisonError<T>) -> Self {
         NodeError::LockError
+    }
+}
+
+impl From<NativeError> for NodeError {
+    /// Conversion from `NativeError` to `NodeError`.
+    fn from(error: NativeError) -> Self {
+        NodeError::NativeError(error)
     }
 }

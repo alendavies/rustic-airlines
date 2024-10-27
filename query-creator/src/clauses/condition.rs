@@ -3,6 +3,8 @@ use crate::{
 };
 use std::collections::HashMap;
 
+use super::types::column::Column;
+
 /// Enum for the conditions used in the `WHERE` clause.
 ///
 /// - `Simple`: Simple condition with a field, operator and value.
@@ -141,7 +143,11 @@ impl Condition {
     ///
     /// * `register` - A reference to a `HashMap<String, String>` with the register to evaluate.
     ///
-    pub fn execute(&self, register: &HashMap<String, String>) -> Result<bool, CQLError> {
+    pub fn execute(
+        &self,
+        register: &HashMap<String, String>,
+        columns: Vec<Column>,
+    ) -> Result<bool, CQLError> {
         let op_result: Result<bool, CQLError> = match &self {
             Condition::Simple {
                 field,
@@ -150,7 +156,17 @@ impl Condition {
             } => {
                 let y = value;
                 if let Some(x) = register.get(field) {
-                    if is_number(y) && !is_number(x) || !is_number(y) && is_number(x) {
+                    let col = columns
+                        .iter()
+                        .find(|col| &col.name == field)
+                        .ok_or(CQLError::Error)?;
+                    let col_type = &col.data_type;
+                    if col_type.is_valid_value(value) {
+                        return Ok(col_type.compare(x, y, operator));
+                    } else {
+                        return Err(CQLError::InvalidSyntax);
+                    }
+                    /* if is_number(y) && !is_number(x) || !is_number(y) && is_number(x) {
                         return Err(CQLError::InvalidSyntax);
                     }
                     if is_number(x) && is_number(y) {
@@ -167,7 +183,7 @@ impl Condition {
                         Operator::Lesser => Ok(x < y),
                         Operator::Greater => Ok(x > y),
                         Operator::Equal => Ok(x == y),
-                    }
+                    } */
                 } else {
                     Err(CQLError::Error)
                 }
@@ -178,13 +194,13 @@ impl Condition {
                 right,
             } => match operator {
                 LogicalOperator::Not => {
-                    let result = right.execute(register)?;
+                    let result = right.execute(register, columns)?;
                     Ok(!result)
                 }
                 LogicalOperator::Or => {
                     if let Some(left) = left {
-                        let left_result = left.execute(register)?;
-                        let right_result = right.execute(register)?;
+                        let left_result = left.execute(register, columns.clone())?;
+                        let right_result = right.execute(register, columns.clone())?;
                         Ok(left_result || right_result)
                     } else {
                         Err(CQLError::Error)
@@ -192,8 +208,8 @@ impl Condition {
                 }
                 LogicalOperator::And => {
                     if let Some(left) = left {
-                        let left_result = left.execute(register)?;
-                        let right_result = right.execute(register)?;
+                        let left_result = left.execute(register, columns.clone())?;
+                        let right_result = right.execute(register, columns.clone())?;
                         Ok(left_result && right_result)
                     } else {
                         Err(CQLError::Error)
@@ -275,7 +291,10 @@ impl Condition {
 #[cfg(test)]
 mod tests {
     use super::Condition;
-    use crate::clauses::condition::{LogicalOperator, Operator};
+    use crate::clauses::{
+        condition::{LogicalOperator, Operator},
+        types::{column::Column, datatype::DataType},
+    };
     use std::collections::HashMap;
 
     #[test]
@@ -384,8 +403,14 @@ mod tests {
             value: String::from("40"),
         };
 
-        let result_true = condition_true.execute(&register).unwrap();
-        let result_false = condition_false.execute(&register).unwrap();
+        let columns: Vec<Column> = vec![
+            Column::new("name", DataType::String, false, false),
+            Column::new("lastname", DataType::String, false, false),
+            Column::new("age", DataType::Int, false, false),
+        ];
+
+        let result_true = condition_true.execute(&register, columns.clone()).unwrap();
+        let result_false = condition_false.execute(&register, columns.clone()).unwrap();
 
         assert_eq!(result_true, true);
 
@@ -416,7 +441,13 @@ mod tests {
             right: Box::new(right),
         };
 
-        let result = condition.execute(&register).unwrap();
+        let columns: Vec<Column> = vec![
+            Column::new("name", DataType::String, false, false),
+            Column::new("lastname", DataType::String, false, false),
+            Column::new("age", DataType::Int, false, false),
+        ];
+
+        let result = condition.execute(&register, columns).unwrap();
 
         assert_eq!(result, true)
     }
@@ -445,7 +476,13 @@ mod tests {
             right: Box::new(right),
         };
 
-        let result = condition.execute(&register).unwrap();
+        let columns: Vec<Column> = vec![
+            Column::new("name", DataType::String, false, false),
+            Column::new("lastname", DataType::String, false, false),
+            Column::new("age", DataType::Int, false, false),
+        ];
+
+        let result = condition.execute(&register, columns).unwrap();
 
         assert_eq!(result, false)
     }
@@ -469,7 +506,12 @@ mod tests {
             right: Box::new(right),
         };
 
-        let result = condition.execute(&register).unwrap();
+        let columns: Vec<Column> = vec![
+            Column::new("name", DataType::String, false, false),
+            Column::new("lastname", DataType::String, false, false),
+            Column::new("age", DataType::Int, false, false),
+        ];
+        let result = condition.execute(&register, columns).unwrap();
 
         assert_eq!(result, true)
     }
@@ -511,7 +553,14 @@ mod tests {
             right: Box::new(right2),
         };
 
-        let result = and.execute(&register).unwrap();
+        let columns: Vec<Column> = vec![
+            Column::new("name", DataType::String, false, false),
+            Column::new("lastname", DataType::String, false, false),
+            Column::new("age", DataType::Int, false, false),
+            Column::new("city", DataType::String, false, false),
+        ];
+
+        let result = and.execute(&register, columns).unwrap();
 
         assert_eq!(result, false)
     }
@@ -548,7 +597,14 @@ mod tests {
             right: Box::new(right2),
         };
 
-        let result = and.execute(&register).unwrap();
+        let columns: Vec<Column> = vec![
+            Column::new("name", DataType::String, false, false),
+            Column::new("lastname", DataType::String, false, false),
+            Column::new("age", DataType::Int, false, false),
+            Column::new("city", DataType::String, false, false),
+        ];
+
+        let result = and.execute(&register, columns).unwrap();
 
         assert_eq!(result, true)
     }
@@ -589,7 +645,14 @@ mod tests {
             }),
         };
 
-        let result = condition.execute(&register).unwrap();
+        let columns: Vec<Column> = vec![
+            Column::new("name", DataType::String, false, false),
+            Column::new("lastname", DataType::String, false, false),
+            Column::new("age", DataType::Int, false, false),
+            Column::new("city", DataType::String, false, false),
+        ];
+
+        let result = condition.execute(&register, columns).unwrap();
 
         assert_eq!(result, false)
     }
@@ -627,7 +690,14 @@ mod tests {
             }),
         };
 
-        let result = condition.execute(&register).unwrap();
+        let columns: Vec<Column> = vec![
+            Column::new("name", DataType::String, false, false),
+            Column::new("lastname", DataType::String, false, false),
+            Column::new("age", DataType::Int, false, false),
+            Column::new("city", DataType::String, false, false),
+        ];
+
+        let result = condition.execute(&register, columns).unwrap();
 
         assert_eq!(result, true);
     }

@@ -220,7 +220,7 @@ impl Where {
                     result.push(value.clone());
                 }
             }
-            Condition::Complex { left, .. } => {
+            Condition::Complex { left, right, .. } => {
                 // Recorremos la condición izquierda
                 if let Some(left_condition) = left.as_ref() {
                     self.collect_partitioner_key_values(
@@ -229,6 +229,7 @@ impl Where {
                         &mut result,
                     );
                 }
+                self.collect_partitioner_key_values(&right, &partitioner_keys, &mut result);
             }
         }
 
@@ -275,5 +276,273 @@ impl Where {
                 }
             }
         }
+    }
+
+    /// Retorna los valores de las clustering columns de las condiciones en la cláusula `WHERE`.
+    pub fn get_value_clustering_column_condition(
+        &self,
+        clustering_columns: Vec<String>,
+    ) -> Result<Vec<String>, CQLError> {
+        let mut result = vec![];
+
+        match &self.condition {
+            Condition::Simple {
+                field,
+                operator,
+                value,
+            } => {
+                // Si es una condición simple y la clave está en clustering_columns y el operador es `=`
+                if clustering_columns.contains(field) && *operator == Operator::Equal {
+                    result.push(value.clone());
+                }
+            }
+            Condition::Complex { left, right, .. } => {
+                // Recorremos la condición izquierda
+                if let Some(left_condition) = left.as_ref() {
+                    self.collect_clustering_column_values(
+                        left_condition,
+                        &clustering_columns,
+                        &mut result,
+                    );
+                }
+                self.collect_clustering_column_values(right, &clustering_columns, &mut result);
+            }
+        }
+
+        if result.is_empty() {
+            Err(CQLError::InvalidColumn)
+        } else {
+            Ok(result)
+        }
+    }
+
+    /// Método auxiliar para recorrer las condiciones y recolectar los valores de las clustering columns.
+    fn collect_clustering_column_values(
+        &self,
+        condition: &Condition,
+        clustering_columns: &[String],
+        result: &mut Vec<String>,
+    ) {
+        match condition {
+            Condition::Simple {
+                field,
+                operator,
+                value,
+            } => {
+                // Si la condición simple corresponde a una clustering column
+                if clustering_columns.contains(field) && *operator == Operator::Equal {
+                    result.push(value.clone());
+                }
+            }
+            Condition::Complex {
+                left,
+                operator,
+                right,
+            } => {
+                // Solo procesar si es un operador lógico AND
+                if *operator == LogicalOperator::And {
+                    if let Some(left_condition) = left.as_ref() {
+                        self.collect_clustering_column_values(
+                            left_condition,
+                            clustering_columns,
+                            result,
+                        );
+                    }
+                    self.collect_clustering_column_values(right, clustering_columns, result);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{errors::CQLError, logical_operator::LogicalOperator, operator::Operator};
+
+    #[test]
+    fn test_new_from_tokens_simple_condition() {
+        let tokens = vec!["WHERE", "age", ">", "18"];
+        let where_clause = Where::new_from_tokens(tokens).unwrap();
+        assert_eq!(
+            where_clause,
+            Where {
+                condition: Condition::Simple {
+                    field: "age".to_string(),
+                    operator: Operator::Greater,
+                    value: "18".to_string(),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn test_new_from_tokens_complex_condition() {
+        let tokens = vec!["WHERE", "age", "=", "18", "AND", "name", "=", "John"];
+        let where_clause = Where::new_from_tokens(tokens).unwrap();
+        assert_eq!(
+            where_clause,
+            Where {
+                condition: Condition::Complex {
+                    left: Some(Box::new(Condition::Simple {
+                        field: "age".to_string(),
+                        operator: Operator::Equal,
+                        value: "18".to_string(),
+                    })),
+                    operator: LogicalOperator::And,
+                    right: Box::new(Condition::Simple {
+                        field: "name".to_string(),
+                        operator: Operator::Equal,
+                        value: "John".to_string(),
+                    }),
+                }
+            }
+        );
+    }
+
+    // #[test]
+    // fn test_validate_cql_conditions_valid_update() {
+    //     let partitioner_keys = vec!["id".to_string()];
+    //     let clustering_columns = vec!["age".to_string(), "name".to_string()];
+    //     let condition = Condition::Complex {
+    //         left: Some(Box::new(Condition::Simple {
+    //             field: "id".to_string(),
+    //             operator: Operator::Equal,
+    //             value: "1".to_string(),
+    //         })),
+    //         operator: LogicalOperator::And,
+    //         right: Box::new(Condition::Simple {
+    //             field: "age".to_string(),
+    //             operator: Operator::Equal,
+    //             value: "30".to_string(),
+    //         }),
+    //     };
+
+    //     let where_clause = Where { condition };
+    //     assert!(where_clause
+    //         .validate_cql_conditions(&partitioner_keys, &clustering_columns, false, true)
+    //         .is_ok());
+    // }
+
+    #[test]
+    fn test_validate_cql_conditions_invalid_update_missing_clustering_column() {
+        let partitioner_keys = vec!["id".to_string()];
+        let clustering_columns = vec!["age".to_string(), "name".to_string()];
+        let condition = Condition::Simple {
+            field: "id".to_string(),
+            operator: Operator::Equal,
+            value: "1".to_string(),
+        };
+
+        let where_clause = Where { condition };
+        assert_eq!(
+            where_clause.validate_cql_conditions(
+                &partitioner_keys,
+                &clustering_columns,
+                false,
+                true
+            ),
+            Err(CQLError::InvalidCondition)
+        );
+    }
+
+    #[test]
+    fn test_get_value_partitioner_key_condition_single_key() {
+        let partitioner_keys = vec!["id".to_string()];
+        let condition = Condition::Simple {
+            field: "id".to_string(),
+            operator: Operator::Equal,
+            value: "123".to_string(),
+        };
+
+        let where_clause = Where { condition };
+        let result = where_clause.get_value_partitioner_key_condition(partitioner_keys);
+        assert_eq!(result, Ok(vec!["123".to_string()]));
+    }
+
+    #[test]
+    fn test_get_value_partitioner_key_condition_multiple_keys() {
+        let partitioner_keys = vec!["id".to_string(), "key".to_string()];
+        let condition = Condition::Complex {
+            left: Some(Box::new(Condition::Simple {
+                field: "id".to_string(),
+                operator: Operator::Equal,
+                value: "123".to_string(),
+            })),
+            operator: LogicalOperator::And,
+            right: Box::new(Condition::Simple {
+                field: "key".to_string(),
+                operator: Operator::Equal,
+                value: "abc".to_string(),
+            }),
+        };
+
+        let where_clause = Where { condition };
+        let result = where_clause.get_value_partitioner_key_condition(partitioner_keys);
+        assert_eq!(result, Ok(vec!["123".to_string(), "abc".to_string()]));
+    }
+
+    #[test]
+    fn test_get_value_clustering_column_condition_single_column() {
+        let clustering_columns = vec!["age".to_string()];
+        let condition = Condition::Simple {
+            field: "age".to_string(),
+            operator: Operator::Equal,
+            value: "25".to_string(),
+        };
+
+        let where_clause = Where { condition };
+        let result = where_clause.get_value_clustering_column_condition(clustering_columns);
+        assert_eq!(result, Ok(vec!["25".to_string()]));
+    }
+
+    #[test]
+    fn test_get_value_clustering_column_condition_multiple_columns() {
+        let clustering_columns = vec!["age".to_string(), "name".to_string()];
+        let condition = Condition::Complex {
+            left: Some(Box::new(Condition::Simple {
+                field: "age".to_string(),
+                operator: Operator::Equal,
+                value: "25".to_string(),
+            })),
+            operator: LogicalOperator::And,
+            right: Box::new(Condition::Simple {
+                field: "name".to_string(),
+                operator: Operator::Equal,
+                value: "John".to_string(),
+            }),
+        };
+
+        let where_clause = Where { condition };
+        let result = where_clause.get_value_clustering_column_condition(clustering_columns);
+        assert_eq!(result, Ok(vec!["25".to_string(), "John".to_string()]));
+    }
+
+    #[test]
+    fn test_get_value_partitioner_key_condition_no_match() {
+        let partitioner_keys = vec!["id".to_string()];
+        let condition = Condition::Simple {
+            field: "age".to_string(),
+            operator: Operator::Equal,
+            value: "30".to_string(),
+        };
+
+        let where_clause = Where { condition };
+        let result = where_clause.get_value_partitioner_key_condition(partitioner_keys);
+        assert_eq!(result, Err(CQLError::InvalidColumn));
+    }
+
+    #[test]
+    fn test_get_value_clustering_column_condition_no_match() {
+        let clustering_columns = vec!["age".to_string()];
+        let condition = Condition::Simple {
+            field: "name".to_string(),
+            operator: Operator::Equal,
+            value: "Alice".to_string(),
+        };
+
+        let where_clause = Where { condition };
+        let result = where_clause.get_value_clustering_column_condition(clustering_columns);
+        assert_eq!(result, Err(CQLError::InvalidColumn));
     }
 }

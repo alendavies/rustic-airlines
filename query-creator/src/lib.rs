@@ -190,7 +190,6 @@ impl CreateClientResponse for Query {
                         let (name, r#type) = col_types.get(idx).ok_or(CQLError::Error)?;
                         let col_value = create_column_value_from_type(r#type, value)
                             .map_err(|_| CQLError::Error)?;
-
                         record.insert(name.to_string(), col_value);
                     }
 

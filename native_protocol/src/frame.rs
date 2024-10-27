@@ -4,10 +4,11 @@ use std::{
 };
 
 use crate::{
+    errors::NativeError,
     header::{Flags, FrameHeader, Opcode, Version},
     messages::{error::Error, query::Query, result::result::Result},
     types::{Int, Short},
-    ByteSerializable, Serializable, SerializationError,
+    ByteSerializable, Serializable,
 };
 
 #[derive(Debug)]
@@ -38,12 +39,13 @@ impl Serializable for Frame {
     /// .                                                 .
     /// .                                                 .
     /// +-------------------------------------------------+
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self) -> std::result::Result<Vec<u8>, NativeError> {
         let mut bytes = Vec::new();
 
         let version = match self {
             Frame::Startup | Frame::Query(_) => Version::RequestV3,
             Frame::Ready | Frame::Result(_) | Frame::Error(_) => Version::ResponseV3,
+            _ => return Err(NativeError::InvalidVariant),
         };
 
         let opcode = match self {
@@ -52,6 +54,7 @@ impl Serializable for Frame {
             Frame::Query(_) => Opcode::Query,
             Frame::Result(_) => Opcode::Result,
             Frame::Error(_) => Opcode::Error,
+            _ => return Err(NativeError::InvalidVariant),
         };
 
         let flags = Flags {
@@ -62,62 +65,81 @@ impl Serializable for Frame {
         let body_bytes = match self {
             Frame::Startup => vec![0x00, 0x00], // View 4.1.1., the startup body is a [string map] of options, but we do not use them. The [string map] requires 2 bytes for the length nonetheless, therefore, the 0x0000.
             Frame::Ready => Vec::new(),
-            Frame::Query(query) => query.to_bytes(),
-            Frame::Result(result) => result.to_bytes(),
-            Frame::Error(error) => error.to_bytes(),
+            Frame::Query(query) => query.to_bytes()?,
+            Frame::Result(result) => result.to_bytes()?,
+            Frame::Error(error) => error.to_bytes()?,
+            _ => return Err(NativeError::InvalidVariant),
         };
 
-        let length = u32::try_from(body_bytes.len()).unwrap();
+        let length =
+            u32::try_from(body_bytes.len()).map_err(|_| NativeError::SerializationError)?;
 
         let header = FrameHeader::new(version, flags, 0, opcode, length);
 
-        let header_bytes = header.to_bytes();
+        let header_bytes = header.to_bytes()?;
 
         bytes.extend_from_slice(&header_bytes);
         bytes.extend_from_slice(&body_bytes);
 
-        bytes
+        Ok(bytes)
     }
 
-    fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, SerializationError> {
+    fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, NativeError> {
         let mut cursor = Cursor::new(bytes);
 
         // Read version (1 byte)
         let mut version_bytes = [0u8];
-        cursor.read_exact(&mut version_bytes).unwrap();
+        cursor
+            .read_exact(&mut version_bytes)
+            .map_err(|_| NativeError::CursorError)?;
         let _ = u8::from_be_bytes(version_bytes);
 
         // Read flags (1 byte)
         let mut flags_bytes = [0u8];
-        cursor.read_exact(&mut flags_bytes).unwrap();
-        let _ = Flags::from_byte(flags_bytes[0]).unwrap();
+        cursor
+            .read_exact(&mut flags_bytes)
+            .map_err(|_| NativeError::CursorError)?;
+        let _ = Flags::from_byte(flags_bytes[0])?;
 
         // Read stream (2 bytes)
         let mut stream_bytes = [0u8; 2];
-        cursor.read_exact(&mut stream_bytes).unwrap();
+        cursor
+            .read_exact(&mut stream_bytes)
+            .map_err(|_| NativeError::CursorError)?;
         let _ = Short::from_be_bytes(stream_bytes);
 
         // Read opcode (2 bytes)
         let mut opcode_bytes = [0u8];
-        cursor.read_exact(&mut opcode_bytes).unwrap();
-        let opcode = Opcode::from_byte(opcode_bytes[0]).unwrap();
+        cursor
+            .read_exact(&mut opcode_bytes)
+            .map_err(|_| NativeError::CursorError)?;
+        let opcode = Opcode::from_byte(opcode_bytes[0])?;
 
         // Read body length (4 bytes)
         let mut length_bytes = [0u8; 4];
-        cursor.read_exact(&mut length_bytes).unwrap();
+        cursor
+            .read_exact(&mut length_bytes)
+            .map_err(|_| NativeError::CursorError)?;
         let length = Int::from_be_bytes(length_bytes);
 
         // Read body
-        let mut body = vec![0u8; length.try_into().unwrap()];
-        cursor.read_exact(&mut body).unwrap();
+        let mut body = vec![
+            0u8;
+            length
+                .try_into()
+                .map_err(|_| NativeError::DeserializationError)?
+        ];
+        cursor
+            .read_exact(&mut body)
+            .map_err(|_| NativeError::CursorError)?;
 
         let frame = match opcode {
             Opcode::Startup => Self::Startup,
             Opcode::Ready => Self::Ready,
-            Opcode::Query => Self::Query(Query::from_bytes(&body)),
-            Opcode::Error => Self::Error(Error::from_bytes(&body).unwrap()),
+            Opcode::Query => Self::Query(Query::from_bytes(&body)?),
+            Opcode::Error => Self::Error(Error::from_bytes(&body)?),
             Opcode::Result => Self::Result(Result::from_bytes(&body)?),
-            _ => return Err(SerializationError),
+            _ => return Err(NativeError::InvalidVariant),
         };
 
         Ok(frame)
@@ -139,7 +161,7 @@ mod tests {
     #[test]
     fn test_frame_to_bytes_startup() {
         let frame = Frame::Startup;
-        let bytes = frame.to_bytes();
+        let bytes = frame.to_bytes().unwrap();
 
         let expected_bytes = vec![
             0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
@@ -151,7 +173,7 @@ mod tests {
     #[test]
     fn test_frame_to_bytes_ready() {
         let frame = Frame::Ready;
-        let bytes = frame.to_bytes();
+        let bytes = frame.to_bytes().unwrap();
 
         let expected_bytes = vec![0x83, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00];
 
@@ -164,12 +186,12 @@ mod tests {
         let query_params = QueryParams::new(Consistency::One, vec![]);
         let query = Query::new(query_string, query_params);
 
-        let body_bytes = query.to_bytes();
+        let body_bytes = query.to_bytes().unwrap();
         let frame = Frame::Query(query);
 
         let body_len = body_bytes.len() as u8;
 
-        let bytes = frame.to_bytes();
+        let bytes = frame.to_bytes().unwrap();
 
         let mut expected_bytes: Vec<u8> =
             vec![0x03, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, body_len];
@@ -184,12 +206,12 @@ mod tests {
         let error_message = "Error".to_string();
         let error = Error::ServerError(error_message);
 
-        let body_bytes = error.to_bytes();
+        let body_bytes = error.to_bytes().unwrap();
         let frame = Frame::Error(error);
 
         let body_len = body_bytes.len() as u8;
 
-        let bytes = frame.to_bytes();
+        let bytes = frame.to_bytes().unwrap();
 
         let mut expected_bytes: Vec<u8> =
             vec![0x83, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, body_len];
@@ -201,7 +223,7 @@ mod tests {
 
     #[test]
     fn bytes_to_frame_startup() {
-        let bytes = Frame::Startup.to_bytes();
+        let bytes = Frame::Startup.to_bytes().unwrap();
         let frame = Frame::from_bytes(&bytes).unwrap();
 
         assert!(matches!(frame, Frame::Startup))
@@ -209,7 +231,7 @@ mod tests {
 
     #[test]
     fn bytes_to_frame_ready() {
-        let bytes = Frame::Ready.to_bytes();
+        let bytes = Frame::Ready.to_bytes().unwrap();
         let frame = Frame::from_bytes(&bytes).unwrap();
 
         assert!(matches!(frame, Frame::Ready))
@@ -220,7 +242,7 @@ mod tests {
         let query_string = "SELECT * FROM table WHERE id = 1".to_string();
         let query_params = QueryParams::new(Consistency::One, vec![]);
         let query = Query::new(query_string.clone(), query_params.clone());
-        let bytes = Frame::Query(query).to_bytes();
+        let bytes = Frame::Query(query).to_bytes().unwrap();
 
         let frame = Frame::from_bytes(&bytes).unwrap();
 
@@ -254,7 +276,7 @@ mod tests {
 
         let rows = Rows::new(cols, rows_content);
 
-        let frame_bytes = Frame::Result(Result::Rows(rows)).to_bytes();
+        let frame_bytes = Frame::Result(Result::Rows(rows)).to_bytes().unwrap();
 
         let frame = Frame::from_bytes(&frame_bytes).unwrap();
 
@@ -272,7 +294,7 @@ mod tests {
     fn bytes_to_frame_error() {
         let error_message = "Error".to_string();
         let error = Error::ServerError(error_message.clone());
-        let bytes = Frame::Error(error).to_bytes();
+        let bytes = Frame::Error(error).to_bytes().unwrap();
 
         let frame = Frame::from_bytes(&bytes).unwrap();
 

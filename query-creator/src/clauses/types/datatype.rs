@@ -1,6 +1,6 @@
-use crate::errors::CQLError;
+use crate::{errors::CQLError, operator::Operator};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DataType {
     Int,
     String,
@@ -24,6 +24,74 @@ impl DataType {
             DataType::Timestamp => "TIMESTAMP",
             DataType::Uuid => "UUID",
             // DataType::Blob => "BLOB",
+        }
+    }
+
+    pub fn compare(&self, x: &String, y: &String, operator: &Operator) -> bool {
+        match self {
+            DataType::Int => {
+                let x = x.parse::<i32>().unwrap();
+                let y = y.parse::<i32>().unwrap();
+                match operator {
+                    Operator::Equal => x == y,
+                    Operator::Greater => x > y,
+                    Operator::Lesser => x < y,
+                }
+            }
+            DataType::String => {
+                let x = x.parse::<String>().unwrap();
+                let y = y.parse::<String>().unwrap();
+                match operator {
+                    Operator::Equal => x == y,
+                    Operator::Greater => x > y,
+                    Operator::Lesser => x < y,
+                }
+            }
+            DataType::Boolean => {
+                let x = x.parse::<bool>().unwrap();
+                let y = y.parse::<bool>().unwrap();
+                match operator {
+                    Operator::Equal => x == y,
+                    Operator::Greater => x > y,
+                    Operator::Lesser => x < y,
+                }
+            }
+            DataType::Float => {
+                let x = x.parse::<f32>().unwrap();
+                let y = y.parse::<f32>().unwrap();
+                match operator {
+                    Operator::Equal => x == y,
+                    Operator::Greater => x > y,
+                    Operator::Lesser => x < y,
+                }
+            }
+            DataType::Double => {
+                let x = x.parse::<f64>().unwrap();
+                let y = y.parse::<f64>().unwrap();
+                match operator {
+                    Operator::Equal => x == y,
+                    Operator::Greater => x > y,
+                    Operator::Lesser => x < y,
+                }
+            }
+            DataType::Timestamp => {
+                let x = x.parse::<chrono::DateTime<chrono::Utc>>().unwrap();
+                let y = y.parse::<chrono::DateTime<chrono::Utc>>().unwrap();
+                match operator {
+                    Operator::Equal => x == y,
+                    Operator::Greater => x > y,
+                    Operator::Lesser => x < y,
+                }
+            }
+            DataType::Uuid => {
+                let x = x.parse::<uuid::Uuid>().unwrap();
+                let y = y.parse::<uuid::Uuid>().unwrap();
+                match operator {
+                    Operator::Equal => x == y,
+                    Operator::Greater => x > y,
+                    Operator::Lesser => x < y,
+                }
+            }
         }
     }
 

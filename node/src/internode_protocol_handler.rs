@@ -23,25 +23,30 @@ use std::net::{Ipv4Addr, TcpStream};
 use std::sync::{Arc, Mutex};
 
 /// Struct that represents the handler for internode communication protocol.
+/// Struct that represents the handler for internode communication protocol.
 pub struct InternodeProtocolHandler {}
 
 impl InternodeProtocolHandler {
-    /// Creates a new `InternodeProtocolHandler`.
+    /// Creates a new `InternodeProtocolHandler` for handling internode commands
+    /// and responses between nodes in a distributed setting.
     pub fn new() -> Self {
         InternodeProtocolHandler {}
     }
 
-    /// Creates a protocol message for querying between nodes.
+    /// Creates a formatted protocol message for sending a query between nodes.
     ///
     /// # Parameters
-    /// - `id`: The ID of the node.
-    /// - `open_query_id`: The ID of the open query.
-    /// - `query_type`: The type of the query being executed.
-    /// - `structure`: The structure of the query in string format.
-    /// - `internode`: A boolean indicating whether the query is between nodes.
+    /// - `id`: The identifier of the node sending the message.
+    /// - `open_query_id`: The unique ID of the open query, allowing tracking across nodes.
+    /// - `query_type`: The type of query being executed (e.g., "SELECT", "INSERT").
+    /// - `structure`: The serialized string structure of the query.
+    /// - `internode`: Boolean flag indicating if the query originates from another node.
+    /// - `replication`: Boolean flag indicating if replication is required.
     ///
     /// # Returns
-    /// A formatted string representing the query message.
+    /// * `String` - A formatted string representing the protocol message, including
+    ///   node ID, query ID, query type, serialized query structure, internode status,
+    ///   and replication status.
     pub fn create_protocol_message(
         id: &str,
         open_query_id: i32,
@@ -56,30 +61,38 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Creates a protocol response to a query.
+    /// Creates a response message for a query, used for communication between nodes.
     ///
     /// # Parameters
-    /// - `status`: The status of the response (e.g., "OK").
-    /// - `content`: The content of the response.
-    /// - `open_query_id`: The ID of the open query related to the response.
+    /// - `status`: The status of the response (e.g., "OK" or "ERROR").
+    /// - `content`: The content of the response message.
+    /// - `open_query_id`: The ID of the open query related to this response.
     ///
     /// # Returns
-    /// A formatted string representing the response message.
+    /// * `String` - A formatted string representing the response message, including
+    ///   the query ID, status, and content of the response.
     pub fn create_protocol_response(status: &str, content: &str, open_query_id: i32) -> String {
         format!("RESPONSE - {} - {} - {}", open_query_id, status, content)
     }
 
-    /// Handles an incoming command from a node or client.
+    /// Handles an incoming command from a node or client, distinguishing between query commands
+    /// and response commands, and delegating to the appropriate handler.
     ///
     /// # Parameters
-    /// - `node`: The node receiving the command.
-    /// - `message`: The message received.
-    /// - `_stream`: The stream used for communication.
-    /// - `connections`: A collection of current TCP connections.
-    /// - `is_seed`: A boolean indicating if the current node is a seed.
+    /// - `node`: An `Arc<Mutex<Node>>` representing the node receiving the command.
+    /// - `message`: The incoming message string to be processed.
+    /// - `_stream`: A mutable reference to the TCP stream used for communication.
+    /// - `connections`: A thread-safe collection of active TCP connections with other nodes.
+    /// - `is_seed`: Boolean flag indicating if the current node is a seed node.
     ///
     /// # Returns
-    /// A result that either indicates success or returns a `NodeError`.
+    /// * `Result<(), NodeError>` - Returns `Ok(())` on successful processing of the command,
+    ///   or `NodeError` if there is an issue in parsing or handling the command.
+    ///
+    /// # Errors
+    /// This function may return `NodeError::InternodeProtocolError` if:
+    /// - The incoming command format is invalid.
+    /// - The command type is unrecognized.
     pub fn handle_command(
         &self,
         node: &Arc<Mutex<Node>>,
@@ -105,6 +118,79 @@ impl InternodeProtocolHandler {
                 Ok(())
             }
             _ => Err(NodeError::InternodeProtocolError),
+        }
+    }
+
+    /// Adds a response to an open query and, if all expected responses have been received,
+    /// sends a complete response back to the client.
+    ///
+    /// # Parameters
+    /// - `query_handler`: A mutable reference to the `OpenQueryHandler` managing open queries.
+    /// - `content`: The response content received from another node.
+    /// - `open_query_id`: The ID of the open query being handled.
+    /// - `keyspace_name`: The name of the keyspace associated with this query.
+    /// - `columns`: The list of columns in the response, if applicable.
+    ///
+    /// # Returns
+    /// * `Result<(), NodeError>` - Returns `Ok(())` on successful handling of the response,
+    ///   or `NodeError` if there is an issue in processing the query.
+    ///
+    /// # Errors
+    /// - `NodeError::OtherError` may be returned if the open query cannot be retrieved.
+    pub fn add_response_to_open_query_and_send_response_if_closed(
+        query_handler: &mut OpenQueryHandler,
+        content: &str,
+        open_query_id: i32,
+        keyspace_name: String,
+        columns: Vec<Column>,
+    ) -> Result<(), NodeError> {
+        if let Some(open_query) =
+            query_handler.add_response_and_get_if_closed(open_query_id, content.to_string())
+        {
+            let mut connection = open_query.get_connection();
+
+            let frame = open_query.get_query().create_client_response(
+                columns,
+                keyspace_name,
+                content.split("/").map(|s| s.to_string()).collect(),
+            )?;
+
+            println!("Returning frame: {:?}", frame);
+
+            connection.write(&frame.to_bytes()?)?;
+            Ok(())
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Closes an open query and sends an error response back to the client.
+    ///
+    /// # Parameters
+    /// - `query_handler`: A mutable reference to the `OpenQueryHandler` managing open queries.
+    /// - `open_query_id`: The ID of the open query being closed due to an error.
+    ///
+    /// # Returns
+    /// * `Result<(), NodeError>` - Returns `Ok(())` on successful error handling,
+    ///   or `NodeError` if there is an issue in processing the query.
+    ///
+    /// # Errors
+    /// - This function returns `NodeError` if there is a failure in sending the error response.
+    pub fn close_query_and_send_error_frame(
+        query_handler: &mut OpenQueryHandler,
+        open_query_id: i32,
+    ) -> Result<(), NodeError> {
+        if let Some(open_query) = query_handler.close_query_and_get_if_closed(open_query_id) {
+            let mut connection = open_query.get_connection();
+
+            let error_frame = Frame::Error(error::Error::ServerError(
+                "A node failed to execute the request.".to_string(),
+            ));
+
+            connection.write(&error_frame.to_bytes()?)?;
+            Ok(())
+        } else {
+            Ok(())
         }
     }
 
@@ -313,53 +399,6 @@ impl InternodeProtocolHandler {
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         Self::close_query_and_send_error_frame(query_handler, open_query_id)
-    }
-
-    pub fn add_response_to_open_query_and_send_response_if_closed(
-        query_handler: &mut OpenQueryHandler,
-        content: &str,
-        open_query_id: i32,
-        keyspace_name: String,
-        columns: Vec<Column>,
-    ) -> Result<(), NodeError> {
-        if let Some(open_query) =
-            query_handler.add_response_and_get_if_closed(open_query_id, content.to_string())
-        {
-            let mut connection = open_query.get_connection();
-
-            let keyspace_name = keyspace_name;
-
-            let frame = open_query.get_query().create_client_response(
-                columns,
-                keyspace_name,
-                content.split("/").map(|s| s.to_string()).collect(),
-            )?;
-
-            println!("el frame a devolver es {:?}", frame);
-
-            connection.write(&frame.to_bytes())?;
-            Ok(())
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn close_query_and_send_error_frame(
-        query_handler: &mut OpenQueryHandler,
-        open_query_id: i32,
-    ) -> Result<(), NodeError> {
-        // Verificamos si la consulta está cerrada y necesitamos enviar un frame de error.
-        if let Some(open_query) = query_handler.close_query_and_get_if_closed(open_query_id) {
-            let mut connection = open_query.get_connection();
-
-            // Crear un frame de error para el cliente.
-            let error_frame = Frame::Error(error::Error::ServerError("error ".to_string()));
-
-            connection.write(&error_frame.to_bytes())?;
-            Ok(())
-        } else {
-            Ok(())
-        }
     }
 
     /// Handles the introduction command, which is used for the "HANDSHAKE" protocol.
