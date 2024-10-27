@@ -55,8 +55,17 @@ impl QueryExecution {
                 false,
             )?;
 
+            let complet_columns: Vec<String> =
+                table.get_columns().iter().map(|c| c.name.clone()).collect();
+
             if select_query.columns[0] == String::from("*") {
-                select_query.columns = table.get_columns().iter().map(|c| c.name.clone()).collect();
+                select_query.columns = complet_columns;
+            } else {
+                for col in select_query.clone().columns {
+                    if !complet_columns.contains(&col) {
+                        return Err(NodeError::CQLError(CQLError::InvalidColumn));
+                    }
+                }
             }
 
             // Get the value to hash and determine which node should handle the delete
