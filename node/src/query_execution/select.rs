@@ -93,7 +93,7 @@ impl QueryExecution {
                 )?;
             }
 
-            if !internode && rf == 1 && node_to_query != self_ip {
+            if !internode && rf == 1 && node_to_query == self_ip {
                 self.execution_finished_itself = true;
             }
         }

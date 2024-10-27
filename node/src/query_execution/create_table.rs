@@ -31,31 +31,40 @@ impl QueryExecution {
         let table_name = create_table.get_name().clone();
         let columns = create_table.get_columns().clone();
 
-        // Generate the file name and the folder where the table will be stored
+        // Generate the primary and replication folder paths
         let ip_str = node.get_ip_string().replace(".", "_");
-        let folder_name = format!(
-            "keyspaces_{}/{}",
-            ip_str,
-            node.actual_keyspace_name()
-                .ok_or(NodeError::KeyspaceError)?
-        );
-        let file_path = format!("{}/{}.csv", folder_name, table_name);
+        let keyspace_name = node
+            .actual_keyspace_name()
+            .ok_or(NodeError::KeyspaceError)?;
+        let primary_folder = format!("keyspaces_{}/{}", ip_str, keyspace_name);
+        let replication_folder = format!("{}/replication", primary_folder);
+        let primary_file_path = format!("{}/{}.csv", primary_folder, table_name);
+        let replication_file_path = format!("{}/{}.csv", replication_folder, table_name);
 
-        // Create the folder if it doesn't exist
-        if let Err(e) = std::fs::create_dir_all(&folder_name) {
-            return Err(NodeError::IoError(e));
-        }
+        // Create the primary and replication folders if they don't exist
+        std::fs::create_dir_all(&primary_folder).map_err(NodeError::IoError)?;
+        std::fs::create_dir_all(&replication_folder).map_err(NodeError::IoError)?;
 
-        // Create the file and write the columns as the header
-        let mut file = OpenOptions::new()
+        // Create the file in the primary folder and write the columns as the header
+        let mut primary_file = OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
-            .open(&file_path)
+            .open(&primary_file_path)
             .map_err(NodeError::IoError)?;
 
         let header: Vec<String> = columns.iter().map(|col| col.name.clone()).collect();
-        writeln!(file, "{}", header.join(",")).map_err(NodeError::IoError)?;
+        writeln!(primary_file, "{}", header.join(",")).map_err(NodeError::IoError)?;
+
+        // Create the same file in the replication folder and write the columns as the header
+        let mut replication_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&replication_file_path)
+            .map_err(NodeError::IoError)?;
+
+        writeln!(replication_file, "{}", header.join(",")).map_err(NodeError::IoError)?;
 
         // If this is not an internode operation, communicate to other nodes
         if !internode {

@@ -25,16 +25,17 @@ fn main() {
             weight INT,
             PRIMARY KEY (user_id, age, weight)
             )",
-            
+
         // // // Insertar algunos elementos
-        "INSERT INTO users (user_id, age, last_name , weight) VALUES (1, 40, 'perrazo',80)",
-        "INSERT INTO users (user_id, age, weight) VALUES (2, 40, 80)",
-        "INSERT INTO users (user_id, age, weight) VALUES (3, 40, 90)",
-        "INSERT INTO users (user_id, first_name, email, age, weight) VALUES (1, 'Emily', 'emily.davis@example.com', 28, 91)",
-        //"DELETE FROM users WHERE user_id = 1 AND age < 30",
-        "DELETE FROM users WHERE user_id = 1 AND age < 30",
-        "DELETE FROM users WHERE user_id = 1 AND age > 30",
-        "UPDATE users SET first_name = 'Narizon' WHERE user_id = 2 AND age = 40 AND weight = 80",
+        "INSERT INTO users (user_id, age, last_name , weight) VALUES (3, 40, 'perrazo',81) IF NOT EXISTS",
+        "INSERT INTO users (user_id, age, weight) VALUES (3, 40, 80)",
+        "INSERT INTO users (user_id, age, weight, last_name) VALUES (3, 40, 80, 'gil') IF NOT EXISTS",
+        // "INSERT INTO users (user_id, first_name, email, age, weight) VALUES (1, 'Emily', 'emily.davis@example.com', 28, 91)",
+        // //"DELETE FROM users WHERE user_id = 1 AND age < 30",
+        // "DELETE FROM users WHERE user_id = 1 AND age < 30",
+        // "DELETE FROM users WHERE user_id = 1 AND age > 30",
+        // "UPDATE users SET first_name = 'Narizon' WHERE user_id = 2 AND age = 40 AND weight = 80",
+        "SELECT email, user_id, age FROM users WHERE user_id = 3",
         //"UPDATE users SET age = 21 WHERE user_id = 2 AND age = 40 ",
         //"SELECT age FROM users WHERE user_id = 1 AND weight > 75 AND weight < 450",
         //"DELETE FROM users WHERE user_id = 1 AND age < 30 AND email = 's'"
@@ -88,7 +89,6 @@ fn main() {
         //  // // Borrar algunos elementos
         //  "DELETE FROM users WHERE user_id = 7",
         //  "DELETE FROM users WHERE user_id = 7",
-         "SELECT email, user_id, age FROM users WHERE user_id = 1"
     ];
 
     // Ejecutar cada consulta en un loop

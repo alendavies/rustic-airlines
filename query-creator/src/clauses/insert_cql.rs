@@ -1,6 +1,7 @@
 use super::into_cql::Into;
 use crate::errors::CQLError;
 use crate::utils::{is_insert, is_values};
+use crate::QueryCreator;
 
 /// Struct that represents the `INSERT` SQL clause.
 /// The `INSERT` clause is used to insert new records into a table.
@@ -108,96 +109,31 @@ impl Insert {
         })
     }
 
-    /// Serializes the `Insert` struct into a JSON-like string representation.
+    /// Serializes the `Insert` struct into a plain string representation.
     pub fn serialize(&self) -> String {
-        let values = self
-            .values
-            .iter()
-            .map(|v| format!("\"{}\"", v))
-            .collect::<Vec<String>>()
-            .join(", ");
-
-        let columns = self
-            .into_clause
-            .columns
-            .iter()
-            .map(|c| format!("\"{}\"", c))
-            .collect::<Vec<String>>()
-            .join(", ");
+        let columns = self.into_clause.columns.join(", ");
+        let values = self.values.join(", ");
 
         let if_not_exists = if self.if_not_exists {
-            ", \"if_not_exists\": true"
+            " IF NOT EXISTS"
         } else {
-            ", \"if_not_exists\": false"
+            ""
         };
 
         format!(
-            "{{ \"into_clause\": {{ \"table_name\": \"{}\", \"columns\": [{}] }}, \"values\": [{}], \"if_not_exists\": {} }}",
+            "INSERT INTO {} ({}) VALUES ({}){}",
             self.into_clause.table_name, columns, values, if_not_exists
         )
     }
 
-    /// Deserializes a JSON-like string into an `Insert` struct.
+    /// Deserializes a plain string representation into an `Insert` struct.
     ///
-    /// The string should have the format:
+    /// The expected format for the string is:
     ///
-    /// `{ "into_clause": { "table_name": "table", "columns": ["name", "age"] }, "values": ["Alen", "25"] }`
+    /// `"INSERT INTO table_name (column1, column2) VALUES (value1, value2) [IF NOT EXISTS]"`
     pub fn deserialize(s: &str) -> Result<Self, CQLError> {
-        // Remove outer curly braces and split into parts
-        let trimmed = s.trim().trim_start_matches('{').trim_end_matches('}');
-        let parts: Vec<&str> = trimmed.split(", \"values\": ").collect();
-
-        if parts.len() != 2 {
-            return Err(CQLError::InvalidSyntax);
-        }
-
-        // Deserialize the `into_clause`
-        let into_part = parts[0]
-            .trim()
-            .trim_start_matches("\"into_clause\": {")
-            .trim_end_matches('}');
-        let into_parts: Vec<&str> = into_part.split(", \"columns\": ").collect();
-
-        if into_parts.len() != 2 {
-            return Err(CQLError::InvalidSyntax);
-        }
-
-        let table_name = into_parts[0]
-            .trim()
-            .trim_start_matches("\"table_name\": \"")
-            .trim_end_matches('\"')
-            .to_string();
-
-        let columns_str = into_parts[1]
-            .trim()
-            .trim_start_matches('[')
-            .trim_end_matches(']');
-        let columns: Vec<String> = columns_str
-            .split(',')
-            .map(|c| c.trim().trim_matches('\"').to_string())
-            .collect();
-
-        // Deserialize the `values`
-        let values_str = parts[1]
-            .trim()
-            .trim_start_matches('[')
-            .trim_end_matches(']');
-        let values: Vec<String> = values_str
-            .split(',')
-            .map(|v| v.trim().trim_matches('\"').to_string())
-            .collect();
-
-        // Deserialize the `if_not_exists` flag
-        let if_not_exists = s.contains("\"if_not_exists\": true");
-
-        Ok(Insert {
-            values,
-            into_clause: Into {
-                table_name,
-                columns,
-            },
-            if_not_exists,
-        })
+        let tokens: Vec<String> = QueryCreator::tokens_from_query(s);
+        Self::new_from_tokens(tokens)
     }
 }
 
@@ -206,96 +142,88 @@ mod test {
     use crate::{clauses::into_cql, errors::CQLError, Insert};
 
     #[test]
-    fn new_1_token() {
-        let tokens = vec![String::from("INSERT")];
-        let result = super::Insert::new_from_tokens(tokens);
-        assert_eq!(result, Err(CQLError::InvalidSyntax));
-    }
+    fn serialize_basic_insert() {
+        let insert = Insert {
+            values: vec![String::from("Alen"), String::from("25")],
+            into_clause: into_cql::Into {
+                table_name: String::from("table"),
+                columns: vec![String::from("name"), String::from("age")],
+            },
+            if_not_exists: false,
+        };
 
-    #[test]
-    fn new_3_tokens() {
-        let tokens = vec![
-            String::from("INSERT"),
-            String::from("INTO"),
-            String::from("table"),
-        ];
-
-        let result = super::Insert::new_from_tokens(tokens);
-        assert_eq!(result, Err(CQLError::InvalidSyntax));
-    }
-
-    #[test]
-    fn new_6_tokens() {
-        let tokens = vec![
-            String::from("INSERT"),
-            String::from("INTO"),
-            String::from("table"),
-            String::from("name"),
-            String::from("VALUES"),
-            String::from("Alen"),
-        ];
-        let result = super::Insert::new_from_tokens(tokens).unwrap();
+        let serialized = insert.serialize();
         assert_eq!(
-            result,
-            Insert {
-                values: vec![String::from("Alen")],
-                into_clause: into_cql::Into {
-                    table_name: String::from("table"),
-                    columns: vec![String::from("name")]
-                },
-                if_not_exists: false
-            }
+            serialized,
+            "INSERT INTO table (name, age) VALUES (Alen, 25)"
         );
     }
 
     #[test]
-    fn new_more_values() {
-        let tokens = vec![
-            String::from("INSERT"),
-            String::from("INTO"),
-            String::from("table"),
-            String::from("name, age"),
-            String::from("VALUES"),
-            String::from("Alen, 25"),
-        ];
-        let result = super::Insert::new_from_tokens(tokens).unwrap();
+    fn serialize_insert_if_not_exists() {
+        let insert = Insert {
+            values: vec![String::from("Alen"), String::from("25")],
+            into_clause: into_cql::Into {
+                table_name: String::from("table"),
+                columns: vec![String::from("name"), String::from("age")],
+            },
+            if_not_exists: true,
+        };
+
+        let serialized = insert.serialize();
         assert_eq!(
-            result,
+            serialized,
+            "INSERT INTO table (name, age) VALUES (Alen, 25) IF NOT EXISTS"
+        );
+    }
+
+    #[test]
+    fn deserialize_basic_insert() {
+        let s = "INSERT INTO table (name, age) VALUES (Alen, 25)";
+        let deserialized = Insert::deserialize(s).unwrap();
+
+        assert_eq!(
+            deserialized,
             Insert {
                 values: vec![String::from("Alen"), String::from("25")],
                 into_clause: into_cql::Into {
                     table_name: String::from("table"),
-                    columns: vec![String::from("name"), String::from("age")]
+                    columns: vec![String::from("name"), String::from("age")],
                 },
-                if_not_exists: false
+                if_not_exists: false,
             }
         );
     }
 
     #[test]
-    fn new_with_if_not_exist() {
-        let tokens = vec![
-            String::from("INSERT"),
-            String::from("INTO"),
-            String::from("table"),
-            String::from("name, age"),
-            String::from("VALUES"),
-            String::from("Alen, 25"),
-            String::from("IF"),
-            String::from("NOT"),
-            String::from("EXISTS"),
-        ];
-        let result = super::Insert::new_from_tokens(tokens).unwrap();
+    fn deserialize_insert_if_not_exists() {
+        let s = "INSERT INTO table (name, age) VALUES (Alen, 25) IF NOT EXISTS";
+        let deserialized = Insert::deserialize(s).unwrap();
+
         assert_eq!(
-            result,
+            deserialized,
             Insert {
                 values: vec![String::from("Alen"), String::from("25")],
                 into_clause: into_cql::Into {
                     table_name: String::from("table"),
-                    columns: vec![String::from("name"), String::from("age")]
+                    columns: vec![String::from("name"), String::from("age")],
                 },
-                if_not_exists: true
+                if_not_exists: true,
             }
         );
+    }
+
+    #[test]
+    fn deserialize_invalid_syntax_missing_values() {
+        let s = "INSERT INTO table (name, age)";
+        let deserialized = Insert::deserialize(s);
+        assert_eq!(deserialized, Err(CQLError::InvalidSyntax));
+    }
+
+    #[test]
+    fn deserialize_invalid_syntax_incorrect_format() {
+        let s = "INSERT INTO table VALUES (Alen, 25)";
+        let deserialized = Insert::deserialize(s);
+        assert_eq!(deserialized, Err(CQLError::InvalidSyntax));
     }
 }

@@ -334,6 +334,9 @@ impl InternodeProtocolHandler {
                 keyspace_name,
                 content.split("/").map(|s| s.to_string()).collect(),
             )?;
+
+            println!("el frame a devolver es {:?}", frame);
+
             connection.write(&frame.to_bytes())?;
             Ok(())
         } else {

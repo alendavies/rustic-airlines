@@ -58,7 +58,7 @@ impl QueryExecution {
         let mut content: Result<Option<String>, NodeError> = Ok(Some(String::from("_")));
 
         let query_result = {
-            match query {
+            match query.clone() {
                 Query::Select(select_query) => {
                     match self.execute_select(select_query, internode, replication, open_query_id) {
                         Ok(select_querys) => {
@@ -119,11 +119,17 @@ impl QueryExecution {
                         &content?.unwrap_or("_".to_string()),
                         open_query_id,
                     ),
-                    Err(_) => InternodeProtocolHandler::create_protocol_response(
-                        "ERROR",
-                        &content?.unwrap_or("_".to_string()),
-                        open_query_id,
-                    ),
+                    Err(_) => {
+                        println!(
+                            "el error en este nodo es {:?} de la query {:?}",
+                            query_result, query
+                        );
+                        InternodeProtocolHandler::create_protocol_response(
+                            "ERROR",
+                            &content?.unwrap_or("_".to_string()),
+                            open_query_id,
+                        )
+                    }
                 }
             };
             Ok(Some((0, response)))

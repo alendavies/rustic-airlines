@@ -144,6 +144,7 @@ impl QueryExecution {
             keys_index,
             keyspace_name,
             replication,
+            insert_query.if_not_exists,
         )
     }
 
@@ -195,6 +196,7 @@ impl QueryExecution {
         index_of_keys: Vec<usize>, // Ahora acepta un vector de índices para las partition keys
         actual_keyspace_name: String,
         replication: bool,
+        if_not_exist: bool,
     ) -> Result<(), NodeError> {
         // Convert the IP to a string to use in the folder name
         let add_str = ip.to_string().replace(".", "_");
@@ -245,7 +247,7 @@ impl QueryExecution {
                     .all(|&index| row_values.get(index) == Some(&values[index].as_str()));
 
                 // If all partition keys match, overwrite the old row
-                if all_keys_match {
+                if all_keys_match && !if_not_exist {
                     writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
                     key_exists = true;
                 } else {
@@ -256,7 +258,7 @@ impl QueryExecution {
         }
 
         // If no matching primary key exists, append the new row at the end
-        if !key_exists {
+        if !key_exists && if_not_exist {
             writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
         }
 

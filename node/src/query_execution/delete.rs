@@ -161,7 +161,7 @@ impl QueryExecution {
         Ok(())
     }
 
-    /// Verifica si la línea debe ser eliminada según la condición where_clause
+    /// Verifica si la línea debe ser eliminada según la condición `where_clause` y `if_clause`
     fn should_delete_line(
         &self,
         table: &Table,
@@ -171,12 +171,33 @@ impl QueryExecution {
         let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
         let column_value_map = self.create_column_value_map(table, &columns, true);
 
+        // Verificar la cláusula `WHERE`
         if let Some(where_clause) = &delete_query.where_clause {
-            return Ok(where_clause
+            if where_clause
                 .condition
                 .execute(&column_value_map)
-                .unwrap_or(false));
+                .unwrap_or(false)
+            {
+                // Verificar la cláusula `IF` si está presente
+                if let Some(if_clause) = &delete_query.if_clause {
+                    if !if_clause
+                        .condition
+                        .execute(&column_value_map)
+                        .unwrap_or(false)
+                    {
+                        // Si la cláusula `IF` está presente pero no se cumple, no eliminar
+                        return Ok(false);
+                    }
+                }
+                // Eliminar si se cumple `WHERE` y, si existe, `IF`
+                return Ok(true);
+            } else {
+                // La condición `WHERE` no se cumple, no se elimina
+                return Ok(false);
+            }
+        } else {
+            // Si falta la cláusula `WHERE`, retornar un error
+            return Err(NodeError::OtherError);
         }
-        Err(NodeError::OtherError)
     }
 }
