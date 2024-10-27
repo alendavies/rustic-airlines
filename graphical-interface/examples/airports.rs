@@ -1,21 +1,5 @@
-use std::{net::Ipv4Addr, str::FromStr};
-
 use driver::CassandraClient;
-
-mod db;
-mod map;
-mod plugins;
-mod windows;
-// use map::MyApp;
-
-/* fn main() -> Result<(), eframe::Error> {
-    eframe::run_native(
-        "Flight Tracker",
-        Default::default(),
-        Box::new(|cc| Ok(Box::new(MyApp::new(cc.egui_ctx.clone())))),
-    )
-}
- */
+use std::{net::Ipv4Addr, str::FromStr};
 
 fn main() {
     let server_ip = "127.0.0.4";

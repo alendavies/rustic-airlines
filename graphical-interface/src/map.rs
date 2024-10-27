@@ -1,4 +1,4 @@
-/* use egui::Context;
+use egui::Context;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
 use crate::{
@@ -86,4 +86,3 @@ impl eframe::App for MyApp {
             });
     }
 }
- */
