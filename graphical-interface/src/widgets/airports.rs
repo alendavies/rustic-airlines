@@ -12,10 +12,11 @@ impl Widget for WidgetAirports<'_> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let response = ui.allocate_response(egui::vec2(0., 0.), egui::Sense::hover());
 
-        egui::Window::new("Airports")
+        egui::Window::new("Aeropuertos")
             .resizable(false)
             .movable(false)
             .collapsible(false)
+            .fixed_pos([20., 20.])
             .show(ui.ctx(), |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     TableBuilder::new(ui)
@@ -33,12 +34,11 @@ impl Widget for WidgetAirports<'_> {
                         .body(|mut body| {
                             for airport in &self.app_state.displayed_airports.clone() {
                                 body.row(18.0, |mut row| {
-                                    row.set_selected(
-                                        self.app_state
-                                            .selected_airport
-                                            .as_ref()
-                                            .is_some_and(|a| a == airport),
-                                    );
+                                    row.set_selected({
+                                        self.app_state.airport_widget.as_ref().is_some_and(
+                                            |widget| widget.selected_airport == *airport,
+                                        )
+                                    });
 
                                     row.col(|ui| {
                                         ui.label(&airport.iata);
@@ -49,7 +49,6 @@ impl Widget for WidgetAirports<'_> {
                                     });
 
                                     if row.response().clicked() {
-                                        dbg!("clicked!");
                                         self.app_state.toggle_airport_selection(airport);
                                     }
                                 });

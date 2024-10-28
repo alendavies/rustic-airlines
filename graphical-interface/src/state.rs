@@ -1,8 +1,11 @@
-use crate::db::{get_airports_mock, Airport};
+use crate::{
+    db::{get_airports_mock, Airport},
+    widgets::WidgetAirport,
+};
 
 pub struct AppState {
     pub displayed_airports: Vec<Airport>,
-    pub selected_airport: Option<Airport>, // client: CassandraClient,
+    pub airport_widget: Option<WidgetAirport>, // Add this
 }
 
 impl AppState {
@@ -14,7 +17,7 @@ impl AppState {
 
         Self {
             displayed_airports: vec![],
-            selected_airport: None, // client,
+            airport_widget: None,
         }
     }
 
@@ -26,10 +29,18 @@ impl AppState {
     }
 
     pub fn toggle_airport_selection(&mut self, airport: &Airport) {
-        self.selected_airport = if self.selected_airport.as_ref().is_some_and(|a| a == airport) {
-            None
+        if let Some(widget) = &self.airport_widget {
+            if widget.selected_airport == *airport {
+                self.airport_widget = None;
+            } else {
+                self.select_airport(airport.clone());
+            }
         } else {
-            Some(airport.clone())
+            self.select_airport(airport.clone());
         }
+    }
+
+    fn select_airport(&mut self, airport: Airport) {
+        self.airport_widget = Some(WidgetAirport::new(airport));
     }
 }

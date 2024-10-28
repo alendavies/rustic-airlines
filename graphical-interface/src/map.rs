@@ -72,6 +72,10 @@ impl eframe::App for MyApp {
                     app_state: &mut self.app_state,
                 });
 
+                if let Some(widget) = &mut self.app_state.airport_widget {
+                    widget.show(ctx);
+                }
+
                 // Draw utility windows.
                 {
                     use windows::*;
