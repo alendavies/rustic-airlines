@@ -23,9 +23,7 @@ impl QueryExecution {
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         let node = self.node_that_execute.lock()?;
-        let rf = node
-            .get_replication_factor()
-            .ok_or(NodeError::KeyspaceError)?;
+
         let mut do_in_this_node = true;
 
         // Check if the keyspace exists in the node
@@ -65,76 +63,75 @@ impl QueryExecution {
             })
             .collect();
 
-        // Verificar si hay al menos una partition key
+        // Check if there's at least one partition key
         if keys_index.is_empty() {
             return Err(NodeError::CQLError(CQLError::Error));
         }
 
-        // Clonar los valores del query insert
+        // Clone values from the insert query
         let mut values = insert_query.values.clone();
 
-        // Concatenar los valores de las columnas de la partition key para generar el hash
+        // Concatenate the partition key column values to generate the hash
         let value_to_hash = keys_index
             .iter()
             .map(|&index| values[index].clone())
             .collect::<Vec<String>>()
             .join("");
 
-        // Aquí puedes aplicar el algoritmo de hash al `value_to_hash` según lo necesites
-
-        // Validate values before proceeding
+        // Validate and complete row values
         values = self.complete_row(
             columns.clone(),
             insert_query.clone().into_clause.columns,
             values,
         )?;
         self.validate_values(columns, &values)?;
+
+        // Determine the node responsible for the insert
         let node_to_insert = node.get_partitioner().get_ip(value_to_hash.clone())?;
         let self_ip = node.get_ip().clone();
         let keyspace_name = node
             .actual_keyspace_name()
             .ok_or(NodeError::KeyspaceError)?;
 
-        // If not internode and the IP to insert is different, forward the insert
-        if !internode && node_to_insert != self_ip {
+        // If not internode and the target IP differs, forward the insert
+        if !internode {
+            if node_to_insert != self_ip {
+                let serialized_insert = insert_query.serialize();
+                self.send_to_single_node(
+                    node.get_ip(),
+                    node_to_insert,
+                    "INSERT",
+                    &serialized_insert,
+                    true,
+                    open_query_id,
+                )?;
+                do_in_this_node = false; // The actual insert will be done by another node
+            } else {
+                self.execution_finished_itself = true; // Insert will be done by this node
+            }
+
+            // Send the insert to replication nodes
             let serialized_insert = insert_query.serialize();
-            self.send_to_single_node(
-                node.get_ip(),
+            replication = self.send_to_replication_nodes(
+                node,
                 node_to_insert,
                 "INSERT",
                 &serialized_insert,
                 true,
                 open_query_id,
             )?;
-            do_in_this_node = false;
+            if replication {
+                self.execution_replicate_itself = true; // This node will replicate the insert
+            }
         }
 
-        if !internode {
-            let serialized_delete = insert_query.serialize();
-            replication = self.send_to_replication_nodes(
-                node,
-                node_to_insert,
-                "INSERT",
-                &serialized_delete,
-                true,
-                open_query_id,
-            )?;
-        }
-
-        if !internode && rf == 1 && node_to_insert == self_ip {
-            self.execution_finished_itself = true;
-        }
-
+        // If the node itself is the target and no further replication is required, finish here
         if !do_in_this_node && !replication {
             return Ok(());
         }
 
-        if replication {
-            self.execution_replicate_itself = true;
-        }
-
+        // If this node is responsible for the insert, execute it here
         keys_index.extend(&clustering_columns_index);
-        // Perform the insert in this node
         QueryExecution::insert_in_this_node(
             values,
             self_ip,

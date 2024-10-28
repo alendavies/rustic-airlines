@@ -22,13 +22,15 @@ impl QueryExecution {
         let mut do_in_this_node = true;
 
         {
+            // Get the table name and reference the node
             let table_name = delete_query.table_name.clone();
             let node = self
                 .node_that_execute
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
-            table = node.get_table(table_name.clone())?;
 
+            // Retrieve the table and replication factor
+            table = node.get_table(table_name.clone())?;
             rf = node
                 .get_replication_factor()
                 .ok_or(NodeError::KeyspaceError)?;
@@ -37,9 +39,11 @@ impl QueryExecution {
                 return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
             }
 
+            // Validate the primary and clustering keys
             let partition_keys = table.get_partition_keys()?;
             let clustering_columns = table.get_clustering_columns()?;
 
+            // Check if columns in DELETE conflict with primary or clustering keys
             if let Some(columns) = delete_query.columns.clone() {
                 for column in columns {
                     if partition_keys.contains(&column) || clustering_columns.contains(&column) {
@@ -48,6 +52,7 @@ impl QueryExecution {
                 }
             }
 
+            // Validate WHERE clause
             let where_clause = delete_query
                 .clone()
                 .where_clause
@@ -60,13 +65,15 @@ impl QueryExecution {
                 false,
             )?;
 
+            // Determine the node responsible for deletion based on hashed partition key values
             let value_to_hash = where_clause
                 .get_value_partitioner_key_condition(partition_keys)?
                 .join("");
-
             let node_to_delete = node.partitioner.get_ip(value_to_hash.clone())?;
+            let self_ip = node.get_ip().clone();
 
-            if !internode && node_to_delete != node.get_ip() {
+            // Forward the DELETE operation if the responsible node is different and not an internode operation
+            if !internode && node_to_delete != self_ip {
                 let serialized_delete = delete_query.serialize();
                 self.send_to_single_node(
                     node.get_ip(),
@@ -79,7 +86,7 @@ impl QueryExecution {
                 do_in_this_node = false;
             }
 
-            let self_ip = node.get_ip().clone();
+            // Send DELETE to replication nodes if required
             if !internode {
                 let serialized_delete = delete_query.serialize();
                 replication = self.send_to_replication_nodes(
@@ -92,28 +99,29 @@ impl QueryExecution {
                 )?;
             }
 
-            if !internode && rf == 1 && node_to_delete != self_ip {
+            // Set execution_finished_itself if this node is the primary and replication is not needed
+            if !internode && rf == 1 && node_to_delete == self_ip {
                 self.execution_finished_itself = true;
             }
         }
 
+        // Early return if no local execution or replication is needed
         if !do_in_this_node && !replication {
             return Ok(());
         }
 
+        // Set the replication flag if this node should replicate the operation
         if replication {
             self.execution_replicate_itself = true;
         }
 
+        // Execute the delete on this node
         let (file_path, temp_file_path) =
             self.get_file_paths(&delete_query.table_name, replication)?;
 
-        if self
-            .delete_in_this_node(delete_query, table, &file_path, &temp_file_path)
-            .is_err()
-        {
-            let _ = std::fs::remove_file(temp_file_path);
-            return Err(NodeError::OtherError);
+        if let Err(e) = self.delete_in_this_node(delete_query, table, &file_path, &temp_file_path) {
+            let _ = std::fs::remove_file(temp_file_path); // Cleanup temp file on error
+            return Err(e);
         }
         Ok(())
     }

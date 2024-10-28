@@ -45,7 +45,7 @@ impl QueryExecution {
         let rf;
         let mut do_in_this_node = true;
         {
-            // Get the table name and the file path
+            // Get the table name and reference the node
             let table_name = update_query.table_name.clone();
             let node = self
                 .node_that_execute
@@ -56,13 +56,13 @@ impl QueryExecution {
                 return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
             }
 
+            // Retrieve the table and replication factor
             table = node.get_table(table_name.clone())?;
-
             rf = node
                 .get_replication_factor()
                 .ok_or(NodeError::KeyspaceError)?;
 
-            // Validate the primary key and where clause
+            // Validate primary key and where clause
             let partition_keys = table.get_partition_keys()?;
             let clustering_columns = table.get_clustering_columns()?;
 
@@ -78,19 +78,21 @@ impl QueryExecution {
                 true,
             )?;
 
+            // Validate `IF` clause conditions, if any
             if let Some(if_clause) = update_query.clone().if_clause {
                 if_clause.validate_cql_conditions(&partition_keys, &clustering_columns)?;
             }
 
-            // Get the value to hash and determine which node should handle the delete
+            // Get the value to hash and determine the node responsible for handling the update
             let value_to_hash = where_clause
                 .get_value_partitioner_key_condition(partition_keys)?
                 .join("");
 
             let node_to_update = node.partitioner.get_ip(value_to_hash.clone())?;
+            let self_ip = node.get_ip().clone();
 
-            // If this is not an internode operation and the target node is different, forward the update
-            if !internode && node_to_update != node.get_ip() {
+            // If not an internode operation and the target node differs, forward the update
+            if !internode && node_to_update != self_ip {
                 let serialized_update = update_query.serialize();
                 self.send_to_single_node(
                     node.get_ip(),
@@ -103,38 +105,40 @@ impl QueryExecution {
                 do_in_this_node = false;
             }
 
-            let self_ip = node.get_ip().clone();
-
+            // Send update to replication nodes if needed
             if !internode {
-                let serialized_delete = update_query.serialize();
+                let serialized_update = update_query.serialize();
                 replication = self.send_to_replication_nodes(
                     node,
                     node_to_update,
                     "UPDATE",
-                    &serialized_delete,
+                    &serialized_update,
                     true,
                     open_query_id,
                 )?;
             }
 
-            if !internode && rf == 1 && node_to_update != self_ip {
+            // Set execution finished if this node is the primary and no replication is needed
+            if !internode && rf == 1 && node_to_update == self_ip {
                 self.execution_finished_itself = true;
             }
         }
 
+        // Early return if no local execution or replication is needed
         if !do_in_this_node && !replication {
             return Ok(());
         }
 
+        // Set the replication flag if this node should replicate the operation
         if replication {
             self.execution_replicate_itself = true;
         }
 
-        // Execute the update on this node
+        // Perform the update on this node
         let (file_path, temp_file_path) =
             self.get_file_paths(&update_query.table_name, replication)?;
         if let Err(e) = self.update_in_this_node(update_query, table, &file_path, &temp_file_path) {
-            let _ = std::fs::remove_file(temp_file_path);
+            let _ = std::fs::remove_file(temp_file_path); // Cleanup temp file on error
             return Err(e);
         }
         Ok(())
