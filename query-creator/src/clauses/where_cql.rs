@@ -91,7 +91,7 @@ impl Where {
         &self,
         partitioner_keys: &Vec<String>,
         clustering_columns: &Vec<String>,
-        delete: bool,
+        delete_or_select: bool,
         update: bool,
     ) -> Result<(), CQLError> {
         let mut partitioner_key_count = 0;
@@ -106,7 +106,7 @@ impl Where {
             &mut partitioner_key_count,
             &mut partitioner_keys_verified,
             &mut clustering_key_count,
-            delete,
+            delete_or_select,
             update,
         )?;
 
