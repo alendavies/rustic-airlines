@@ -4,10 +4,10 @@
 
 ## Integrantes
 
-Lorenzo Minervino: 107863
-Federico Camurri: 106359
-Alen Davies: 107084
-Luca Lazcano: 107044
+- Lorenzo Minervino: 107863
+- Federico Camurri: 106359
+- Alen Davies: 107084
+- Luca Lazcano: 107044
 
 ## Introducción
 
