@@ -32,12 +32,6 @@ impl View for WidgetDepartures {
         if self.departures.is_none() {
             self.departures =
                 Some(Db::get_departure_flights(&self.airport, self.selected_date).unwrap());
-            // self.departures = Some(
-            //     db::get_departures_mock(
-            //     self.airport.clone(),
-            //     self.selected_date,
-            // )
-            // );
         }
 
         ui.vertical(|ui| {
@@ -107,11 +101,67 @@ impl View for WidgetDepartures {
     }
 }
 
-struct WidgetArrivals;
+struct WidgetArrivals {
+    airport: String,
+    selected_date: chrono::NaiveDate,
+    arrivals: Option<Vec<Flight>>,
+}
+
+impl WidgetArrivals {
+    pub fn new(from: String) -> Self {
+        Self {
+            airport: from,
+            arrivals: None,
+            selected_date: chrono::offset::Utc::now().date_naive(),
+        }
+    }
+}
 
 impl View for WidgetArrivals {
     fn ui(&mut self, ui: &mut egui::Ui) {
-        ui.label("INFOOO");
+        if self.arrivals.is_none() {
+            self.arrivals =
+                Some(Db::get_departure_flights(&self.airport, self.selected_date).unwrap());
+        }
+
+        ui.vertical(|ui| {
+            let date_response = ui.add(egui_extras::DatePickerButton::new(&mut self.selected_date));
+
+            if date_response.changed() {
+                self.arrivals =
+                    Some(Db::get_arrival_flights(&self.airport, self.selected_date).unwrap());
+            }
+
+            if let Some(flights) = &self.arrivals {
+                TableBuilder::new(ui)
+                    .column(Column::auto())
+                    .column(Column::remainder())
+                    .sense(egui::Sense::click())
+                    .header(20., |mut header| {
+                        header.col(|ui| {
+                            ui.strong("Vuelo");
+                        });
+                        header.col(|ui| {
+                            ui.strong("Estado");
+                        });
+                    })
+                    .body(|mut body| {
+                        for flight in flights {
+                            body.row(18., |mut row| {
+                                row.col(|ui| {
+                                    ui.label(&flight.number);
+                                });
+
+                                row.col(|ui| {
+                                    ui.label(&flight.status);
+                                });
+                            });
+                        }
+                    });
+            } else {
+                ui.label("No hay vuelos.");
+            }
+        });
     }
 }
 
@@ -127,7 +177,7 @@ impl WidgetAirport {
         Self {
             selected_airport: selected_airport.clone(),
             open_tab: Tabs::Info,
-            widget_arrivals: WidgetArrivals,
+            widget_arrivals: WidgetArrivals::new(selected_airport.iata.clone()),
             widget_departures: WidgetDepartures::new(selected_airport.iata.clone()),
         }
     }
