@@ -1,5 +1,7 @@
 # Taller de Programacion - Grupo "Ferrum"
 
+![GUI](https://github.com/user-attachments/assets/7e9b9e5e-4c07-437f-9e3b-480523320984)
+
 ## Integrantes
 
 Lorenzo Minervino: 107863
