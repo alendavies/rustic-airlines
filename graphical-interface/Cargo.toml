@@ -7,9 +7,10 @@ edition = "2021"
 egui = "0.29.0"
 eframe = "0.29.0"
 walkers = "0.25.0"
-chrono = "0.4.19"
 driver = { path = "../driver" }
 native_protocol = { path = "../native_protocol" }
+egui_extras = { version = "0.29.1", features = ["chrono"] }
+chrono = "0.4.38"
 
 [lib]
 name = "graphical_interface"

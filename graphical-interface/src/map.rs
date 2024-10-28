@@ -1,9 +1,12 @@
-/* use egui::Context;
+use egui::Context;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
 use crate::{
-    db::{get_airports, Airport},
-    plugins, windows,
+    db::{Airport, Db},
+    plugins,
+    state::AppState,
+    widgets::WidgetAirports,
+    windows,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -15,11 +18,6 @@ pub enum Provider {
     LocalTiles,
 }
 
-#[derive(Default)]
-struct AppState {
-    displayed_airports: Vec<Airport>,
-}
-
 pub struct MyApp {
     tiles: Box<dyn Tiles>,
     selected_provider: Provider,
@@ -29,9 +27,9 @@ pub struct MyApp {
 
 impl MyApp {
     pub fn new(egui_ctx: Context) -> Self {
-        let initial_state = AppState {
-            displayed_airports: get_airports(),
-        };
+        // create and initialize the AppState (to show some airports)
+        let mut initial_state = AppState::new();
+        initial_state.init();
 
         let mut initial_map_memory = MapMemory::default();
         // zoom inicial para mostrar argentina y uruguay
@@ -72,10 +70,17 @@ impl eframe::App for MyApp {
 
                 // In egui, widgets are constructed and consumed in each frame.
                 let map = Map::new(Some(tiles), &mut self.map_memory, my_position)
-                    .with_plugin(plugins::Airports::new(airports));
+                    .with_plugin(plugins::Airports::new(airports.clone()));
 
                 // Draw the map widget.
                 ui.add(map);
+                ui.add(WidgetAirports {
+                    app_state: &mut self.app_state,
+                });
+
+                if let Some(widget) = &mut self.app_state.airport_widget {
+                    widget.show(ctx);
+                }
 
                 // Draw utility windows.
                 {
@@ -86,4 +91,3 @@ impl eframe::App for MyApp {
             });
     }
 }
- */
