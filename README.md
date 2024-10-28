@@ -11,7 +11,7 @@ Luca Lazcano: 107044
 
 ## Introducción
 
-Este trabajo práctico consiste en la implementación de un sistema de control de vuelos global. Para ello es necesarios la implementación
+Este trabajo práctico consiste en la implementación de un sistema de control de vuelos global. Para ello es necesaria la implementación de una base de datos distribuida del estilo Cassandra, que permita el acceso para lectura y escritura por múltiples clientes distribuidos.
 
 ## Como usar
 
