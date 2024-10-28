@@ -1,6 +1,6 @@
 use std::io::Read;
 
-use crate::{Serializable, SerializationError};
+use crate::{errors::NativeError, Serializable};
 
 use super::{prepared::Prepared, rows::Rows, schema_change::SchemaChange};
 
@@ -13,15 +13,17 @@ pub enum ResultCode {
 }
 
 impl ResultCode {
-    pub fn from_bytes(bytes: [u8; 4]) -> Self {
-        match u32::from_be_bytes(bytes) {
+    pub fn from_bytes(bytes: [u8; 4]) -> std::result::Result<Self, NativeError> {
+        let result = match u32::from_be_bytes(bytes) {
             0x0001 => ResultCode::Void,
             0x0002 => ResultCode::Rows,
             0x0003 => ResultCode::SetKeyspace,
             0x0004 => ResultCode::Prepared,
             0x0005 => ResultCode::SchemaChange,
-            _ => panic!("Invalid ResultCode"),
-        }
+            _ => return Err(NativeError::InvalidCode),
+        };
+
+        Ok(result)
     }
 }
 
@@ -123,7 +125,7 @@ impl Serializable for Result {
     /// +                                       +
     /// |                ...                    |
     /// +---------+---------+---------+---------+
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self) -> std::result::Result<Vec<u8>, NativeError> {
         let mut bytes = Vec::new();
 
         let code = match self {
@@ -132,6 +134,7 @@ impl Serializable for Result {
             Result::SetKeyspace(_) => ResultCode::SetKeyspace,
             Result::Prepared(_) => ResultCode::Prepared,
             Result::SchemaChange(_) => ResultCode::SchemaChange,
+            _ => return Err(NativeError::InvalidVariant),
         };
 
         bytes.extend_from_slice(&(code as u32).to_be_bytes());
@@ -139,28 +142,30 @@ impl Serializable for Result {
         match self {
             Result::Void => {}
             Result::Rows(rows) => {
-                bytes.extend_from_slice(&rows.to_bytes());
+                bytes.extend_from_slice(&rows.to_bytes()?);
             }
             Result::SetKeyspace(keyspace) => {
                 bytes.extend_from_slice(keyspace.as_bytes());
             }
             Result::Prepared(prepared) => {
-                bytes.extend_from_slice(&prepared.to_bytes());
+                bytes.extend_from_slice(&prepared.to_bytes()?);
             }
             Result::SchemaChange(schema_change) => {
-                bytes.extend_from_slice(&schema_change.to_bytes());
+                bytes.extend_from_slice(&schema_change.to_bytes()?);
             }
         }
 
-        bytes
+        Ok(bytes)
     }
 
-    fn from_bytes(bytes: &[u8]) -> std::result::Result<Result, SerializationError> {
+    fn from_bytes(bytes: &[u8]) -> std::result::Result<Result, NativeError> {
         let mut cursor = std::io::Cursor::new(bytes);
         let mut code_bytes = [0u8; 4];
-        cursor.read_exact(&mut code_bytes).unwrap();
+        cursor
+            .read_exact(&mut code_bytes)
+            .map_err(|_| NativeError::CursorError)?;
 
-        let code = ResultCode::from_bytes(code_bytes);
+        let code = ResultCode::from_bytes(code_bytes)?;
 
         match code {
             ResultCode::Void => Ok(Result::Void),
@@ -170,7 +175,9 @@ impl Serializable for Result {
             }
             ResultCode::SetKeyspace => {
                 let mut keyspace = String::new();
-                cursor.read_to_string(&mut keyspace).unwrap();
+                cursor
+                    .read_to_string(&mut keyspace)
+                    .map_err(|_| NativeError::CursorError)?;
                 Ok(Result::SetKeyspace(keyspace))
             }
             ResultCode::Prepared => {
@@ -181,6 +188,7 @@ impl Serializable for Result {
                 let schema_change = SchemaChange::from_bytes(&bytes[4..])?;
                 Ok(Result::SchemaChange(schema_change))
             }
+            _ => Err(NativeError::InvalidCode),
         }
     }
 }
@@ -197,7 +205,7 @@ mod tests {
     fn test_void_result_to_bytes() {
         let result = Result::Void;
 
-        let bytes = result.to_bytes();
+        let bytes = result.to_bytes().unwrap();
 
         let expected_bytes = [0x00, 0x00, 0x00, 0x01];
 
@@ -217,7 +225,7 @@ mod tests {
     fn test_set_keyspace_to_bytes() {
         let set_keyspace = Result::SetKeyspace("test_keyspace".to_string());
 
-        let bytes = set_keyspace.to_bytes();
+        let bytes = set_keyspace.to_bytes().unwrap();
 
         let expected_bytes = [
             0x00, 0x00, 0x00, 0x03, // kind = 0x0003

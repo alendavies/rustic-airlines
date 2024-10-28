@@ -8,7 +8,7 @@ mod plugins;
 mod state;
 mod widgets;
 mod windows;
-use map::MyApp;
+/* use map::MyApp;
 
 pub fn run() -> Result<(), eframe::Error> {
     eframe::run_native(
@@ -16,4 +16,4 @@ pub fn run() -> Result<(), eframe::Error> {
         Default::default(),
         Box::new(|cc| Ok(Box::new(MyApp::new(cc.egui_ctx.clone())))),
     )
-}
+} */

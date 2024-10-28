@@ -1,4 +1,4 @@
-use crate::{ByteSerializable, Serializable, SerializationError};
+use crate::{errors::NativeError, ByteSerializable, Serializable};
 
 /// Each frame contains a fixed size header (9 bytes) followed by a variable size body.
 #[derive(Debug)]
@@ -33,33 +33,31 @@ impl Serializable for FrameHeader {
     /// +---------+---------+---------+---------+---------+
     /// | version |  flags  |      stream       | opcode  |
     /// +---------+---------+---------+---------+---------+
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self) -> Result<Vec<u8>, NativeError> {
         let mut buffer = Vec::new();
 
         buffer.push(self.version as u8);
-        buffer.push(self.flags.to_byte());
+        buffer.push(self.flags.to_byte()?);
         buffer.extend_from_slice(&self.stream.to_be_bytes());
         buffer.push(self.opcode as u8);
         buffer.extend_from_slice(&self.body_length.to_be_bytes());
 
-        buffer
+        Ok(buffer)
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, SerializationError> {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, NativeError> {
         if bytes.len() < 8 {
-            return Err(SerializationError);
+            return Err(NativeError::NotEnoughBytes);
         }
 
-        let version = Version::from_byte(bytes[0]).unwrap();
+        let version = Version::from_byte(bytes[0])?;
 
-        let flags = Flags::from_byte(bytes[1]).unwrap();
+        let flags = Flags::from_byte(bytes[1])?;
 
         let stream = i16::from_be_bytes([bytes[2], bytes[3]]);
 
-        // let opcode = Opcode::from_byte(bytes[4]).ok_or("Opcode no válido en el FrameHeader")?;
-        let opcode = Opcode::from_byte(bytes[4]).unwrap();
+        let opcode = Opcode::from_byte(bytes[4])?;
 
-        // Deserializar la longitud del cuerpo (4 bytes, big-endian)
         let body_length = u32::from_be_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
 
         Ok(Self {
@@ -93,7 +91,7 @@ pub enum Opcode {
 }
 
 impl ByteSerializable for Opcode {
-    fn from_byte(byte: u8) -> Result<Self, SerializationError> {
+    fn from_byte(byte: u8) -> Result<Self, NativeError> {
         match byte {
             0x00 => Ok(Opcode::Error),
             0x01 => Ok(Opcode::Startup),
@@ -111,12 +109,12 @@ impl ByteSerializable for Opcode {
             0x0E => Ok(Opcode::AuthChallenge),
             0x0F => Ok(Opcode::AuthResponse),
             0x10 => Ok(Opcode::AuthSuccess),
-            _ => Err(SerializationError),
+            _ => Err(NativeError::InvalidCode),
         }
     }
 
-    fn to_byte(&self) -> u8 {
-        *self as u8
+    fn to_byte(&self) -> std::result::Result<u8, NativeError> {
+        Ok(*self as u8)
     }
 }
 
@@ -129,16 +127,20 @@ pub enum Version {
 }
 
 impl ByteSerializable for Version {
-    fn from_byte(byte: u8) -> Result<Self, SerializationError> {
+    fn from_byte(byte: u8) -> Result<Self, NativeError> {
         match byte {
             0x03 => Ok(Version::RequestV3),
             0x83 => Ok(Version::ResponseV3),
-            _ => Err(SerializationError),
+            _ => Err(NativeError::InvalidCode),
         }
     }
 
-    fn to_byte(&self) -> u8 {
-        todo!()
+    fn to_byte(&self) -> std::result::Result<u8, NativeError> {
+        match self {
+            Version::RequestV3 => Ok(0x03),
+            Version::ResponseV3 => Ok(0x83),
+            _ => Err(NativeError::InvalidVariant),
+        }
     }
 }
 
@@ -156,7 +158,7 @@ pub struct Flags {
 }
 
 impl ByteSerializable for Flags {
-    fn to_byte(&self) -> u8 {
+    fn to_byte(&self) -> std::result::Result<u8, NativeError> {
         let mut flags = 0u8;
 
         if self.compression {
@@ -167,10 +169,10 @@ impl ByteSerializable for Flags {
             flags |= FlagCodes::Tracing as u8;
         };
 
-        flags
+        Ok(flags)
     }
 
-    fn from_byte(flags: u8) -> Result<Self, SerializationError> {
+    fn from_byte(flags: u8) -> Result<Self, NativeError> {
         let compression = flags & FlagCodes::Compression as u8 != 0;
         let tracing = flags & FlagCodes::Tracing as u8 != 0;
 
@@ -192,7 +194,7 @@ mod tests {
             tracing: false,
         };
 
-        let flags = flags.to_byte();
+        let flags = flags.to_byte().unwrap();
 
         assert_eq!(flags, 0x00)
     }
@@ -204,7 +206,7 @@ mod tests {
             tracing: true,
         };
 
-        let flags = flags.to_byte();
+        let flags = flags.to_byte().unwrap();
 
         assert_eq!(flags, 0x03)
     }

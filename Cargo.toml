@@ -11,7 +11,7 @@ members = [
     "node",
     "partitioner",
     "query-creator",
-    "testing",
     "native_protocol",
-    "graphical-interface"
+    "graphical-interface",
+    "node_launcher"
 ]

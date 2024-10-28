@@ -52,7 +52,7 @@ impl CassandraClient {
         let startup = Frame::Startup;
 
         self.stream
-            .write_all(&startup.to_bytes())
+            .write_all(&startup.to_bytes().map_err(|_| ClientError)?)
             .map_err(|_| ClientError)?;
 
         let mut result = [0u8; 2048];
@@ -72,7 +72,7 @@ impl CassandraClient {
         let query = Frame::Query(query);
 
         self.stream
-            .write_all(query.to_bytes().as_slice())
+            .write_all(query.to_bytes().map_err(|_| ClientError)?.as_slice())
             .map_err(|_| ClientError)?;
 
         let mut result = [0u8; 2048];

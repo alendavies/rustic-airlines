@@ -28,7 +28,7 @@ fn main() {
 
         // // // Insertar algunos elementos
         "INSERT INTO users (user_id, age, last_name , weight) VALUES (3, 40, 'perrazo',81) IF NOT EXISTS",
-        "UPDATE users SET first_name = 'Narizon' WHERE user_id = 3 IF last_name = 'perrazo'",
+        "DELETE FROM users WHERE user_id = 3 IF last_name = 'perrazo'"
         //""
         // "INSERT INTO users (user_id, age, last_name , weight) VALUES (3, 40, 'nenazo',81) IF NOT EXISTS",
         // "INSERT INTO users (user_id, age, last_name , weight) VALUES (3, 40, 'flow',82)",

@@ -9,8 +9,6 @@ use std::io::{BufRead, BufReader};
 use super::QueryExecution;
 
 impl QueryExecution {
-    /// Executes a SELECT operation. This function is public only for internal use
-    /// within the library (defined as `pub(crate)`).
     pub(crate) fn execute_select(
         &mut self,
         mut select_query: Select,
@@ -51,7 +49,7 @@ impl QueryExecution {
             where_clause.validate_cql_conditions(
                 &partition_keys,
                 &clustering_columns,
-                false,
+                true,
                 false,
             )?;
 
@@ -133,7 +131,10 @@ impl QueryExecution {
         let mut results = Vec::new();
         results.push(select_query.columns.join(","));
         // Iterate over each line in the file and apply the WHERE clause condition
-        for line in reader.lines() {
+        for (i, line) in reader.lines().enumerate() {
+            if i == 0 {
+                continue;
+            }
             let line = line?;
             if self.line_matches_where_clause(&line, &table, &select_query)? {
                 let selected_columns = self.extract_selected_columns(&line, &table, &select_query);
@@ -153,12 +154,13 @@ impl QueryExecution {
         // Convert the line into a map of column to value
         let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
         let column_value_map = self.create_column_value_map(table, &columns, true);
+
+        let columns_ = table.get_columns();
         // Check the WHERE clause condition in the SELECT query
         if let Some(where_clause) = &select_query.where_clause {
             Ok(where_clause
                 .condition
-                .execute(&column_value_map)
-                .unwrap_or(false))
+                .execute(&column_value_map, columns_)?)
         } else {
             Ok(true) // If no WHERE clause, consider the line as matching
         }

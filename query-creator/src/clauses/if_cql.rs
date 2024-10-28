@@ -184,3 +184,92 @@ impl If {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::operator::Operator;
+
+    #[test]
+    fn test_new_from_tokens_simple_condition() {
+        let tokens = vec!["IF", "age", "=", "18"];
+        let if_clause = If::new_from_tokens(tokens).unwrap();
+
+        let expected_condition = Condition::Simple {
+            field: "age".to_string(),
+            operator: Operator::Equal,
+            value: "18".to_string(),
+        };
+
+        assert_eq!(if_clause.condition, expected_condition);
+    }
+
+    #[test]
+    fn test_validate_cql_conditions_no_partition_clustering() {
+        let if_clause = If {
+            condition: Condition::Simple {
+                field: "non_key".to_string(),
+                operator: Operator::Equal,
+                value: "value".to_string(),
+            },
+        };
+
+        let partitioner_keys = vec!["partition_key".to_string()];
+        let clustering_columns = vec!["clustering_key".to_string()];
+
+        assert!(if_clause
+            .validate_cql_conditions(&partitioner_keys, &clustering_columns)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_validate_cql_conditions_with_partition_key() {
+        let if_clause = If {
+            condition: Condition::Simple {
+                field: "partition_key".to_string(),
+                operator: Operator::Equal,
+                value: "value".to_string(),
+            },
+        };
+
+        let partitioner_keys = vec!["partition_key".to_string()];
+        let clustering_columns = vec!["clustering_key".to_string()];
+
+        assert_eq!(
+            if_clause.validate_cql_conditions(&partitioner_keys, &clustering_columns),
+            Err(CQLError::InvalidCondition)
+        );
+    }
+
+    #[test]
+    fn test_get_value_partitioner_key_condition_with_partition_key() {
+        let if_clause = If {
+            condition: Condition::Simple {
+                field: "partition_key".to_string(),
+                operator: Operator::Equal,
+                value: "42".to_string(),
+            },
+        };
+
+        let partitioner_keys = vec!["partition_key".to_string()];
+        let values = if_clause.get_value_partitioner_key_condition(partitioner_keys);
+
+        assert_eq!(values.unwrap(), vec!["42".to_string()]);
+    }
+
+    #[test]
+    fn test_get_value_partitioner_key_condition_no_match() {
+        let if_clause = If {
+            condition: Condition::Simple {
+                field: "non_key".to_string(),
+                operator: Operator::Equal,
+                value: "value".to_string(),
+            },
+        };
+
+        let partitioner_keys = vec!["partition_key".to_string()];
+        let values = if_clause.get_value_partitioner_key_condition(partitioner_keys);
+
+        assert_eq!(values, Err(CQLError::InvalidColumn));
+    }
+}
