@@ -1,0 +1,16 @@
+[package]
+name = "graphical-interface"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+egui = "0.29.0"
+eframe = "0.29.0"
+walkers = "0.25.0"
+chrono = "0.4.19"
+driver = { path = "../driver" }
+native_protocol = { path = "../native_protocol" }
+
+[lib]
+name = "graphical_interface"
+path = "src/lib.rs"
