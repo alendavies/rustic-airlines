@@ -8,12 +8,13 @@ use walkers::Position;
 #[derive(Debug, Clone)]
 pub struct DBError;
 
+const IP: &str = "192.168.184.250";
+
 pub struct Db;
 
 impl Db {
     pub fn new() -> Self {
-        let mut driver =
-            CassandraClient::connect(Ipv4Addr::from_str("127.0.0.1").unwrap()).unwrap();
+        let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
         driver.startup().unwrap();
 
@@ -24,8 +25,7 @@ impl Db {
     pub fn get_airports(country: &str) -> std::result::Result<Vec<Airport>, DBError> {
         let query = format!("SELECT iata, name, lat, lon FROM airports WHERE country = {country}");
 
-        let mut driver =
-            CassandraClient::connect(Ipv4Addr::from_str("127.0.0.1").unwrap()).unwrap();
+        let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
         let result = driver.execute(query.as_str()).map_err(|_| DBError)?;
 
@@ -101,8 +101,7 @@ impl Db {
             "SELECT number, status, departure_time, arrival_time, airport, direction FROM flights WHERE airport = '{airport}' AND direction = 'departure' AND departure_time > {from}"
         );
 
-        let mut driver =
-            CassandraClient::connect(Ipv4Addr::from_str("127.0.0.1").unwrap()).unwrap();
+        let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
         let result = driver.execute(query.as_str()).map_err(|_| DBError)?;
 
@@ -209,8 +208,7 @@ impl Db {
             "SELECT number, status, departure_time, arrival_time, airport, direction FROM flights WHERE airport = {airport} AND direction = 'arrival' AND arrival_time > {from} AND arrival_time < {to}"
         );
 
-        let mut driver =
-            CassandraClient::connect(Ipv4Addr::from_str("127.0.0.1").unwrap()).unwrap();
+        let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
         let result = driver.execute(query.as_str()).map_err(|_| DBError)?;
 
@@ -308,8 +306,7 @@ impl Db {
         "SELECT number, lat, lon, fuel, height, speed FROM flight_info WHERE number = '{number}'"
     );
 
-        let mut driver =
-            CassandraClient::connect(Ipv4Addr::from_str("127.0.0.1").unwrap()).unwrap();
+        let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
         let result = driver.execute(query.as_str()).map_err(|_| DBError)?;
 

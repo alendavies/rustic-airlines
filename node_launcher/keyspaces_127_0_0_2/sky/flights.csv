@@ -1,4 +1,0 @@
-number,status,departure_time,arrival_time,airport,direction
-AA123,on time,1730073688,1730131200,LAX,arrival
-AA125,on time,1730073698,46741883131,LAX,arrival
-AA127,on time,1730073698,46741889943,LAX,arrival
