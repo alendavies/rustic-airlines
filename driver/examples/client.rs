@@ -13,8 +13,8 @@ fn main() {
     // Lista de consultas CQL para ejecutar
     let queries = vec![
         // Crear el keyspace
-        "CREATE KEYSPACE world WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
-        "USE world",
+        // "CREATE KEYSPACE world WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
+        // "USE world",
 
         "CREATE TABLE users (
             user_id INT,

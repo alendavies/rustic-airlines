@@ -12,9 +12,6 @@
 /// assert_eq!(result, false);
 /// ```
 ///
-pub fn is_number(token: &str) -> bool {
-    token.parse::<i32>().is_ok()
-}
 
 /// Returns true if the token is equal to "AND".
 pub fn is_and(token: &str) -> bool {

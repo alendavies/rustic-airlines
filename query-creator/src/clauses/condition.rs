@@ -1,6 +1,4 @@
-use crate::{
-    errors::CQLError, logical_operator::LogicalOperator, operator::Operator, utils::is_number,
-};
+use crate::{errors::CQLError, logical_operator::LogicalOperator, operator::Operator};
 use std::collections::HashMap;
 
 use super::types::column::Column;

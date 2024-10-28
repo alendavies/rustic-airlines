@@ -1,5 +1,5 @@
 use driver::CassandraClient;
-use std::{net::Ipv4Addr, str::FromStr, thread, time::Duration};
+use std::{net::Ipv4Addr, str::FromStr};
 
 fn main() {
     // Dirección IP del servidor Cassandra
@@ -20,12 +20,12 @@ fn main() {
     //     )",
     // ];
 
-    for query in setup_queries {
-        match client.execute(query) {
-            Ok(_) => println!("Setup query executed: {}", query),
-            Err(e) => eprintln!("Error executing setup query: {}\nError: {:?}", query, e),
-        }
-    }
+    // for query in setup_queries {
+    //     match client.execute(query) {
+    //         Ok(_) => println!("Setup query executed: {}", query),
+    //         Err(e) => eprintln!("Error executing setup query: {}\nError: {:?}", query, e),
+    //     }
+    // }
 
     // Insertar 100,000 registros en la tabla simple
     let total_inserts = 100_000;

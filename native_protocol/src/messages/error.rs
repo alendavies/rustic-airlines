@@ -103,7 +103,6 @@ impl Serializable for Error {
                 bytes.extend_from_slice(&ErrorCode::IsBootstrapping.to_u32().to_be_bytes());
                 bytes.extend_from_slice(message.as_bytes());
             }
-            _ => return Err(NativeError::InvalidVariant),
         }
 
         Ok(bytes)
@@ -120,7 +119,9 @@ impl Serializable for Error {
 
         let mut message_bytes = Vec::new();
 
-        cursor.read_to_end(&mut message_bytes);
+        cursor
+            .read_to_end(&mut message_bytes)
+            .map_err(|_| NativeError::CursorError)?;
 
         let message =
             String::from_utf8(message_bytes).map_err(|_| NativeError::DeserializationError)?;
