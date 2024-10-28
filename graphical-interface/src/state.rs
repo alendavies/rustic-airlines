@@ -1,5 +1,5 @@
 use crate::{
-    db::{get_airports_mock, Airport},
+    db::{Airport, Db},
     widgets::WidgetAirport,
 };
 
@@ -10,11 +10,6 @@ pub struct AppState {
 
 impl AppState {
     pub fn new() -> Self {
-        // let mut client =
-        // CassandraClient::connect(Ipv4Addr::from_str("127.0.0.1").unwrap()).unwrap();
-
-        // client.startup().unwrap();
-
         Self {
             displayed_airports: vec![],
             airport_widget: None,
@@ -22,10 +17,9 @@ impl AppState {
     }
 
     pub fn init(&mut self) {
-        // let initial_aiports = get_airports(&mut self.client);
-        let initial_aiports = get_airports_mock();
+        let initial_airports = Db::get_airports("ARG").unwrap();
 
-        self.displayed_airports = initial_aiports;
+        self.displayed_airports = initial_airports;
     }
 
     pub fn toggle_airport_selection(&mut self, airport: &Airport) {

@@ -1,7 +1,13 @@
-/* use egui::Context;
+use egui::Context;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
-use crate::{db::Airport, plugins, state::AppState, widgets::WidgetAirports, windows};
+use crate::{
+    db::{Airport, Db},
+    plugins,
+    state::AppState,
+    widgets::WidgetAirports,
+    windows,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Provider {
@@ -85,4 +91,3 @@ impl eframe::App for MyApp {
             });
     }
 }
- */

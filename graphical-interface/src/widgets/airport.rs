@@ -1,9 +1,6 @@
-use std::{fmt::Debug, thread, time::Duration};
-
-use egui::{Label, ScrollArea, Widget};
 use egui_extras::{Column, TableBuilder};
 
-use crate::db::{self, Airport, FlightShort, Iata};
+use crate::db::{Airport, Db, Flight};
 
 use super::View;
 
@@ -15,13 +12,13 @@ enum Tabs {
 }
 
 struct WidgetDepartures {
-    airport: Iata,
+    airport: String,
     selected_date: chrono::NaiveDate,
-    departures: Option<Vec<FlightShort>>,
+    departures: Option<Vec<Flight>>,
 }
 
 impl WidgetDepartures {
-    pub fn new(from: Iata) -> Self {
+    pub fn new(from: String) -> Self {
         Self {
             airport: from,
             departures: None,
@@ -33,10 +30,14 @@ impl WidgetDepartures {
 impl View for WidgetDepartures {
     fn ui(&mut self, ui: &mut egui::Ui) {
         if self.departures.is_none() {
-            self.departures = Some(db::get_departures_mock(
-                self.airport.clone(),
-                self.selected_date,
-            ));
+            self.departures =
+                Some(Db::get_departure_flights(&self.airport, self.selected_date).unwrap());
+            // self.departures = Some(
+            //     db::get_departures_mock(
+            //     self.airport.clone(),
+            //     self.selected_date,
+            // )
+            // );
         }
 
         ui.vertical(|ui| {
@@ -46,10 +47,12 @@ impl View for WidgetDepartures {
                 // TODO: find a way to do it async, with promises or something:
                 // https://github.com/emilk/egui/blob/5b846b4554fe47269affb43efef2cad8710a8a47/crates/egui_demo_app/src/apps/http_app.rs
                 dbg!(&self.selected_date);
-                self.departures = Some(db::get_departures_mock(
-                    self.airport.clone(),
-                    self.selected_date,
-                ));
+                self.departures =
+                    Some(Db::get_departure_flights(&self.airport, self.selected_date).unwrap());
+                // self.departures = Some(db::get_departures_mock(
+                //     self.airport.clone(),
+                //     self.selected_date,
+                // ));
             }
 
             if let Some(flights) = &self.departures {
@@ -73,14 +76,15 @@ impl View for WidgetDepartures {
                                 });
 
                                 row.col(|ui| {
-                                    ui.label(match &flight.status {
-                                        db::FlightStatus::Scheduled => "Programado",
-                                        db::FlightStatus::OnTime => "En Horario",
-                                        db::FlightStatus::Boarding => "Embarcando",
-                                        db::FlightStatus::Canceled => "Cancelado",
-                                        db::FlightStatus::Delayed => "Demorado",
-                                        db::FlightStatus::Landing => "Aterrizando",
-                                    });
+                                    ui.label(&flight.status);
+                                    // ui.label(match &flight.status {
+                                    //     db::FlightStatus::Scheduled => "Programado",
+                                    //     db::FlightStatus::OnTime => "En Horario",
+                                    //     db::FlightStatus::Boarding => "Embarcando",
+                                    //     db::FlightStatus::Canceled => "Cancelado",
+                                    //     db::FlightStatus::Delayed => "Demorado",
+                                    //     db::FlightStatus::Landing => "Aterrizando",
+                                    // });
                                 });
                             });
                         }
