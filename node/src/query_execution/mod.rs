@@ -359,6 +359,7 @@ impl QueryExecution {
                 }
             }
         }
+
         column_value_map
     }
 

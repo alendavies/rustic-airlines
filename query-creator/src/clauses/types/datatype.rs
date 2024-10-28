@@ -75,13 +75,17 @@ impl DataType {
                 }
             }
             DataType::Timestamp => {
-                let x = x.parse::<chrono::DateTime<chrono::Utc>>().unwrap();
-                let y = y.parse::<chrono::DateTime<chrono::Utc>>().unwrap();
-                match operator {
+                dbg!(x, y);
+                let x = x.parse::<i64>().unwrap();
+                let y = y.parse::<i64>().unwrap();
+                dbg!(x, y);
+                let res = match operator {
                     Operator::Equal => x == y,
                     Operator::Greater => x > y,
                     Operator::Lesser => x < y,
-                }
+                };
+                dbg!(&res);
+                res
             }
             DataType::Uuid => {
                 let x = x.parse::<uuid::Uuid>().unwrap();
