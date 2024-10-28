@@ -168,7 +168,7 @@ impl QueryExecution {
         } else {
             match query_result {
                 Ok(_) => {
-                    let status_code = match (
+                    let how_many_internode_query_has_finish = match (
                         self.execution_finished_itself,
                         self.execution_replicate_itself,
                     ) {
@@ -177,8 +177,15 @@ impl QueryExecution {
                         (false, false) => 0,
                     };
 
-                    if status_code > 0 {
-                        return Ok(Some((status_code, content?.unwrap_or("_".to_string()))));
+                    println!(
+                        "internode query_finished {:?}",
+                        how_many_internode_query_has_finish
+                    );
+                    if how_many_internode_query_has_finish > 0 {
+                        return Ok(Some((
+                            how_many_internode_query_has_finish,
+                            content?.unwrap_or("_".to_string()),
+                        )));
                     } else {
                         Ok(None)
                     }

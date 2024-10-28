@@ -31,9 +31,9 @@ impl QueryExecution {
             if node.has_no_actual_keyspace() {
                 return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
             }
-            // Get the table and primary key
-            table = node.get_table(table_name.clone())?;
 
+            // Get the table and replication factor
+            table = node.get_table(table_name.clone())?;
             rf = node
                 .get_replication_factor()
                 .ok_or(NodeError::KeyspaceError)?;
@@ -53,6 +53,7 @@ impl QueryExecution {
                 false,
             )?;
 
+            // Ensure that the columns specified in the query exist in the table
             let complet_columns: Vec<String> =
                 table.get_columns().iter().map(|c| c.name.clone()).collect();
 
@@ -66,15 +67,14 @@ impl QueryExecution {
                 }
             }
 
-            // Get the value to hash and determine which node should handle the delete
+            // Determine the target node based on partition key hashing
             let value_to_hash = where_clause
                 .get_value_partitioner_key_condition(partition_keys)?
                 .join("");
             let node_to_query = node.partitioner.get_ip(value_to_hash.clone())?;
-
             let self_ip = node.get_ip().clone();
 
-            // If this is not an internode operation, forward the query to the appropriate node
+            // Forward the SELECT if this is not an internode operation and the target node differs
             if !internode && node_to_query != self_ip {
                 let serialized_query = select_query.serialize();
                 self.send_to_single_node(
@@ -88,32 +88,36 @@ impl QueryExecution {
                 do_in_this_node = false;
             }
 
+            // Send the SELECT to replication nodes if needed
             if !internode {
-                let serialized_delete = select_query.serialize();
+                let serialized_select = select_query.serialize();
                 replication = self.send_to_replication_nodes(
                     node,
                     node_to_query,
                     "SELECT",
-                    &serialized_delete,
+                    &serialized_select,
                     true,
                     open_query_id,
                 )?;
             }
 
+            // Set execution finished if the node itself is the target and no other replication is needed
             if !internode && rf == 1 && node_to_query == self_ip {
                 self.execution_finished_itself = true;
             }
         }
 
+        // Return if no local execution or replication is needed
         if !do_in_this_node && !replication {
             return Ok(vec![]);
         }
 
+        // Set the replication flag if this node should replicate
         if replication {
             self.execution_replicate_itself = true;
         }
 
-        // Execute the SELECT locally if this is not an internode operation
+        // Execute the SELECT query on this node if applicable
         let result = self.execute_select_in_this_node(select_query, table, replication)?;
         Ok(result)
     }

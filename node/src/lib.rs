@@ -601,6 +601,11 @@ impl Node {
                     break;
                 }
                 Ok(_) => {
+                    {
+                        if node.lock()?.get_ip_string() == "127.0.0.1" {
+                            println!("recibi {:?}", buffer);
+                        }
+                    }
                     // Process the command with the protocol, passing the buffer and the necessary parameters
                     let result = internode_protocol_handler.handle_command(
                         &node,
