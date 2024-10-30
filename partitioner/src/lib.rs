@@ -55,6 +55,7 @@ impl Partitioner {
             return Err(PartitionerError::NodeAlreadyExists);
         }
         self.nodes.insert(hash, ip);
+        println!("el anillo es {:?}", self);
         Ok(())
     }
 
@@ -170,7 +171,7 @@ impl Partitioner {
                 }
             }
         }
-        println!("los sucesores de {:?} son {:?}", ip, successors);
+
         Ok(successors)
     }
 }
