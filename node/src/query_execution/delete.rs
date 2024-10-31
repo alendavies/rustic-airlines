@@ -100,7 +100,7 @@ impl QueryExecution {
             }
 
             // Set execution_finished_itself if this node is the primary and replication is not needed
-            if !internode && rf == 1 && node_to_delete == self_ip {
+            if !internode && node_to_delete == self_ip {
                 self.execution_finished_itself = true;
             }
         }

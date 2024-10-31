@@ -102,7 +102,7 @@ impl QueryExecution {
             }
 
             // Set execution finished if the node itself is the target and no other replication is needed
-            if !internode && rf == 1 && node_to_query == self_ip {
+            if !internode && node_to_query == self_ip {
                 self.execution_finished_itself = true;
             }
         }
@@ -145,6 +145,7 @@ impl QueryExecution {
                 results.push(selected_columns);
             }
         }
+
         Ok(results)
     }
 

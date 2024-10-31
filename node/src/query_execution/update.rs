@@ -119,7 +119,7 @@ impl QueryExecution {
             }
 
             // Set execution finished if this node is the primary and no replication is needed
-            if !internode && rf == 1 && node_to_update == self_ip {
+            if !internode && node_to_update == self_ip {
                 self.execution_finished_itself = true;
             }
         }
