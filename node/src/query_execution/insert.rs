@@ -158,6 +158,10 @@ impl QueryExecution {
                 // Verificar si la columna está especificada en specified_columns
                 if let Some(pos) = specified_columns.iter().position(|c| c == &column.name) {
                     // Si está, copiar el valor correspondiente en complete_row
+                    println!(
+                        "la llave de partiticion o clustering especfificada es {:?}",
+                        pos
+                    );
                     complete_row[i] = values[pos].clone();
                     specified_keys += 1;
                 }
@@ -174,6 +178,7 @@ impl QueryExecution {
             .iter()
             .filter(|c| c.is_partition_key || c.is_clustering_column)
             .count();
+
         if specified_keys != total_keys {
             return Err(NodeError::CQLError(
                 CQLError::MissingPartitionOrClusteringColumns,
@@ -182,6 +187,7 @@ impl QueryExecution {
 
         Ok(complete_row)
     }
+
     fn insert_in_this_node(
         values: Vec<String>,
         ip: Ipv4Addr,

@@ -15,18 +15,7 @@ fn main() {
         "ALTER KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2}".to_string(),
         "USE test_keyspace".to_string(),
         "CREATE TABLE test_table (id INT, name TEXT, PRIMARY KEY (id, name))".to_string(),
-        "ALTER TABLE test_table ADD email TEXT".to_string(),
-        "INSERT INTO test_table (id, name, email) VALUES (1, 'Alice', 'alice@example.com')".to_string(),
-        "SELECT id, name, email FROM test_table WHERE id = 1".to_string(),
-        "INSERT INTO test_table (id, name) VALUES (2, 'Bob')".to_string(),
-        "SELECT id, name, email FROM test_table WHERE id = 2".to_string(),
-        "INSERT INTO test_table (name, email) VALUES ('Bob', 'bob@example.com')".to_string(),
-        "INSERT INTO test_table (id, name, email) VALUES (3, 'Charlie', 'charlie@example.com') IF NOT EXISTS".to_string(),
-        "SELECT id, name, email FROM test_table WHERE id = 3".to_string(),
-        "INSERT INTO test_table (id, name, email) VALUES (3, 'Charlie', 'charlie_new@example.com') IF NOT EXISTS".to_string(),
-        "SELECT id, name, email FROM test_table WHERE id = 3".to_string(),
-        "DROP TABLE test_table".to_string(),
-    ];
+        "INSERT INTO test_table (name, email) VALUES ('Bob', 'bob@example.com')".to_string()];
 
     // Ejecutar cada consulta en un loop
     let mut contador = 0;

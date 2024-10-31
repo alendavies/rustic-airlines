@@ -516,7 +516,6 @@ impl Node {
                 }
                 Ok(_) => {
                     let query = handle_client_request(&buffer);
-
                     match query {
                         Request::Startup => {
                             // let mut stream_guard = stream.lock()?;

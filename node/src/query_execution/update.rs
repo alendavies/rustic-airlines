@@ -210,6 +210,7 @@ impl QueryExecution {
                         .unwrap_or(false)
                     {
                         // Si la cláusula `IF` está presente pero no se cumple, no actualizar
+                        println!("se cumple where pero if NO");
                         writeln!(temp_file, "{}", line)?;
                         return Ok(true);
                     }
@@ -223,8 +224,10 @@ impl QueryExecution {
                     let index = table
                         .get_column_index(&column)
                         .ok_or(NodeError::CQLError(CQLError::InvalidColumn))?;
+
                     columns[index] = new_value.clone();
                 }
+                println!("hay que actualizar, se cumple where y if");
                 writeln!(temp_file, "{}", columns.join(","))?;
                 return Ok(true);
             } else {
