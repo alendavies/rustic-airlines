@@ -8,7 +8,7 @@ use walkers::Position;
 #[derive(Debug, Clone)]
 pub struct DBError;
 
-const IP: &str = "192.168.184.16";
+const IP: &str = "127.0.0.1";
 
 pub struct Db;
 
@@ -27,7 +27,7 @@ impl Db {
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
-        let result = driver.execute(query.as_str()).map_err(|_| DBError)?;
+        let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
 
         let mut airports: Vec<Airport> = Vec::new();
         match result {
@@ -94,16 +94,13 @@ impl Db {
         let to = NaiveDateTime::new(date, NaiveTime::from_hms_opt(23, 59, 59).unwrap());
         let to = to.and_utc().timestamp();
 
-        dbg!(from);
-        dbg!(to);
-
         let query = format!(
             "SELECT number, status, departure_time, arrival_time, airport, direction FROM flights WHERE airport = '{airport}' AND direction = 'departure' AND departure_time > {from}"
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
-        let result = driver.execute(query.as_str()).map_err(|_| DBError)?;
+        let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
 
@@ -210,7 +207,7 @@ impl Db {
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
-        let result = driver.execute(query.as_str()).map_err(|_| DBError)?;
+        let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
 
@@ -308,7 +305,7 @@ impl Db {
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
-        let result = driver.execute(query.as_str()).map_err(|_| DBError)?;
+        let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
 
         let mut flight_info = FlightInfo {
             number: String::new(),
@@ -321,7 +318,6 @@ impl Db {
 
         match result {
             QueryResult::Result(Result::Rows(res)) => {
-                dbg!(&res.rows_content);
                 for row in res.rows_content {
                     if let Some(number) = row.get("number") {
                         match number {

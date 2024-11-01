@@ -87,6 +87,7 @@ impl Node {
     pub fn add_open_query(
         &mut self,
         query: Query,
+        consistency_level: &str,
         connection: TcpStream,
         table: Option<Table>,
     ) -> Result<i32, NodeError> {
@@ -104,6 +105,7 @@ impl Node {
             needed_responses as i32,
             connection,
             query,
+            consistency_level,
             table,
         ))
     }
@@ -524,12 +526,13 @@ impl Node {
                         }
                         Request::Query(query) => {
                             // Handle the query
-                            let query_str = &query.query;
-
+                            let query_str = query.get_query();
+                            let query_consistency_level: &str = &query.get_consistency();
                             let client_stream = stream_guard.try_clone()?;
 
                             let result = Node::handle_query_execution(
                                 query_str,
+                                query_consistency_level,
                                 &node,
                                 connections.clone(),
                                 client_stream,
@@ -616,6 +619,7 @@ impl Node {
 
     fn handle_query_execution(
         query_str: &str,
+        consistency_level: &str,
         node: &Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         client_connection: TcpStream,
@@ -636,8 +640,12 @@ impl Node {
                 }
             };
 
-            open_query_id =
-                guard_node.add_open_query(query.clone(), client_connection.try_clone()?, table)?;
+            open_query_id = guard_node.add_open_query(
+                query.clone(),
+                consistency_level,
+                client_connection.try_clone()?,
+                table,
+            )?;
         }
 
         let response = QueryExecution::new(node.clone(), connections.clone()).execute(

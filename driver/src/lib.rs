@@ -39,8 +39,13 @@ impl CassandraClient {
     }
 
     /// Execute a query.
-    pub fn execute(&mut self, query: &str) -> Result<QueryResult, ClientError> {
-        let result = self.send_query(query)?;
+    pub fn execute(
+        &mut self,
+        query: &str,
+        consistency_str: &str,
+    ) -> Result<QueryResult, ClientError> {
+        let consistency = Consistency::from_string(consistency_str).map_err(|_| ClientError)?;
+        let result = self.send_query(query, consistency)?;
         match result {
             Frame::Result(res) => Ok(QueryResult::Result(res)),
             Frame::Error(err) => Ok(QueryResult::Error(err)),
@@ -66,8 +71,12 @@ impl CassandraClient {
         }
     }
 
-    fn send_query(&mut self, cql_query: &str) -> Result<Frame, ClientError> {
-        let params = QueryParams::new(Consistency::All, vec![]);
+    fn send_query(
+        &mut self,
+        cql_query: &str,
+        consistency: Consistency,
+    ) -> Result<Frame, ClientError> {
+        let params = QueryParams::new(consistency, vec![]);
         let query = Query::new(cql_query.to_string(), params);
         let query = Frame::Query(query);
 

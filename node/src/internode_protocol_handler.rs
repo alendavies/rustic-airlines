@@ -155,7 +155,7 @@ impl InternodeProtocolHandler {
                 content.split("/").map(|s| s.to_string()).collect(),
             )?;
 
-            println!("Returning frame: {:?}", frame);
+            println!("Returning frame to client: {:?}", frame);
 
             connection.write(&frame.to_bytes()?)?;
             Ok(())
@@ -370,9 +370,14 @@ impl InternodeProtocolHandler {
         open_query_id: i32,
         keyspace_name: String,
     ) -> Result<(), NodeError> {
-        let open_query = query_handler
-            .get_query_mut(&open_query_id)
-            .ok_or(NodeError::OtherError)?;
+        let open_query;
+
+        if let Some(value) = query_handler.get_query_mut(&open_query_id) {
+            open_query = value;
+        } else {
+            // Si es `None`, retorna `Ok(())`.
+            return Ok(());
+        }
 
         let columns = {
             if let Some(table) = open_query.get_table() {

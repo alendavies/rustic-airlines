@@ -21,7 +21,7 @@ fn main() {
     ];
 
     for query in setup_queries {
-        match client.execute(query) {
+        match client.execute(query, "all") {
             Ok(_) => println!("Setup query executed: {}", query),
             Err(e) => eprintln!("Error executing setup query: {}\nError: {:?}", query, e),
         }
@@ -38,7 +38,7 @@ fn main() {
         );
 
         println!("{:?}", insert_query);
-        match client.execute(&insert_query) {
+        match client.execute(&insert_query, "all") {
             Ok(_) => {
                 if i % 1000 == 0 {
                     println!("Inserted {} records successfully", i);

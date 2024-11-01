@@ -9,7 +9,7 @@ fn main() {
     client.startup().unwrap();
 
     let queries = vec![
-    "CREATE KEYSPACE sky WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}",
+    "CREATE KEYSPACE sky WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
     "USE sky",
     "CREATE TABLE airports (
             iata TEXT,
@@ -145,13 +145,20 @@ fn main() {
     let mut contador = 0;
     let len = queries.len();
     for query in queries {
-        match client.execute(&query) {
+        match client.execute(&query, "all") {
             Ok(query_result) => {
-                contador += 1;
-                println!(
-                    "Consulta ejecutada exitosamente: {} y el resultado fue {:?}",
-                    query, query_result
-                );
+                match query_result {
+                    driver::QueryResult::Result(_) => {
+                        contador += 1;
+                        println!(
+                            "Consulta ejecutada exitosamente: {} y el resultado fue {:?}",
+                            query, query_result
+                        );
+                    }
+                    driver::QueryResult::Error(error) => {
+                        println!("Error en la consulta: {:?}", error);
+                    }
+                }
                 println!("exitosas {:?}/{:?}", contador, len)
             }
             Err(e) => eprintln!("Error al ejecutar la consulta: {}\nError: {:?}", query, e),

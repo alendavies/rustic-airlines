@@ -40,7 +40,6 @@ impl View for WidgetDepartures {
             if date_response.changed() {
                 // TODO: find a way to do it async, with promises or something:
                 // https://github.com/emilk/egui/blob/5b846b4554fe47269affb43efef2cad8710a8a47/crates/egui_demo_app/src/apps/http_app.rs
-                dbg!(&self.selected_date);
                 self.departures =
                     Some(Db::get_departure_flights(&self.airport, self.selected_date).unwrap());
                 // self.departures = Some(db::get_departures_mock(

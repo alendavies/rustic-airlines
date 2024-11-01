@@ -37,7 +37,7 @@ fn main() {
             i, name
         );
 
-        match client.execute(&insert_query) {
+        match client.execute(&insert_query, "all") {
             Ok(_) => {
                 if i % 1000 == 0 {
                     println!("Inserted {} records successfully", i);

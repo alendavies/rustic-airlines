@@ -28,7 +28,7 @@ fn execute_and_verify(
     query: &str,
     expected_result: QueryResult,
 ) -> bool {
-    match client.execute(query) {
+    match client.execute(query, "quorum") {
         Ok(query_result) => match (&expected_result, &query_result) {
             (
                 QueryResult::Result(Result::SchemaChange(_)),
@@ -70,7 +70,7 @@ fn execute_and_verify_select(
     query: &str,
     expected_values: Vec<String>,
 ) -> bool {
-    match client.execute(query) {
+    match client.execute(query, "any") {
         Ok(query_result) => match query_result {
             QueryResult::Result(Result::Rows(rows)) => {
                 if rows.rows_content.is_empty() {

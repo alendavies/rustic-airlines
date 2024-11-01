@@ -17,7 +17,6 @@ impl QueryExecution {
         open_query_id: i32,
     ) -> Result<Vec<String>, NodeError> {
         let table;
-        let rf;
         let mut do_in_this_node = true;
 
         {
@@ -34,9 +33,6 @@ impl QueryExecution {
 
             // Get the table and replication factor
             table = node.get_table(table_name.clone())?;
-            rf = node
-                .get_replication_factor()
-                .ok_or(NodeError::KeyspaceError)?;
 
             // Validate the primary key and where clause
             let partition_keys = table.get_partition_keys()?;
