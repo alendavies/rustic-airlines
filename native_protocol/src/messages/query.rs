@@ -45,7 +45,6 @@ impl Consistency {
             Consistency::Serial => ConsistencyCode::Serial,
             Consistency::LocalSerial => ConsistencyCode::LocalSerial,
             Consistency::LocalOne => ConsistencyCode::LocalOne,
-            _ => return Err(NativeError::InvalidVariant),
         };
 
         Ok(consistency_code)
@@ -137,7 +136,6 @@ impl QueryParams {
                 Flag::WithSerialConsistency => FlagCode::WithSerialConsistency as u8,
                 Flag::WithDefaultTimestamp => FlagCode::WithDefaultTimestamp as u8,
                 Flag::WithNamesForValues => FlagCode::WithNamesForValues as u8,
-                _ => return Err(NativeError::InvalidVariant),
             }
         }
 

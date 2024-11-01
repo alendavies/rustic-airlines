@@ -177,10 +177,6 @@ impl QueryExecution {
                         (false, false) => 0,
                     };
 
-                    println!(
-                        "internode query_finished {:?}",
-                        how_many_internode_query_has_finish
-                    );
                     if how_many_internode_query_has_finish > 0 {
                         return Ok(Some((
                             how_many_internode_query_has_finish,

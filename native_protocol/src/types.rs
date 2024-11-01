@@ -308,8 +308,8 @@ mod tests {
 
         impl OptionSerializable for Options {
             fn deserialize_option(
-                option_id: u16,
-                cursor: &mut Cursor<&[u8]>,
+                _option_id: u16,
+                _cursor: &mut Cursor<&[u8]>,
             ) -> std::result::Result<Self, NativeError>
             where
                 Self: Sized,

@@ -139,7 +139,6 @@ impl ByteSerializable for Version {
         match self {
             Version::RequestV3 => Ok(0x03),
             Version::ResponseV3 => Ok(0x83),
-            _ => Err(NativeError::InvalidVariant),
         }
     }
 }

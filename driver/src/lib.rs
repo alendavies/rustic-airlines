@@ -6,7 +6,7 @@ pub mod server;
 
 use native_protocol::{
     self,
-    frame::Frame,
+    frame::{self, Frame},
     messages::{
         self,
         query::{Consistency, Query, QueryParams},

@@ -451,25 +451,6 @@ impl Node {
                             Ok(_) => {}
                             Err(e) => {
                                 eprintln!("Error handling query: [{:?}]", e);
-
-                                let frame = Frame::Error(error::Error::ServerError(e.to_string()));
-
-                                if let Ok(mut client_stream) = stream.lock() {
-                                    let frame_bytes_result = &frame.to_bytes();
-                                    let mut frame_bytes = &vec![];
-                                    if let Ok(value) = frame_bytes_result {
-                                        frame_bytes = value;
-                                    }
-
-                                    if let Err(write_err) = client_stream.write(&frame_bytes) {
-                                        eprintln!(
-                                            "Error writing to client stream: {:?}",
-                                            write_err
-                                        );
-                                    }
-                                } else {
-                                    eprintln!("Error locking client stream");
-                                }
                             }
                         };
                     });
@@ -535,7 +516,6 @@ impl Node {
                 }
                 Ok(_) => {
                     let query = handle_client_request(&buffer);
-
                     match query {
                         Request::Startup => {
                             // let mut stream_guard = stream.lock()?;
@@ -545,6 +525,7 @@ impl Node {
                         Request::Query(query) => {
                             // Handle the query
                             let query_str = &query.query;
+
                             let client_stream = stream_guard.try_clone()?;
 
                             let result = Node::handle_query_execution(
@@ -555,8 +536,15 @@ impl Node {
                             );
 
                             if let Err(e) = result {
-                                eprintln!("{:?} when client sent {:?}", e, query_str);
-                                return Err(e);
+                                let frame = Frame::Error(error::Error::ServerError(e.to_string()));
+
+                                let frame_bytes_result = &frame.to_bytes();
+                                let mut frame_bytes = &vec![];
+                                if let Ok(value) = frame_bytes_result {
+                                    frame_bytes = value;
+                                }
+                                stream_guard.write(&frame_bytes)?;
+                                stream_guard.flush()?;
                             }
                         }
                     };
@@ -601,11 +589,6 @@ impl Node {
                     break;
                 }
                 Ok(_) => {
-                    {
-                        if node.lock()?.get_ip_string() == "127.0.0.1" {
-                            println!("recibi {:?}", buffer);
-                        }
-                    }
                     // Process the command with the protocol, passing the buffer and the necessary parameters
                     let result = internode_protocol_handler.handle_command(
                         &node,
@@ -685,7 +668,6 @@ impl Node {
                 }
             };
             let query_handler = guard_node.get_open_handle_query();
-
             for _ in [..finished_responses] {
                 InternodeProtocolHandler::add_response_to_open_query_and_send_response_if_closed(
                     query_handler,

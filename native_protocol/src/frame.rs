@@ -25,8 +25,6 @@ pub enum Frame {
     Error(Error),
 }
 
-struct FrameError;
-
 impl Serializable for Frame {
     /// 0         8        16        24        32         40
     /// +---------+---------+---------+---------+---------+
@@ -45,7 +43,6 @@ impl Serializable for Frame {
         let version = match self {
             Frame::Startup | Frame::Query(_) => Version::RequestV3,
             Frame::Ready | Frame::Result(_) | Frame::Error(_) => Version::ResponseV3,
-            _ => return Err(NativeError::InvalidVariant),
         };
 
         let opcode = match self {
@@ -54,7 +51,6 @@ impl Serializable for Frame {
             Frame::Query(_) => Opcode::Query,
             Frame::Result(_) => Opcode::Result,
             Frame::Error(_) => Opcode::Error,
-            _ => return Err(NativeError::InvalidVariant),
         };
 
         let flags = Flags {
@@ -68,7 +64,6 @@ impl Serializable for Frame {
             Frame::Query(query) => query.to_bytes()?,
             Frame::Result(result) => result.to_bytes()?,
             Frame::Error(error) => error.to_bytes()?,
-            _ => return Err(NativeError::InvalidVariant),
         };
 
         let length =

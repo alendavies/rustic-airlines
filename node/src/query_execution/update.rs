@@ -119,7 +119,7 @@ impl QueryExecution {
             }
 
             // Set execution finished if this node is the primary and no replication is needed
-            if !internode && rf == 1 && node_to_update == self_ip {
+            if !internode && node_to_update == self_ip {
                 self.execution_finished_itself = true;
             }
         }
@@ -204,17 +204,13 @@ impl QueryExecution {
             {
                 // Verificar la cláusula `IF` si está presente
                 if let Some(if_clause) = &update_query.if_clause {
-                    println!("la condicion es {:?}", if_clause.condition);
-
-                    println!("el column value map es {:?}", column_value_map);
-
                     if !if_clause
                         .condition
                         .execute(&column_value_map, columns_.clone())
                         .unwrap_or(false)
                     {
                         // Si la cláusula `IF` está presente pero no se cumple, no actualizar
-                        println!("IF está y no se cumple, no actualizo");
+                        println!("se cumple where pero if NO");
                         writeln!(temp_file, "{}", line)?;
                         return Ok(true);
                     }
@@ -228,9 +224,10 @@ impl QueryExecution {
                     let index = table
                         .get_column_index(&column)
                         .ok_or(NodeError::CQLError(CQLError::InvalidColumn))?;
+
                     columns[index] = new_value.clone();
                 }
-                println!("IF está y se cumple, actualizo");
+                println!("hay que actualizar, se cumple where y if");
                 writeln!(temp_file, "{}", columns.join(","))?;
                 return Ok(true);
             } else {
@@ -242,21 +239,12 @@ impl QueryExecution {
                         .execute(&column_value_map, columns_.clone())
                         .unwrap_or(false)
                     {
-                        // IF está y se cumple, devolver false para indicar que hay que crear una nueva fila
-                        println!(
-                            "WHERE no se cumple y IF se cumple, se debería crear una nueva fila"
-                        );
-
                         return Ok(false);
                     } else {
                         // IF está y no se cumple, devolver true para no crear una nueva fila
-                        println!("WHERE no se cumple y IF no se cumple, no se debería crear una nueva fila");
                         return Ok(true);
                     }
                 } else {
-                    // Si no hay `IF`, devolver false para indicar que hay que crear una nueva fila
-                    println!("WHERE no se cumple y no hay IF, se debería crear una nueva fila");
-
                     return Ok(false);
                 }
             }
@@ -271,8 +259,6 @@ impl QueryExecution {
         update_query: &Update,
         temp_file: &mut File,
     ) -> Result<(), NodeError> {
-        println!("entra a add_new_row");
-
         // Crea una fila nueva vacía con el tamaño de las columnas de la tabla
         let mut new_row: Vec<String> = vec!["".to_string(); table.get_columns().len()];
 
@@ -333,7 +319,6 @@ impl QueryExecution {
             new_row[index] = new_value.clone();
         }
 
-        println!("la nueva fila es {:?}", new_row);
         // Escribe la nueva fila en el archivo temporal
         writeln!(temp_file, "{}", new_row.join(",")).map_err(|e| {
             println!("Error al escribir en el archivo temporal: {:?}", e);

@@ -324,10 +324,11 @@ impl InternodeProtocolHandler {
         message: &str,
     ) -> Result<(), NodeError> {
         let mut guard_node = node.lock()?;
+
         let keyspace_name = guard_node
             .actual_keyspace_name()
-            .ok_or(NodeError::KeyspaceError)?
-            .clone();
+            .unwrap_or("".to_string())
+            .to_string();
 
         let query_handler = guard_node.get_open_handle_query();
 

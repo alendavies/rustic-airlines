@@ -8,7 +8,7 @@ use walkers::Position;
 #[derive(Debug, Clone)]
 pub struct DBError;
 
-const IP: &str = "192.168.184.250";
+const IP: &str = "192.168.184.16";
 
 pub struct Db;
 

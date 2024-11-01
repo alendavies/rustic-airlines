@@ -1,5 +1,4 @@
 use driver::CassandraClient;
-use graphical_interface::db;
 use std::{net::Ipv4Addr, str::FromStr};
 
 fn main() {

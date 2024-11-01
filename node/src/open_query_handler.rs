@@ -199,10 +199,6 @@ impl OpenQueryHandler {
         open_query_id: i32,
         response: String,
     ) -> Option<OpenQuery> {
-        // println!(
-        //     "acabo de recibir una response para la query {:?}",
-        //     open_query_id
-        // );
         match self.get_query_mut(&open_query_id) {
             Some(query) => {
                 query.add_response(response);
