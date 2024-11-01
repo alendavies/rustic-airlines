@@ -32,6 +32,41 @@ pub enum Consistency {
 }
 
 impl Consistency {
+    pub fn from_string(s: &str) -> Result<Self, NativeError> {
+        let consistency = match s.to_lowercase().as_str() {
+            "any" => Consistency::Any,
+            "one" => Consistency::One,
+            "two" => Consistency::Two,
+            "three" => Consistency::Three,
+            "quorum" => Consistency::Quorum,
+            "all" => Consistency::All,
+            "local_quorum" => Consistency::LocalQuorum,
+            "each_quorum" => Consistency::EachQuorum,
+            "serial" => Consistency::Serial,
+            "local_serial" => Consistency::LocalSerial,
+            "local_one" => Consistency::LocalOne,
+            _ => return Err(NativeError::InvalidCode),
+        };
+
+        Ok(consistency)
+    }
+
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            Consistency::Any => "ANY",
+            Consistency::One => "ONE",
+            Consistency::Two => "TWO",
+            Consistency::Three => "THREE",
+            Consistency::Quorum => "QUORUM",
+            Consistency::All => "ALL",
+            Consistency::LocalQuorum => "LOCAL_QUORUM",
+            Consistency::EachQuorum => "EACH_QUORUM",
+            Consistency::Serial => "SERIAL",
+            Consistency::LocalSerial => "LOCAL_SERIAL",
+            Consistency::LocalOne => "LOCAL_ONE",
+        }
+    }
+
     fn to_code(&self) -> Result<ConsistencyCode, NativeError> {
         let consistency_code = match self {
             Consistency::Any => ConsistencyCode::Any,
@@ -180,6 +215,14 @@ pub struct Query {
 impl Query {
     pub fn new(query: String, params: QueryParams) -> Self {
         Query { query, params }
+    }
+
+    pub fn get_query(&self) -> &str {
+        &self.query
+    }
+
+    pub fn get_consistency(&self) -> &str {
+        &self.params.consistency.to_string()
     }
 }
 

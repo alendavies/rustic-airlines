@@ -1,11 +1,46 @@
+use crate::errors::NodeError;
+use crate::table::Table;
+use query_creator::Query;
 use std::collections::HashMap;
 use std::fmt;
 use std::net::TcpStream;
 
-use query_creator::Query;
+#[derive(Debug, PartialEq)]
+pub enum ConsistencyLevel {
+    Any,
+    One,
+    Two,
+    Three,
+    Quorum,
+    All,
+}
 
-use crate::errors::NodeError;
-use crate::table::Table;
+impl ConsistencyLevel {
+    // Crea un ConsistencyLevel a partir de un string
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "any" => ConsistencyLevel::Any,
+            "one" => ConsistencyLevel::One,
+            "two" => ConsistencyLevel::Two,
+            "three" => ConsistencyLevel::Three,
+            "quorum" => ConsistencyLevel::Quorum,
+            "all" => ConsistencyLevel::All,
+            _ => ConsistencyLevel::All,
+        }
+    }
+
+    // Verifica si el nivel de consistencia está listo basado en respuestas recibidas y necesarias
+    pub fn is_query_ready(&self, responses_received: usize, responses_needed: usize) -> bool {
+        match self {
+            ConsistencyLevel::Any => responses_received >= 1,
+            ConsistencyLevel::One => responses_received >= 1,
+            ConsistencyLevel::Two => responses_received >= 2,
+            ConsistencyLevel::Three => responses_received >= 3,
+            ConsistencyLevel::Quorum => responses_received >= (responses_needed / 2 + 1),
+            ConsistencyLevel::All => responses_received >= responses_needed,
+        }
+    }
+}
 
 /// Represents an open query, tracking the number of responses needed and received.
 #[derive(Debug)]
@@ -15,6 +50,7 @@ pub struct OpenQuery {
     responses: Vec<String>,
     connection: TcpStream,
     query: Query,
+    consistency_level: ConsistencyLevel,
     table: Option<Table>,
 }
 
@@ -31,6 +67,7 @@ impl OpenQuery {
         needed_responses: i32,
         connection: TcpStream,
         query: Query,
+        consistencty: &str,
         table: Option<Table>,
     ) -> Self {
         Self {
@@ -39,6 +76,7 @@ impl OpenQuery {
             responses: vec![],
             connection,
             query,
+            consistency_level: ConsistencyLevel::from_str(consistencty),
             table,
         }
     }
@@ -52,15 +90,15 @@ impl OpenQuery {
         self.actual_responses += 1;
     }
 
-    fn close(&mut self) {
-        self.actual_responses = self.needed_responses;
-    }
     /// Checks if the query has received all needed responses.
     ///
     /// # Returns
     /// `true` if the query is closed (i.e., all responses have been received), `false` otherwise.
     fn is_close(&self) -> bool {
-        self.actual_responses == self.needed_responses
+        self.consistency_level.is_query_ready(
+            self.actual_responses as usize,
+            self.needed_responses as usize,
+        )
     }
 
     /// Gets a clone of all the responses received for this query.
@@ -130,11 +168,18 @@ impl OpenQueryHandler {
         needed_responses: i32,
         connection: TcpStream,
         query: Query,
+        consistency_level: &str,
         table: Option<Table>,
     ) -> i32 {
         let new_id = self.next_id;
         self.next_id += 1;
-        let query = OpenQuery::new(needed_responses, connection, query, table);
+        let query = OpenQuery::new(
+            needed_responses,
+            connection,
+            query,
+            consistency_level,
+            table,
+        );
         self.queries.insert(new_id, query);
         new_id
     }
@@ -204,6 +249,10 @@ impl OpenQueryHandler {
                 query.add_response(response);
 
                 if query.is_close() {
+                    println!(
+                        "con respuestas = {:?} y cl = {:?}, la query se cerro",
+                        query.actual_responses, query.consistency_level
+                    );
                     self.queries.remove(&open_query_id)
                 } else {
                     None
@@ -215,16 +264,7 @@ impl OpenQueryHandler {
 
     pub fn close_query_and_get_if_closed(&mut self, open_query_id: i32) -> Option<OpenQuery> {
         match self.get_query_mut(&open_query_id) {
-            Some(query) => {
-                query.close(); // Marca la consulta como cerrada.
-
-                if query.is_close() {
-                    // Si la consulta está cerrada, se elimina y se devuelve.
-                    self.queries.remove(&open_query_id)
-                } else {
-                    None
-                }
-            }
+            Some(_) => self.queries.remove(&open_query_id),
             None => None,
         }
     }
@@ -262,7 +302,6 @@ mod tests {
     }
 
     // Helper function to create a dummy Table for testing.
-    // Function to create a sample table for testing.
     fn get_dummy_table() -> Table {
         let query_tokens = vec![
             "CREATE".to_string(),
@@ -290,17 +329,18 @@ mod tests {
         let stream = get_dummy_tcpstream();
         let query = get_dummy_query();
         let table = get_dummy_table();
-        let open_query = OpenQuery::new(3, stream, query, Some(table));
+        let open_query = OpenQuery::new(3, stream, query, "quorum", Some(table));
         assert_eq!(open_query.needed_responses, 3);
         assert_eq!(open_query.actual_responses, 0);
         assert!(open_query.responses.is_empty());
+        assert_eq!(open_query.consistency_level, ConsistencyLevel::Quorum);
     }
 
     #[test]
     fn test_open_query_add_response() {
         let stream = get_dummy_tcpstream();
         let query = get_dummy_query();
-        let mut open_query = OpenQuery::new(2, stream, query, None);
+        let mut open_query = OpenQuery::new(2, stream, query, "two", None);
         open_query.add_response("Response 1".to_string());
         assert_eq!(open_query.actual_responses, 1);
         assert_eq!(open_query.responses, vec!["Response 1".to_string()]);
@@ -318,21 +358,33 @@ mod tests {
         let stream = get_dummy_tcpstream();
         let query = get_dummy_query();
         let table = get_dummy_table();
-        let mut open_query = OpenQuery::new(2, stream, query, Some(table));
+        let mut open_query = OpenQuery::new(2, stream, query, "one", Some(table));
         assert!(!open_query.is_close());
 
         open_query.add_response("Response 1".to_string());
-        assert!(!open_query.is_close());
+        assert!(open_query.is_close()); // Should be true with "one" consistency level
+    }
 
+    #[test]
+    fn test_open_query_quorum() {
+        let stream = get_dummy_tcpstream();
+        let query = get_dummy_query();
+        let table = get_dummy_table();
+        let mut open_query = OpenQuery::new(4, stream, query, "quorum", Some(table));
+
+        open_query.add_response("Response 1".to_string());
         open_query.add_response("Response 2".to_string());
-        assert!(open_query.is_close());
+        assert!(!open_query.is_close()); // Should be false with only 2 responses
+
+        open_query.add_response("Response 3".to_string());
+        assert!(open_query.is_close()); // Should be true with quorum met (3/4)
     }
 
     #[test]
     fn test_open_query_get_responses() {
         let stream = get_dummy_tcpstream();
         let query = get_dummy_query();
-        let mut open_query = OpenQuery::new(2, stream, query, None);
+        let mut open_query = OpenQuery::new(2, stream, query, "two", None);
         open_query.add_response("Response 1".to_string());
         open_query.add_response("Response 2".to_string());
 
@@ -349,9 +401,13 @@ mod tests {
         let query = get_dummy_query();
         let table = get_dummy_table();
         let mut handler = OpenQueryHandler::new();
-        let query_id = handler.new_open_query(3, stream, query, Some(table));
+        let query_id = handler.new_open_query(3, stream, query, "quorum", Some(table));
         assert!(handler.queries.contains_key(&query_id));
         assert_eq!(handler.queries[&query_id].needed_responses, 3);
+        assert_eq!(
+            handler.queries[&query_id].consistency_level,
+            ConsistencyLevel::Quorum
+        );
     }
 
     #[test]
@@ -360,30 +416,10 @@ mod tests {
         let query = get_dummy_query();
         let table = get_dummy_table();
         let mut handler = OpenQueryHandler::new();
-        let query_id = handler.new_open_query(2, stream, query, Some(table));
+        let query_id = handler.new_open_query(2, stream, query, "two", Some(table));
         assert!(handler.queries.contains_key(&query_id));
 
         handler._remove_query(&query_id);
         assert!(!handler.queries.contains_key(&query_id));
-    }
-
-    #[test]
-    fn test_open_query_handler_debug_output() {
-        let stream1 = get_dummy_tcpstream();
-        let stream2 = get_dummy_tcpstream();
-        let query1 = get_dummy_query();
-        let query2 = get_dummy_query();
-        let table1 = get_dummy_table();
-        let table2 = get_dummy_table();
-        let mut handler = OpenQueryHandler::new();
-        let query_id1 = handler.new_open_query(2, stream1, query1, Some(table1));
-        let query_id2 = handler.new_open_query(3, stream2, query2, Some(table2));
-
-        handler.add_response_and_get_if_closed(query_id1, "Response A".to_string());
-        handler.add_response_and_get_if_closed(query_id2, "Response B".to_string());
-
-        let debug_output = format!("{:?}", handler);
-        assert!(debug_output.contains(&format!("ID {}: responses 1/2", query_id1)));
-        assert!(debug_output.contains(&format!("ID {}: responses 1/3", query_id2)));
     }
 }

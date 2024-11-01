@@ -21,7 +21,7 @@ fn main() {
     let mut contador = 0;
     let len = queries.len();
     for query in queries {
-        match client.execute(&query) {
+        match client.execute(&query, "all") {
             Ok(query_result) => {
                 contador += 1;
                 println!(

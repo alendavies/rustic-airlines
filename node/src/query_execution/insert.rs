@@ -158,10 +158,6 @@ impl QueryExecution {
                 // Verificar si la columna está especificada en specified_columns
                 if let Some(pos) = specified_columns.iter().position(|c| c == &column.name) {
                     // Si está, copiar el valor correspondiente en complete_row
-                    println!(
-                        "la llave de partiticion o clustering especfificada es {:?}",
-                        pos
-                    );
                     complete_row[i] = values[pos].clone();
                     specified_keys += 1;
                 }

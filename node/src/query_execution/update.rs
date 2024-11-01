@@ -42,7 +42,6 @@ impl QueryExecution {
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         let table;
-        let rf;
         let mut do_in_this_node = true;
         {
             // Get the table name and reference the node
@@ -58,9 +57,6 @@ impl QueryExecution {
 
             // Retrieve the table and replication factor
             table = node.get_table(table_name.clone())?;
-            rf = node
-                .get_replication_factor()
-                .ok_or(NodeError::KeyspaceError)?;
 
             // Validate primary key and where clause
             let partition_keys = table.get_partition_keys()?;

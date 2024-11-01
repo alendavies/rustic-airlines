@@ -18,7 +18,6 @@ impl QueryExecution {
         open_query_id: i32,
     ) -> Result<(), NodeError> {
         let table;
-        let rf;
         let mut do_in_this_node = true;
 
         {
@@ -31,9 +30,6 @@ impl QueryExecution {
 
             // Retrieve the table and replication factor
             table = node.get_table(table_name.clone())?;
-            rf = node
-                .get_replication_factor()
-                .ok_or(NodeError::KeyspaceError)?;
 
             if node.has_no_actual_keyspace() {
                 return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));

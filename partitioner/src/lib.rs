@@ -171,7 +171,6 @@ impl Partitioner {
                 }
             }
         }
-        println!("los sucesores de {:?} son {:?}", ip, successors);
         Ok(successors)
     }
 }
