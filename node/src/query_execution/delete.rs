@@ -16,6 +16,7 @@ impl QueryExecution {
         internode: bool,
         mut replication: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<(), NodeError> {
         let table;
         let mut do_in_this_node = true;
@@ -28,10 +29,14 @@ impl QueryExecution {
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
 
-            // Retrieve the table and replication factor
-            table = node.get_table(table_name.clone())?;
+            let client_keyspace = node
+                .get_client_keyspace(client_id)?
+                .ok_or(NodeError::KeyspaceError)?;
 
-            if node.has_no_actual_keyspace() {
+            // Retrieve the table and replication factor
+            table = node.get_table(table_name.clone(), client_keyspace)?;
+
+            if !node.has_actual_keyspace(client_id)? {
                 return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
             }
 
@@ -78,6 +83,7 @@ impl QueryExecution {
                     &serialized_delete,
                     true,
                     open_query_id,
+                    client_id,
                 )?;
                 do_in_this_node = false;
             }
@@ -92,6 +98,7 @@ impl QueryExecution {
                     &serialized_delete,
                     true,
                     open_query_id,
+                    client_id,
                 )?;
             }
 
@@ -113,7 +120,7 @@ impl QueryExecution {
 
         // Execute the delete on this node
         let (file_path, temp_file_path) =
-            self.get_file_paths(&delete_query.table_name, replication)?;
+            self.get_file_paths(&delete_query.table_name, replication, client_id)?;
 
         if let Err(e) = self.delete_in_this_node(delete_query, table, &file_path, &temp_file_path) {
             let _ = std::fs::remove_file(temp_file_path); // Cleanup temp file on error

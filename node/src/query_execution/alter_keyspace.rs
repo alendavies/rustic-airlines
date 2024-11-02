@@ -12,14 +12,13 @@ impl QueryExecution {
         alter_keyspace: AlterKeyspace,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<(), NodeError> {
         // Look for the keyspace in the list of keyspaces
         let mut node = self.node_that_execute.lock()?;
         let mut keyspace = node
-            .actual_keyspace
-            .clone()
-            .ok_or(NodeError::OtherError)?
-            .clone();
+            .get_client_keyspace(client_id)?
+            .ok_or(NodeError::KeyspaceError)?;
 
         // Validate if the replication class and factor are the same to avoid unnecessary operations
         if keyspace.get_replication_class() == alter_keyspace.get_replication_class()
@@ -31,7 +30,7 @@ impl QueryExecution {
         // Update the replication class and factor in the keyspace
         keyspace.update_replication_class(alter_keyspace.get_replication_class());
         keyspace.update_replication_factor(alter_keyspace.get_replication_factor());
-        node.update_keyspace(keyspace)?;
+        node.update_keyspace(client_id, keyspace);
 
         // If not an internode operation, communicate changes to other nodes
         if !internode {
@@ -42,6 +41,7 @@ impl QueryExecution {
                 &serialized_alter_keyspace,
                 true,
                 open_query_id,
+                client_id,
             )?;
         }
 

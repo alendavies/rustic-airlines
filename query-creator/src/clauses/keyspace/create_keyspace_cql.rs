@@ -2,9 +2,9 @@ use crate::{errors::CQLError, QueryCreator};
 
 #[derive(Debug, Clone)]
 pub struct CreateKeyspace {
-    name: String,
-    replication_class: String,
-    replication_factor: u32,
+    pub name: String,
+    pub replication_class: String,
+    pub replication_factor: u32,
 }
 
 impl CreateKeyspace {

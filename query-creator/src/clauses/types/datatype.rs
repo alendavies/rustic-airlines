@@ -27,72 +27,80 @@ impl DataType {
         }
     }
 
-    pub fn compare(&self, x: &String, y: &String, operator: &Operator) -> bool {
+    pub fn compare(&self, x: &String, y: &String, operator: &Operator) -> Result<bool, CQLError> {
         match self {
             DataType::Int => {
-                let x = x.parse::<i32>().unwrap();
-                let y = y.parse::<i32>().unwrap();
+                let x = x.parse::<i32>().map_err(|_| CQLError::InvalidCondition)?;
+                let y = y.parse::<i32>().map_err(|_| CQLError::InvalidCondition)?;
                 match operator {
-                    Operator::Equal => x == y,
-                    Operator::Greater => x > y,
-                    Operator::Lesser => x < y,
+                    Operator::Equal => Ok(x == y),
+                    Operator::Greater => Ok(x > y),
+                    Operator::Lesser => Ok(x < y),
                 }
             }
             DataType::String => {
-                let x = x.parse::<String>().unwrap();
-                let y = y.parse::<String>().unwrap();
+                let x = x
+                    .parse::<String>()
+                    .map_err(|_| CQLError::InvalidCondition)?;
+                let y = y
+                    .parse::<String>()
+                    .map_err(|_| CQLError::InvalidCondition)?;
                 match operator {
-                    Operator::Equal => x == y,
-                    Operator::Greater => x > y,
-                    Operator::Lesser => x < y,
+                    Operator::Equal => Ok(x == y),
+                    Operator::Greater => Ok(x > y),
+                    Operator::Lesser => Ok(x < y),
                 }
             }
             DataType::Boolean => {
-                let x = x.parse::<bool>().unwrap();
-                let y = y.parse::<bool>().unwrap();
+                let x = x.parse::<bool>().map_err(|_| CQLError::InvalidCondition)?;
+                let y = y.parse::<bool>().map_err(|_| CQLError::InvalidCondition)?;
                 match operator {
-                    Operator::Equal => x == y,
-                    Operator::Greater => x > y,
-                    Operator::Lesser => x < y,
+                    Operator::Equal => Ok(x == y),
+                    Operator::Greater => Ok(x > y),
+                    Operator::Lesser => Ok(x < y),
                 }
             }
             DataType::Float => {
-                let x = x.parse::<f32>().unwrap();
-                let y = y.parse::<f32>().unwrap();
+                let x = x.parse::<f32>().map_err(|_| CQLError::InvalidCondition)?;
+                let y = y.parse::<f32>().map_err(|_| CQLError::InvalidCondition)?;
                 match operator {
-                    Operator::Equal => x == y,
-                    Operator::Greater => x > y,
-                    Operator::Lesser => x < y,
+                    Operator::Equal => Ok(x == y),
+                    Operator::Greater => Ok(x > y),
+                    Operator::Lesser => Ok(x < y),
                 }
             }
             DataType::Double => {
-                let x = x.parse::<f64>().unwrap();
-                let y = y.parse::<f64>().unwrap();
+                let x = x.parse::<f64>().map_err(|_| CQLError::InvalidCondition)?;
+                let y = y.parse::<f64>().map_err(|_| CQLError::InvalidCondition)?;
                 match operator {
-                    Operator::Equal => x == y,
-                    Operator::Greater => x > y,
-                    Operator::Lesser => x < y,
+                    Operator::Equal => Ok(x == y),
+                    Operator::Greater => Ok(x > y),
+                    Operator::Lesser => Ok(x < y),
                 }
             }
             DataType::Timestamp => {
-                let x = x.parse::<i64>().unwrap();
-                let y = y.parse::<i64>().unwrap();
+                let x = x.parse::<i64>().map_err(|_| CQLError::InvalidCondition)?;
+                let y = y.parse::<i64>().map_err(|_| CQLError::InvalidCondition)?;
 
                 let res = match operator {
-                    Operator::Equal => x == y,
-                    Operator::Greater => x > y,
-                    Operator::Lesser => x < y,
+                    Operator::Equal => Ok(x == y),
+                    Operator::Greater => Ok(x > y),
+                    Operator::Lesser => Ok(x < y),
                 };
 
                 res
             }
             DataType::Uuid => {
-                let x = x.parse::<uuid::Uuid>().unwrap();
-                let y = y.parse::<uuid::Uuid>().unwrap();
+                let x = x
+                    .parse::<uuid::Uuid>()
+                    .map_err(|_| CQLError::InvalidCondition)?;
+                let y = y
+                    .parse::<uuid::Uuid>()
+                    .map_err(|_| CQLError::InvalidCondition)?;
                 match operator {
-                    Operator::Equal => x == y,
-                    Operator::Greater => x > y,
-                    Operator::Lesser => x < y,
+                    Operator::Equal => Ok(x == y),
+                    Operator::Greater => Ok(x > y),
+                    Operator::Lesser => Ok(x < y),
                 }
             }
         }
@@ -109,7 +117,7 @@ impl DataType {
             DataType::Float => value.parse::<f32>().is_ok(), // Verifica si es un float válido
             DataType::Double => value.parse::<f64>().is_ok(), // Verifica si es un double válido
             DataType::Timestamp => self.is_valid_timestamp(value), // Verifica si es un timestamp válido
-            DataType::Uuid => true,                                // Verifica si es un UUID válido
+            DataType::Uuid => uuid::Uuid::parse_str(value).is_ok(), // Verifica si es un UUID válido
                                                                     // DataType::Blob => self.is_valid_blob(value), // Verifica si es un BLOB válido (hexadecimal)
         }
     }

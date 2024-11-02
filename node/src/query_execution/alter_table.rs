@@ -15,28 +15,30 @@ impl QueryExecution {
         alter_table: AlterTable,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<(), NodeError> {
         let mut node = self
             .node_that_execute
             .lock()
             .map_err(|_| NodeError::LockError)?;
 
-        if node.has_no_actual_keyspace() {
+        if !node.has_actual_keyspace(client_id)? {
             return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
         }
 
+        let client_keyspace = node
+            .get_client_keyspace(client_id)?
+            .ok_or(NodeError::KeyspaceError)?;
+
         // Get the table name and lock access to it
         let table_name = alter_table.get_table_name();
-        let mut table = node.get_table(table_name.clone())?.inner;
+        let mut table = node
+            .get_table(table_name.clone(), client_keyspace.clone())?
+            .inner;
 
         // Generate the path to the table's file
         let ip_str = node.get_ip_string().replace(".", "_");
-        let folder_name = format!(
-            "keyspaces_{}/{}",
-            ip_str,
-            node.actual_keyspace_name()
-                .ok_or(NodeError::KeyspaceError)?
-        );
+        let folder_name = format!("keyspaces_{}/{}", ip_str, client_keyspace.get_name());
         let file_path = format!("{}/{}.csv", folder_name, table_name);
 
         // Verify that the file exists before proceeding
@@ -66,7 +68,7 @@ impl QueryExecution {
         }
 
         // Save the updated table structure to the node
-        node.update_table(table)?;
+        node.update_table(table, client_id)?;
 
         // Broadcast the changes to other nodes if not an internode request
         if !internode {
@@ -77,6 +79,7 @@ impl QueryExecution {
                 &serialized_alter_table,
                 true,
                 open_query_id,
+                client_id,
             )?;
         }
 
@@ -108,7 +111,6 @@ impl QueryExecution {
 
         fs::rename(temp_path, file_path).map_err(NodeError::IoError)
     }
-
 
     pub(crate) fn remove_column_from_file(
         file_path: &str,

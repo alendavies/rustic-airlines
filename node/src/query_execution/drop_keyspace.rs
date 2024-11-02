@@ -12,6 +12,7 @@ impl QueryExecution {
         drop_keyspace: DropKeyspace,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<(), NodeError> {
         // Get the name of the keyspace to delete
         let keyspace_name = drop_keyspace.get_name().clone();
@@ -43,6 +44,7 @@ impl QueryExecution {
                 &serialized_drop_keyspace,
                 true,
                 open_query_id,
+                client_id,
             )?;
         }
 

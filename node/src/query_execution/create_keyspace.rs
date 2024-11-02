@@ -12,8 +12,11 @@ impl QueryExecution {
         create_keyspace: CreateKeyspace,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<(), NodeError> {
         // Locks the node to ensure safe concurrent access
+
+        println!("entro a crear keyspace");
         let mut node = self
             .node_that_execute
             .lock()
@@ -45,6 +48,7 @@ impl QueryExecution {
                 &serialized_create_keyspace,
                 true,
                 open_query_id,
+                client_id,
             )?;
         }
 

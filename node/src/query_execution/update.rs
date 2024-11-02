@@ -40,6 +40,7 @@ impl QueryExecution {
         internode: bool,
         mut replication: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<(), NodeError> {
         let table;
         let mut do_in_this_node = true;
@@ -51,12 +52,17 @@ impl QueryExecution {
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
 
-            if node.has_no_actual_keyspace() {
+            // Check if the keyspace exists in the node
+            if !node.has_actual_keyspace(client_id)? {
                 return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
             }
 
-            // Retrieve the table and replication factor
-            table = node.get_table(table_name.clone())?;
+            let client_keyspace = node
+                .get_client_keyspace(client_id)?
+                .ok_or(NodeError::KeyspaceError)?;
+
+            // Get the table and replication factor
+            table = node.get_table(table_name.clone(), client_keyspace)?;
 
             // Validate primary key and where clause
             let partition_keys = table.get_partition_keys()?;
@@ -97,6 +103,7 @@ impl QueryExecution {
                     &serialized_update,
                     true,
                     open_query_id,
+                    client_id,
                 )?;
                 do_in_this_node = false;
             }
@@ -111,6 +118,7 @@ impl QueryExecution {
                     &serialized_update,
                     true,
                     open_query_id,
+                    client_id,
                 )?;
             }
 
@@ -132,7 +140,7 @@ impl QueryExecution {
 
         // Perform the update on this node
         let (file_path, temp_file_path) =
-            self.get_file_paths(&update_query.table_name, replication)?;
+            self.get_file_paths(&update_query.table_name, replication, client_id)?;
         if let Err(e) = self.update_in_this_node(update_query, table, &file_path, &temp_file_path) {
             let _ = std::fs::remove_file(temp_file_path); // Cleanup temp file on error
             return Err(e);

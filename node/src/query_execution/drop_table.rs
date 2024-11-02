@@ -13,13 +13,14 @@ impl QueryExecution {
         drop_table: DropTable,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<(), NodeError> {
         let mut node = self
             .node_that_execute
             .lock()
             .map_err(|_| NodeError::LockError)?;
 
-        if node.has_no_actual_keyspace() {
+        if !node.has_actual_keyspace(client_id)? {
             return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
         }
 
@@ -27,16 +28,15 @@ impl QueryExecution {
         let table_name = drop_table.get_table_name();
 
         // Lock the node and remove the table from the internal list
-        node.remove_table(table_name.clone())?;
+        node.remove_table(table_name.clone(), client_id)?;
+
+        let client_keyspace = node
+            .get_client_keyspace(client_id)?
+            .ok_or(NodeError::KeyspaceError)?;
 
         // Generate the file name and folder where the table is stored
         let ip_str = node.get_ip_string().replace(".", "_");
-        let folder_name = format!(
-            "keyspaces_{}/{}",
-            ip_str,
-            node.actual_keyspace_name()
-                .ok_or(NodeError::KeyspaceError)?
-        );
+        let folder_name = format!("keyspaces_{}/{}", ip_str, client_keyspace.get_name());
         let file_path = format!("{}/{}.csv", folder_name, table_name);
 
         // Delete the table file if it exists
@@ -52,6 +52,7 @@ impl QueryExecution {
                 &serialized_drop_table,
                 true,
                 open_query_id,
+                client_id,
             )?;
         }
 
