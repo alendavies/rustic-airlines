@@ -60,14 +60,14 @@ impl Provider for MockProvider {
     }
 
     fn get_airports() -> Result<Vec<Airport>, DBError> {
-        let path = Path::new("graphical-interface/airports.csv");
+        let path = Path::new("graphical-interface/airports_ar.csv");
         let file = File::open(path).unwrap();
 
         let mut rdr = ReaderBuilder::new().has_headers(true).from_reader(file);
 
         let mut raw_airports = Vec::new();
 
-        for result in rdr.deserialize().take(100) {
+        for result in rdr.deserialize() {
             let airport: CsvAirport = result.unwrap();
             raw_airports.push(airport);
         }
