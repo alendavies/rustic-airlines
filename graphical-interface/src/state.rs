@@ -1,5 +1,5 @@
 use crate::{
-    db::{Airport, Db},
+    db::{Airport, Db, MockProvider, Provider},
     widgets::WidgetAirport,
 };
 
@@ -17,7 +17,8 @@ impl AppState {
     }
 
     pub fn init(&mut self) {
-        let initial_airports = Db::get_airports("ARG").unwrap();
+        // let initial_airports = Db::get_airports("ARG").unwrap();
+        let initial_airports = MockProvider::get_airports("ARG").unwrap();
 
         self.displayed_airports = initial_airports;
     }

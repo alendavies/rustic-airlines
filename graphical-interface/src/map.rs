@@ -74,9 +74,9 @@ impl eframe::App for MyApp {
 
                 // Draw the map widget.
                 ui.add(map);
-                ui.add(WidgetAirports {
-                    app_state: &mut self.app_state,
-                });
+                // ui.add(WidgetAirports {
+                //     app_state: &mut self.app_state,
+                // });
 
                 if let Some(widget) = &mut self.app_state.airport_widget {
                     widget.show(ctx);

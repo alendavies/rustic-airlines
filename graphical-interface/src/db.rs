@@ -1,14 +1,78 @@
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{fs::File, net::Ipv4Addr, path::Path, str::FromStr};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use csv::ReaderBuilder;
 use driver::{self, CassandraClient, QueryResult};
-use native_protocol::messages::result::{result::Result, rows};
+use native_protocol::messages::result::{result, rows};
+use serde::Deserialize;
 use walkers::Position;
 
 #[derive(Debug, Clone)]
 pub struct DBError;
 
 const IP: &str = "127.0.0.1";
+
+pub trait Provider {
+    fn get_airports(country: &str) -> Result<Vec<Airport>, DBError>;
+
+    fn get_departure_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError>;
+
+    fn get_arrival_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError>;
+
+    fn get_flight_info(number: &str) -> Result<FlightInfo, DBError>;
+}
+
+#[derive(Debug, Deserialize)]
+// TODO: airport types
+// TODO: airport countries
+struct CsvAirport {
+    name: String,
+    iata_code: String,
+    latitude_deg: f64,
+    longitude_deg: f64,
+}
+
+pub struct MockProvider;
+
+impl Provider for MockProvider {
+    fn get_airports(country: &str) -> Result<Vec<Airport>, DBError> {
+        dbg!("aca");
+        let path = Path::new("graphical-interface/airports.csv");
+        let file = File::open(path).unwrap();
+
+        let mut rdr = ReaderBuilder::new().has_headers(true).from_reader(file);
+
+        let mut raw_airports = Vec::new();
+
+        for result in rdr.deserialize().take(100) {
+            let airport: CsvAirport = result.unwrap();
+            raw_airports.push(airport);
+        }
+
+        let airports: Vec<_> = raw_airports
+            .iter()
+            .map(|raw| {
+                let pos = Position::from_lat_lon(raw.latitude_deg, raw.longitude_deg);
+
+                Airport::new(raw.name.clone(), raw.iata_code.clone(), pos)
+            })
+            .collect();
+
+        Ok(airports)
+    }
+
+    fn get_departure_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError> {
+        todo!()
+    }
+
+    fn get_arrival_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError> {
+        todo!()
+    }
+
+    fn get_flight_info(number: &str) -> Result<FlightInfo, DBError> {
+        todo!()
+    }
+}
 
 pub struct Db;
 
@@ -20,9 +84,11 @@ impl Db {
 
         Self
     }
+}
 
+impl Provider for Db {
     /// Get the airports from a country from the database to show them in the graphical interface.
-    pub fn get_airports(country: &str) -> std::result::Result<Vec<Airport>, DBError> {
+    fn get_airports(country: &str) -> std::result::Result<Vec<Airport>, DBError> {
         let query = format!("SELECT iata, name, lat, lon FROM airports WHERE country = {country}");
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
@@ -31,7 +97,7 @@ impl Db {
 
         let mut airports: Vec<Airport> = Vec::new();
         match result {
-            QueryResult::Result(Result::Rows(res)) => {
+            QueryResult::Result(result::Result::Rows(res)) => {
                 for row in res.rows_content {
                     let mut airport = Airport {
                         name: String::new(),
@@ -84,7 +150,7 @@ impl Db {
         Ok(airports)
     }
 
-    pub fn get_departure_flights(
+    fn get_departure_flights(
         airport: &str,
         date: NaiveDate,
     ) -> std::result::Result<Vec<Flight>, DBError> {
@@ -105,7 +171,7 @@ impl Db {
         let mut flights: Vec<Flight> = Vec::new();
 
         match result {
-            QueryResult::Result(Result::Rows(res)) => {
+            QueryResult::Result(result::Result::Rows(res)) => {
                 for row in res.rows_content {
                     let mut flight = Flight {
                         number: String::new(),
@@ -191,7 +257,7 @@ impl Db {
         Ok(flights)
     }
 
-    pub fn get_arrival_flights(
+    fn get_arrival_flights(
         airport: &str,
         date: NaiveDate,
     ) -> std::result::Result<Vec<Flight>, DBError> {
@@ -212,7 +278,7 @@ impl Db {
         let mut flights: Vec<Flight> = Vec::new();
 
         match result {
-            QueryResult::Result(Result::Rows(res)) => {
+            QueryResult::Result(result::Result::Rows(res)) => {
                 for row in res.rows_content {
                     let mut flight = Flight {
                         number: String::new(),
@@ -298,7 +364,7 @@ impl Db {
         Ok(flights)
     }
 
-    pub fn get_flight_info(number: &str) -> std::result::Result<FlightInfo, DBError> {
+    fn get_flight_info(number: &str) -> std::result::Result<FlightInfo, DBError> {
         let query = format!(
         "SELECT number, lat, lon, fuel, height, speed FROM flight_info WHERE number = '{number}'"
     );
@@ -317,7 +383,7 @@ impl Db {
         };
 
         match result {
-            QueryResult::Result(Result::Rows(res)) => {
+            QueryResult::Result(result::Result::Rows(res)) => {
                 for row in res.rows_content {
                     if let Some(number) = row.get("number") {
                         match number {
@@ -392,6 +458,16 @@ pub struct Airport {
     pub position: Position,
 }
 
+impl Airport {
+    pub fn new(name: String, iata: String, position: Position) -> Self {
+        Self {
+            name,
+            iata,
+            position,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Flight {
     pub number: String,
@@ -410,4 +486,14 @@ pub struct FlightInfo {
     pub fuel: f64,
     pub height: i32,
     pub speed: i32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mock_reader() {
+        let airports = MockProvider::get_airports("").unwrap();
+    }
 }
