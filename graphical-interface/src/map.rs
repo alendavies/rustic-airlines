@@ -2,6 +2,7 @@ use egui::Context;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
 use crate::{
+    db::{MockProvider, Provider},
     plugins,
     state::{SelectionState, ViewState},
     widgets::{WidgetAirport, WidgetAirports},
@@ -11,16 +12,17 @@ use crate::{
 const INITIAL_LAT: f64 = -34.608406;
 const INITIAL_LON: f64 = -58.372159;
 
-pub struct MyApp {
+pub struct MyApp<P: Provider> {
     tiles: Box<dyn Tiles>,
     map_memory: MapMemory,
     selection_state: SelectionState,
     view_state: ViewState,
     airport_widget: Option<WidgetAirport>,
+    db: P,
 }
 
-impl MyApp {
-    pub fn new(egui_ctx: Context) -> Self {
+impl<P: Provider> MyApp<P> {
+    pub fn new(egui_ctx: Context, db: P) -> Self {
         let mut initial_map_memory = MapMemory::default();
         // zoom inicial para mostrar argentina y uruguay
         initial_map_memory.set_zoom(5.).unwrap();
@@ -35,11 +37,12 @@ impl MyApp {
             selection_state: SelectionState::new(),
             view_state: ViewState::new(),
             airport_widget: None,
+            db,
         }
     }
 }
 
-impl eframe::App for MyApp {
+impl<P: Provider> eframe::App for MyApp<P> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let rimless = egui::Frame {
             fill: ctx.style().visuals.panel_fill,
