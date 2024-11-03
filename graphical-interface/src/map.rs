@@ -11,18 +11,8 @@ use crate::{
 const INITIAL_LAT: f64 = -34.608406;
 const INITIAL_LON: f64 = -58.372159;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Provider {
-    OpenStreetMap,
-    Geoportal,
-    MapboxStreets,
-    MapboxSatellite,
-    LocalTiles,
-}
-
 pub struct MyApp {
     tiles: Box<dyn Tiles>,
-    selected_provider: Provider,
     map_memory: MapMemory,
     selection_state: SelectionState,
     view_state: ViewState,
@@ -41,7 +31,6 @@ impl MyApp {
                 HttpOptions::default(),
                 egui_ctx.to_owned(),
             )),
-            selected_provider: Provider::OpenStreetMap,
             map_memory: initial_map_memory,
             selection_state: SelectionState::new(),
             view_state: ViewState::new(),
@@ -68,17 +57,16 @@ impl eframe::App for MyApp {
                 let map = Map::new(Some(tiles), &mut self.map_memory, my_position)
                     .with_plugin(plugins::Airports::new(&self.view_state.airports));
 
-                // Draw the map widget.
+                // Add the map widget.
                 ui.add(map);
-                // ui.add(WidgetAirports {
-                //     app_state: &mut self.app_state,
-                // });
 
+                // Add the airport pins in the map.
                 ui.add(WidgetAirports::new(
                     &self.view_state,
                     &mut self.selection_state,
                 ));
 
+                // Add the selected airport window, if there any.
                 if let Some(widget) = &mut self.airport_widget {
                     widget.show(ctx);
                 }
