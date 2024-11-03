@@ -13,13 +13,17 @@ pub struct DBError;
 const IP: &str = "127.0.0.1";
 
 pub trait Provider {
-    fn get_airports(country: &str) -> Result<Vec<Airport>, DBError>;
+    fn get_airports_by_country(country: &str) -> Result<Vec<Airport>, DBError>;
 
     fn get_departure_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError>;
 
     fn get_arrival_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError>;
 
     fn get_flight_info(number: &str) -> Result<FlightInfo, DBError>;
+
+    fn get_flights() -> Result<Vec<Flight>, DBError>;
+
+    fn get_airports() -> Result<Vec<Airport>, DBError>;
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,8 +39,27 @@ struct CsvAirport {
 pub struct MockProvider;
 
 impl Provider for MockProvider {
-    fn get_airports(country: &str) -> Result<Vec<Airport>, DBError> {
-        dbg!("aca");
+    fn get_airports_by_country(country: &str) -> Result<Vec<Airport>, DBError> {
+        todo!()
+    }
+
+    fn get_departure_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError> {
+        todo!()
+    }
+
+    fn get_arrival_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError> {
+        todo!()
+    }
+
+    fn get_flight_info(number: &str) -> Result<FlightInfo, DBError> {
+        todo!()
+    }
+
+    fn get_flights() -> Result<Vec<Flight>, DBError> {
+        todo!()
+    }
+
+    fn get_airports() -> Result<Vec<Airport>, DBError> {
         let path = Path::new("graphical-interface/airports.csv");
         let file = File::open(path).unwrap();
 
@@ -60,18 +83,6 @@ impl Provider for MockProvider {
 
         Ok(airports)
     }
-
-    fn get_departure_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError> {
-        todo!()
-    }
-
-    fn get_arrival_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError> {
-        todo!()
-    }
-
-    fn get_flight_info(number: &str) -> Result<FlightInfo, DBError> {
-        todo!()
-    }
 }
 
 pub struct Db;
@@ -88,7 +99,7 @@ impl Db {
 
 impl Provider for Db {
     /// Get the airports from a country from the database to show them in the graphical interface.
-    fn get_airports(country: &str) -> std::result::Result<Vec<Airport>, DBError> {
+    fn get_airports_by_country(country: &str) -> std::result::Result<Vec<Airport>, DBError> {
         let query = format!("SELECT iata, name, lat, lon FROM airports WHERE country = {country}");
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
@@ -449,6 +460,14 @@ impl Provider for Db {
 
         Ok(flight_info)
     }
+
+    fn get_flights() -> Result<Vec<Flight>, DBError> {
+        todo!()
+    }
+
+    fn get_airports() -> Result<Vec<Airport>, DBError> {
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -486,14 +505,4 @@ pub struct FlightInfo {
     pub fuel: f64,
     pub height: i32,
     pub speed: i32,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mock_reader() {
-        let airports = MockProvider::get_airports("").unwrap();
-    }
 }
