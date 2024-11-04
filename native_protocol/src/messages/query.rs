@@ -1,5 +1,7 @@
 use std::io::Read;
 
+use crate::{errors::NativeError, Serializable};
+
 enum ConsistencyCode {
     Any = 0x0000,
     One = 0x0001,
@@ -30,8 +32,43 @@ pub enum Consistency {
 }
 
 impl Consistency {
-    fn to_code(&self) -> ConsistencyCode {
+    pub fn from_string(s: &str) -> Result<Self, NativeError> {
+        let consistency = match s.to_lowercase().as_str() {
+            "any" => Consistency::Any,
+            "one" => Consistency::One,
+            "two" => Consistency::Two,
+            "three" => Consistency::Three,
+            "quorum" => Consistency::Quorum,
+            "all" => Consistency::All,
+            "local_quorum" => Consistency::LocalQuorum,
+            "each_quorum" => Consistency::EachQuorum,
+            "serial" => Consistency::Serial,
+            "local_serial" => Consistency::LocalSerial,
+            "local_one" => Consistency::LocalOne,
+            _ => return Err(NativeError::InvalidCode),
+        };
+
+        Ok(consistency)
+    }
+
+    pub fn to_string(&self) -> &'static str {
         match self {
+            Consistency::Any => "ANY",
+            Consistency::One => "ONE",
+            Consistency::Two => "TWO",
+            Consistency::Three => "THREE",
+            Consistency::Quorum => "QUORUM",
+            Consistency::All => "ALL",
+            Consistency::LocalQuorum => "LOCAL_QUORUM",
+            Consistency::EachQuorum => "EACH_QUORUM",
+            Consistency::Serial => "SERIAL",
+            Consistency::LocalSerial => "LOCAL_SERIAL",
+            Consistency::LocalOne => "LOCAL_ONE",
+        }
+    }
+
+    fn to_code(&self) -> Result<ConsistencyCode, NativeError> {
+        let consistency_code = match self {
             Consistency::Any => ConsistencyCode::Any,
             Consistency::One => ConsistencyCode::One,
             Consistency::Two => ConsistencyCode::Two,
@@ -43,10 +80,12 @@ impl Consistency {
             Consistency::Serial => ConsistencyCode::Serial,
             Consistency::LocalSerial => ConsistencyCode::LocalSerial,
             Consistency::LocalOne => ConsistencyCode::LocalOne,
-        }
+        };
+
+        Ok(consistency_code)
     }
 
-    fn from_code(consistency_code: u16) -> Self {
+    fn from_code(consistency_code: u16) -> Result<Self, NativeError> {
         let consistency = match consistency_code {
             0x0000 => Consistency::Any,
             0x0001 => Consistency::One,
@@ -59,10 +98,10 @@ impl Consistency {
             0x0008 => Consistency::Serial,
             0x0009 => Consistency::LocalSerial,
             0x000A => Consistency::LocalOne,
-            _ => panic!("Invalid consistency code"),
+            _ => return Err(NativeError::InvalidCode),
         };
 
-        consistency
+        Ok(consistency)
     }
 }
 
@@ -120,7 +159,7 @@ impl QueryParams {
         QueryParams { consistency, flags }
     }
 
-    fn flags_to_byte(&self) -> u8 {
+    fn flags_to_byte(&self) -> Result<u8, NativeError> {
         let mut flags_byte: u8 = 0;
 
         for flag in &self.flags {
@@ -135,10 +174,10 @@ impl QueryParams {
             }
         }
 
-        flags_byte
+        Ok(flags_byte)
     }
 
-    fn byte_to_flags(flags_byte: u8) -> Vec<Flag> {
+    fn byte_to_flags(flags_byte: u8) -> Result<Vec<Flag>, NativeError> {
         let mut flags = Vec::new();
 
         if flags_byte & FlagCode::Values as u8 != 0 {
@@ -163,7 +202,7 @@ impl QueryParams {
             flags.push(Flag::WithNamesForValues);
         }
 
-        flags
+        Ok(flags)
     }
 }
 
@@ -177,6 +216,17 @@ impl Query {
     pub fn new(query: String, params: QueryParams) -> Self {
         Query { query, params }
     }
+
+    pub fn get_query(&self) -> &str {
+        &self.query
+    }
+
+    pub fn get_consistency(&self) -> &str {
+        &self.params.consistency.to_string()
+    }
+}
+
+impl Serializable for Query {
     // this is a [long string]
     /// 0         8        16        24        32
     /// +---------+---------+---------+---------+
@@ -195,7 +245,7 @@ impl Query {
 
     /// Serialize the `Query` struct to a byte vector.
     /// The byte vector will contain the query in the format described above.
-    pub fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self) -> Result<Vec<u8>, NativeError> {
         let mut bytes = Vec::new();
 
         // Add query string length (4 bytes) and query string
@@ -204,53 +254,62 @@ impl Query {
         bytes.extend_from_slice(self.query.as_bytes());
 
         // Add consistency (2 bytes)
-        let consistency_code = self.params.consistency.to_code();
+        let consistency_code = self.params.consistency.to_code()?;
         bytes.extend_from_slice(&(consistency_code as u16).to_be_bytes());
 
         // Add flags (1 byte)
-        let flags_byte = self.params.flags_to_byte();
+        let flags_byte = self.params.flags_to_byte()?;
         bytes.push(flags_byte);
 
         // TODO: Add optional parameters based on flags.
 
-        bytes
+        Ok(bytes)
     }
 
     /// Parse a `Query` struct from a byte slice.
     /// The byte slice must contain a query in the format described in `to_bytes`.
-    pub fn from_bytes(bytes: &[u8]) -> Self {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, NativeError> {
         let mut cursor = std::io::Cursor::new(bytes);
 
         // Read query length (4 bytes)
         let mut query_len_bytes = [0u8; 4];
-        cursor.read_exact(&mut query_len_bytes).unwrap();
+        cursor
+            .read_exact(&mut query_len_bytes)
+            .map_err(|_| NativeError::CursorError)?;
         let query_len = u32::from_be_bytes(query_len_bytes) as usize;
 
         // Read the query string (UTF-8)
         let mut query_bytes = vec![0u8; query_len];
-        cursor.read_exact(&mut query_bytes).unwrap();
-        let query = String::from_utf8(query_bytes).unwrap();
+        cursor
+            .read_exact(&mut query_bytes)
+            .map_err(|_| NativeError::CursorError)?;
+        let query =
+            String::from_utf8(query_bytes).map_err(|_| NativeError::DeserializationError)?;
 
         // Read the consistency level (2 bytes)
         let mut consistency_code_bytes = [0u8; 2];
-        cursor.read_exact(&mut consistency_code_bytes).unwrap();
+        cursor
+            .read_exact(&mut consistency_code_bytes)
+            .map_err(|_| NativeError::CursorError)?;
         let consistency_code = u16::from_be_bytes(consistency_code_bytes);
 
         // Convert the consistency code to the corresponding `Consistency`
-        let consistency = Consistency::from_code(consistency_code);
+        let consistency = Consistency::from_code(consistency_code)?;
 
         // Read flags (1 byte)
         let mut flags_byte = [0u8; 1];
-        cursor.read_exact(&mut flags_byte).unwrap();
+        cursor
+            .read_exact(&mut flags_byte)
+            .map_err(|_| NativeError::CursorError)?;
         let flags_byte = flags_byte[0];
 
         // Convert the flags byte to a vector of `Flag`
-        let flags = QueryParams::byte_to_flags(flags_byte);
+        let flags = QueryParams::byte_to_flags(flags_byte)?;
 
         // Create the `QueryParams` and the `Query` struct
         let params = QueryParams { consistency, flags };
 
-        Query { query, params }
+        Ok(Query { query, params })
     }
 }
 
@@ -271,7 +330,7 @@ mod tests {
             params,
         };
 
-        let actual_bytes = query_message.to_bytes();
+        let actual_bytes = query_message.to_bytes().unwrap();
 
         let expected_bytes: Vec<u8> = vec![
             // Longitud de la query string (4 bytes)
@@ -302,7 +361,7 @@ mod tests {
         let query_message = Query { query, params };
 
         // Serialize to bytes
-        let query_bytes = query_message.to_bytes();
+        let query_bytes = query_message.to_bytes().unwrap();
 
         // Check the length of the serialized byte array
         // Length of query length (4 bytes) + query string + consistency (2 bytes) + flags (1 byte)
@@ -345,10 +404,10 @@ mod tests {
         };
 
         // Serialize to bytes
-        let query_bytes = expected_query.to_bytes();
+        let query_bytes = expected_query.to_bytes().unwrap();
 
         // Deserialize from bytes
-        let deserialized_query = Query::from_bytes(&query_bytes);
+        let deserialized_query = Query::from_bytes(&query_bytes).unwrap();
 
         // Check that the original and deserialized queries are the same
         assert_eq!(expected_query, deserialized_query);

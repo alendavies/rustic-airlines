@@ -1,6 +1,6 @@
 use std::io::Read;
 
-use crate::{Serializable, SerializationError};
+use crate::{errors::NativeError, Serializable};
 
 // Represents the type of change in a schema altering query
 #[derive(Debug, PartialEq)]
@@ -26,6 +26,14 @@ pub struct Options {
     name: Option<String>,
 }
 
+impl Options {
+    pub fn new(keyspace: String, table: Option<String>) -> Self {
+        Options {
+            keyspace,
+            name: table,
+        }
+    }
+}
 #[derive(Debug, PartialEq)]
 ///  The result to a schema altering query
 /// (creation/update/drop of a keyspace/table/index).
@@ -35,16 +43,27 @@ pub struct SchemaChange {
     options: Options,
 }
 
+impl SchemaChange {
+    pub fn new(change_type: ChangeType, target: Target, options: Options) -> Self {
+        SchemaChange {
+            change_type,
+            target,
+            options,
+        }
+    }
+}
 impl Serializable for SchemaChange {
     /// Serializes the schema change to bytes.
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self) -> std::result::Result<Vec<u8>, NativeError> {
         let mut bytes = Vec::new();
 
         let change_type = match self.change_type {
             ChangeType::Created => "CREATED",
             ChangeType::Updated => "UPDATED",
             ChangeType::Dropped => "DROPPED",
+            _ => return Err(NativeError::InvalidVariant),
         };
+
         bytes.extend_from_slice(&(change_type.len() as u16).to_be_bytes());
         bytes.extend_from_slice(change_type.as_bytes());
 
@@ -52,61 +71,85 @@ impl Serializable for SchemaChange {
             Target::Keyspace => "KEYSPACE",
             Target::Table => "TABLE",
             Target::Type => "TYPE",
+            _ => return Err(NativeError::InvalidVariant),
         };
+
         bytes.extend_from_slice(&(target.len() as u16).to_be_bytes());
         bytes.extend_from_slice(target.as_bytes());
 
         bytes.extend_from_slice(&(self.options.keyspace.len() as u16).to_be_bytes());
         bytes.extend_from_slice(self.options.keyspace.as_bytes());
+
         if let Some(name) = &self.options.name {
             bytes.extend_from_slice(&(name.len() as u16).to_be_bytes());
             bytes.extend_from_slice(name.as_bytes());
+        } else {
+            bytes.extend_from_slice([0u8; 2].as_ref());
         }
 
-        bytes
+        Ok(bytes)
     }
 
     /// Deserializes the schema change from bytes, returning a SchemaChange.
-    fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, SerializationError> {
+    fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, NativeError> {
         let mut cursor = std::io::Cursor::new(bytes);
 
         // Read change type
         let mut change_type_len_bytes = [0u8; 2];
-        cursor.read_exact(&mut change_type_len_bytes).unwrap();
+        cursor
+            .read_exact(&mut change_type_len_bytes)
+            .map_err(|_| NativeError::CursorError)?;
         let change_type_len = u16::from_be_bytes(change_type_len_bytes) as usize;
 
         let mut change_type_bytes = vec![0u8; change_type_len];
-        cursor.read_exact(&mut change_type_bytes).unwrap();
-        let change_type = String::from_utf8(change_type_bytes).unwrap();
+        cursor
+            .read_exact(&mut change_type_bytes)
+            .map_err(|_| NativeError::CursorError)?;
+        let change_type =
+            String::from_utf8(change_type_bytes).map_err(|_| NativeError::DeserializationError)?;
 
         // Read target
         let mut target_len_bytes = [0u8; 2];
-        cursor.read_exact(&mut target_len_bytes).unwrap();
+        cursor
+            .read_exact(&mut target_len_bytes)
+            .map_err(|_| NativeError::CursorError)?;
         let target_len = u16::from_be_bytes(target_len_bytes) as usize;
 
         let mut target_bytes = vec![0u8; target_len];
-        cursor.read_exact(&mut target_bytes).unwrap();
-        let target = String::from_utf8(target_bytes).unwrap();
+        cursor
+            .read_exact(&mut target_bytes)
+            .map_err(|_| NativeError::CursorError)?;
+        let target =
+            String::from_utf8(target_bytes).map_err(|_| NativeError::DeserializationError)?;
 
         // Read keyspace
         let mut keyspace_len_bytes = [0u8; 2];
-        cursor.read_exact(&mut keyspace_len_bytes).unwrap();
+        cursor
+            .read_exact(&mut keyspace_len_bytes)
+            .map_err(|_| NativeError::CursorError)?;
         let keyspace_len = u16::from_be_bytes(keyspace_len_bytes) as usize;
 
         let mut keyspace_bytes = vec![0u8; keyspace_len];
-        cursor.read_exact(&mut keyspace_bytes).unwrap();
-        let keyspace = String::from_utf8(keyspace_bytes).unwrap();
+        cursor
+            .read_exact(&mut keyspace_bytes)
+            .map_err(|_| NativeError::CursorError)?;
+        let keyspace =
+            String::from_utf8(keyspace_bytes).map_err(|_| NativeError::DeserializationError)?;
 
         // Read name of the table or type if present
         let name = {
             let mut name_bytes_len = [0u8; 2];
-            cursor.read_exact(&mut name_bytes_len).unwrap();
+            cursor
+                .read_exact(&mut name_bytes_len)
+                .map_err(|_| NativeError::CursorError)?;
             let name_len = u16::from_be_bytes(name_bytes_len) as usize;
 
             if name_len > 0 {
                 let mut name_bytes = vec![0u8; name_len];
-                cursor.read_exact(&mut name_bytes).unwrap();
-                Some(String::from_utf8(name_bytes).unwrap())
+                cursor
+                    .read_exact(&mut name_bytes)
+                    .map_err(|_| NativeError::CursorError)?;
+                Some(String::from_utf8(name_bytes).map_err(|_| NativeError::DeserializationError)?)
             } else {
                 None
             }
@@ -116,14 +159,14 @@ impl Serializable for SchemaChange {
             "CREATED" => ChangeType::Created,
             "UPDATED" => ChangeType::Updated,
             "DROPPED" => ChangeType::Dropped,
-            _ => panic!("Invalid change type"),
+            _ => return Err(NativeError::InvalidVariant),
         };
 
         let target = match target.as_str() {
             "KEYSPACE" => Target::Keyspace,
             "TABLE" => Target::Table,
             "TYPE" => Target::Type,
-            _ => panic!("Invalid target"),
+            _ => return Err(NativeError::InvalidVariant),
         };
 
         Ok(SchemaChange {
@@ -152,7 +195,7 @@ mod tests {
             },
         });
 
-        let bytes = schema_change.to_bytes();
+        let bytes = schema_change.to_bytes().unwrap();
 
         let mut expected_bytes = Vec::new();
         expected_bytes.extend_from_slice(&(ResultCode::SchemaChange as u32).to_be_bytes());
@@ -169,17 +212,43 @@ mod tests {
     }
 
     #[test]
-    fn test_schema_change_from_bytes() {
+    fn test_schema_change_to_bytes_with_none() {
         let expected_result = Result::SchemaChange(SchemaChange {
             change_type: ChangeType::Created,
-            target: Target::Table,
+            target: Target::Keyspace,
             options: Options {
                 keyspace: "my_keyspace".to_string(),
-                name: Some("my_table".to_string()),
+                name: None,
             },
         });
 
-        let bytes = Result::to_bytes(&expected_result);
+        let bytes = Result::to_bytes(&expected_result).unwrap();
+
+        let mut expected_bytes = Vec::new();
+        expected_bytes.extend_from_slice(&(ResultCode::SchemaChange as u32).to_be_bytes());
+        expected_bytes.extend_from_slice(&("CREATED".len() as u16).to_be_bytes());
+        expected_bytes.extend_from_slice("CREATED".as_bytes());
+        expected_bytes.extend_from_slice(&("KEYSPACE".len() as u16).to_be_bytes());
+        expected_bytes.extend_from_slice("KEYSPACE".as_bytes());
+        expected_bytes.extend_from_slice(&("my_keyspace".len() as u16).to_be_bytes());
+        expected_bytes.extend_from_slice("my_keyspace".as_bytes());
+        expected_bytes.extend_from_slice([0u8; 2].as_ref());
+
+        assert_eq!(bytes, expected_bytes);
+    }
+
+    #[test]
+    fn test_schema_change_from_bytes_with_none() {
+        let expected_result = Result::SchemaChange(SchemaChange {
+            change_type: ChangeType::Created,
+            target: Target::Keyspace,
+            options: Options {
+                keyspace: "my_keyspace".to_string(),
+                name: None,
+            },
+        });
+
+        let bytes = Result::to_bytes(&expected_result).unwrap();
 
         let result = Result::from_bytes(&bytes).unwrap();
 

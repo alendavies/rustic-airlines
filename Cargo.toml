@@ -3,15 +3,19 @@ name = "aerolineas-rusticas"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-
 [workspace]
 members = [
     "driver",
     "node",
     "partitioner",
-    "query-coordinator",
-    "testing",
+    "query-creator",
     "native_protocol",
+    "graphical-interface",
+    "node_launcher"
 	"flight-sim"
 ]
+
+[dev-dependencies]
+driver = { path = "driver" }  # Solo para los tests de integración
+native_protocol = { path = "native_protocol" }  # Solo para los tests de integración
+

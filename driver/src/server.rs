@@ -1,8 +1,4 @@
-use native_protocol::{
-    frame::Frame,
-    messages::query::{Query, QueryParams},
-    Serializable,
-};
+use native_protocol::{frame::Frame, messages::query::Query, Serializable};
 
 #[derive(Debug)]
 pub enum Request {
