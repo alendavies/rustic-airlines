@@ -18,6 +18,7 @@ use crate::{
 #[derive(Debug, PartialEq, Clone)]
 pub struct Select {
     pub table_name: String,
+    pub keyspace_used_name: String,
     pub columns: Vec<String>,
     pub where_clause: Option<Where>,
     pub orderby_clause: Option<OrderBy>,
@@ -97,7 +98,14 @@ impl Select {
         let mut i = 0;
 
         let columns = parse_columns(&tokens, &mut i)?;
-        let table_name = parse_table_name(&tokens, &mut i)?;
+        let full_table_name = parse_table_name(&tokens, &mut i)?;
+        
+        let (keyspace_used_name, table_name) = if full_table_name.contains('.') {
+            let parts: Vec<&str> = full_table_name.split('.').collect();
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            (String::new(), full_table_name.clone())
+        };
 
         if columns.is_empty() || table_name.is_empty() {
             return Err(CQLError::InvalidSyntax);
@@ -121,6 +129,7 @@ impl Select {
 
         Ok(Self {
             table_name,
+            keyspace_used_name,
             columns: columns.iter().map(|c| c.to_string()).collect(),
             where_clause,
             orderby_clause,
@@ -129,7 +138,13 @@ impl Select {
 
     /// Serializa la consulta `Select` a un `String`.
     pub fn serialize(&self) -> String {
-        let mut result = format!("SELECT {} FROM {}", self.columns.join(","), self.table_name);
+
+        let table_name_str = if !self.keyspace_used_name.is_empty() {
+            format!("{}.{}", self.keyspace_used_name, self.table_name)
+        } else {
+            self.table_name.clone()
+        };
+        let mut result = format!("SELECT {} FROM {}", self.columns.join(","), table_name_str);
 
         // Agrega el `WHERE` si existe
         if let Some(where_clause) = &self.where_clause {
@@ -195,6 +210,22 @@ mod tests {
         let select = Select::new_from_tokens(tokens).unwrap();
         assert_eq!(select.columns, ["col"]);
         assert_eq!(select.table_name, "table");
+        assert_eq!(select.where_clause, None);
+        assert_eq!(select.orderby_clause, None);
+    }
+
+    #[test]
+    fn new_with_keyspace() {
+        let tokens = vec![
+            String::from("SELECT"),
+            String::from("col"),
+            String::from("FROM"),
+            String::from("keyspace.table"),
+        ];
+        let select = Select::new_from_tokens(tokens).unwrap();
+        assert_eq!(select.columns, ["col"]);
+        assert_eq!(select.table_name, "table");
+        assert_eq!(select.keyspace_used_name, "keyspace");
         assert_eq!(select.where_clause, None);
         assert_eq!(select.orderby_clause, None);
     }

@@ -11,6 +11,7 @@ use crate::{errors::CQLError, utils::is_into};
 #[derive(Debug, PartialEq, Clone)]
 pub struct Into {
     pub table_name: String,
+    pub keyspace_used_name: String,
     pub columns: Vec<String>,
 }
 
@@ -30,11 +31,18 @@ impl Into {
         }
         let mut i = 0;
         let table_name;
+        let keyspace_used_name: String;
         let mut columns: Vec<String> = Vec::new();
 
         if is_into(tokens[i]) {
             i += 1;
-            table_name = tokens[i].to_string();
+            let full_table_name = tokens[i].to_string();
+            (keyspace_used_name, table_name) = if full_table_name.contains('.') {
+                let parts: Vec<&str> = full_table_name.split('.').collect();
+                (parts[0].to_string(), parts[1].to_string())
+            } else {
+                (String::new(), full_table_name.clone())
+            };
             i += 1;
 
             let cols: Vec<String> = tokens[i].split(",").map(|c| c.trim().to_string()).collect();
@@ -52,6 +60,7 @@ impl Into {
 
         Ok(Self {
             table_name,
+            keyspace_used_name,
             columns,
         })
     }
