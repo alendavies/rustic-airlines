@@ -1,5 +1,5 @@
 use crate::{
-    db::{Airport, Db, Flight, MockProvider, Provider},
+    db::{Airport, Flight, MockProvider, Provider},
     widgets::WidgetAirport,
 };
 
@@ -40,7 +40,7 @@ impl SelectionState {
 
 /// Tracks the flights and airports to display.
 pub struct ViewState {
-    // pub flights: Vec<Flight>,
+    pub flights: Vec<Flight>,
     pub airports: Vec<Airport>,
 }
 
@@ -48,7 +48,7 @@ impl ViewState {
     pub fn new() -> Self {
         Self {
             // TODO: pass a parameter?
-            // flights: MockProvider::get_flights().unwrap(),
+            flights: MockProvider::get_flights().unwrap(),
             airports: MockProvider::get_airports().unwrap(),
         }
     }

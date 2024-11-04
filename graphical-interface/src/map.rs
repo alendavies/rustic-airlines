@@ -58,7 +58,8 @@ impl<P: Provider> eframe::App for MyApp<P> {
 
                 // In egui, widgets are constructed and consumed in each frame.
                 let map = Map::new(Some(tiles), &mut self.map_memory, my_position)
-                    .with_plugin(plugins::Airports::new(&self.view_state.airports));
+                    .with_plugin(plugins::Airports::new(&self.view_state.airports))
+                    .with_plugin(plugins::Flights::new(&self.view_state.flights));
 
                 // Add the map widget.
                 ui.add(map);
