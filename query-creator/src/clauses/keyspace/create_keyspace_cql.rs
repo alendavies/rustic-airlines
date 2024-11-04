@@ -3,12 +3,15 @@ use crate::{errors::CQLError, QueryCreator};
 #[derive(Debug, Clone)]
 pub struct CreateKeyspace {
     name: String,
+    if_not_exists_clause: bool,
     replication_class: String,
     replication_factor: u32,
 }
 
 impl CreateKeyspace {
+
     pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
+
         if query.len() < 10
             || query[0].to_uppercase() != "CREATE"
             || query[1].to_uppercase() != "KEYSPACE"
@@ -16,11 +19,21 @@ impl CreateKeyspace {
             return Err(CQLError::InvalidSyntax);
         }
 
-        let keyspace_name = query[2].to_string();
+        // Check for IF NOT EXISTS
+        let mut index = 2;
+        let if_not_exists_clause = if query.len() > 3 && query[2].to_uppercase() == "IF" && query[3].to_uppercase() == "NOT" && query[4].to_uppercase() == "EXISTS" {
+            index += 3; // Skip the "IF NOT EXISTS" part
+            true
+        } else {
+            index += 0; // No change in index
+            false
+        };
 
-        if query[3].to_uppercase() != "WITH"
-            || query[4].to_uppercase() != "REPLICATION"
-            || query[5] != "="
+        let keyspace_name = query[index].to_string();
+
+        if query[index + 1].to_uppercase() != "WITH"
+            || query[index + 2].to_uppercase() != "REPLICATION"
+            || query[index + 3] != "="
         {
             return Err(CQLError::InvalidSyntax);
         }
@@ -28,22 +41,22 @@ impl CreateKeyspace {
         let mut replication_class = String::new();
         let mut replication_factor = 0;
 
-        let mut index = 6; // Comienza después de "WITH REPLICATION ="
-        while index < query.len() {
-            match query[index].as_str() {
-                "{" => index += 1, // Saltar el inicio de bloque '{'
+        let mut replication_index = index + 4; // Start after "WITH REPLICATION ="
+        while replication_index < query.len() {
+            match query[replication_index].as_str() {
+                "{" => replication_index += 1, // Skip the start of block '{'
                 "class" => {
-                    replication_class = query[index + 1].to_string();
-                    index += 2;
+                    replication_class = query[replication_index + 1].to_string();
+                    replication_index += 2;
                 }
                 "replication_factor" => {
-                    replication_factor = query[index + 1]
+                    replication_factor = query[replication_index + 1]
                         .parse::<u32>()
                         .map_err(|_| CQLError::InvalidSyntax)?;
-                    index += 2;
+                    replication_index += 2;
                 }
-                "}" => break, // Finaliza al encontrar '}'
-                _ => index += 1,
+                "}" => break, // End when finding '}'
+                _ => replication_index += 1,
             }
         }
 
@@ -53,9 +66,11 @@ impl CreateKeyspace {
 
         Ok(Self {
             name: keyspace_name,
+            if_not_exists_clause,
             replication_class,
             replication_factor,
         })
+        
     }
 
     pub fn get_name(&self) -> String {
@@ -81,7 +96,8 @@ impl CreateKeyspace {
     /// Serializa la estructura `CreateKeyspace` a una consulta CQL
     pub fn serialize(&self) -> String {
         format!(
-            "CREATE KEYSPACE {} WITH replication = {{'class': '{}', 'replication_factor': {}}};",
+            "CREATE KEYSPACE {}{} WITH replication = {{'class': '{}', 'replication_factor': {}}};",
+            if self.if_not_exists_clause { "IF NOT EXISTS " } else { "" },
             self.name, self.replication_class, self.replication_factor
         )
     }
@@ -128,6 +144,7 @@ mod tests {
         assert_eq!(create_keyspace.name, "example");
         assert_eq!(create_keyspace.replication_class, "SimpleStrategy");
         assert_eq!(create_keyspace.replication_factor, 3);
+        assert_eq!(create_keyspace.if_not_exists_clause, false);
     }
 
     #[test]
@@ -170,5 +187,35 @@ mod tests {
 
         let result = CreateKeyspace::new_from_tokens(query);
         assert!(matches!(result, Err(CQLError::InvalidSyntax)));
+    }
+
+    #[test]
+    fn test_create_keyspace_valid_if_not_exists() {
+        let query = vec![
+            "CREATE".to_string(),
+            "KEYSPACE".to_string(),
+            "IF".to_string(),
+            "NOT".to_string(),
+            "EXISTS".to_string(),
+            "example".to_string(),
+            "WITH".to_string(),
+            "replication".to_string(),
+            "=".to_string(),
+            "{".to_string(),
+            "class".to_string(),
+            "SimpleStrategy".to_string(),
+            "replication_factor".to_string(),
+            "3".to_string(),
+            "}".to_string(),
+        ];
+
+        let result = CreateKeyspace::new_from_tokens(query);
+        assert!(result.is_ok());
+
+        let create_keyspace = result.unwrap();
+        assert_eq!(create_keyspace.name, "example");
+        assert_eq!(create_keyspace.replication_class, "SimpleStrategy");
+        assert_eq!(create_keyspace.replication_factor, 3);
+        assert_eq!(create_keyspace.if_not_exists_clause, true)
     }
 }

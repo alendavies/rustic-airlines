@@ -285,7 +285,7 @@ impl CreateTable {
     
         // Construir la declaración base
         let if_not_exists_str = if self.if_not_exists_clause { "IF NOT EXISTS " } else { "" };
-        let keyspace_str = if !self.keyspace_used_name.is_empty() {
+        let table_name_str = if !self.keyspace_used_name.is_empty() {
             format!("{}.{}", self.keyspace_used_name, self.name)
         } else {
             self.name.clone()
@@ -294,7 +294,7 @@ impl CreateTable {
         let mut query = format!(
             "CREATE TABLE {}{} ({})",
             if_not_exists_str,
-            keyspace_str,
+            table_name_str,
             columns_str.join(", ")
         );
     
