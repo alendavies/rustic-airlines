@@ -55,10 +55,18 @@ impl InternodeProtocolHandler {
         internode: bool,
         replication: bool,
         client_id: i32,
+        keyspace_name: &str,
     ) -> String {
         format!(
-            "QUERY - {} - {} - {} - {} - {} - {} - {}",
-            id, open_query_id, query_type, structure, internode, replication, client_id
+            "QUERY - {} - {} - {} - {} - {} - {} - {} - {}",
+            id,
+            open_query_id,
+            query_type,
+            structure,
+            internode,
+            replication,
+            client_id,
+            keyspace_name
         )
     }
 
@@ -210,9 +218,8 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
     ) -> Result<(), NodeError> {
-        let parts: Vec<&str> = message.splitn(7, " - ").collect();
-
-        if parts.len() < 6 {
+        let parts: Vec<&str> = message.splitn(8, " - ").collect();
+        if parts.len() < 7 {
             return Err(NodeError::InternodeProtocolError);
         }
 
@@ -227,7 +234,21 @@ impl InternodeProtocolHandler {
         let client_id: i32 = parts[6]
             .parse()
             .map_err(|_| NodeError::InternodeProtocolError)?;
+        let keyspace_name = parts[7];
 
+        if keyspace_name != "None" {
+            {
+                let mut guard_node = node.lock()?;
+                let k = guard_node.get_keyspace(keyspace_name)?;
+                guard_node
+                    .get_open_handle_query()
+                    .set_keyspace_of_query(open_query_id, k.ok_or(NodeError::KeyspaceError)?);
+                println!(
+                    "los k de los clientes son {:?}",
+                    guard_node.clients_keyspace
+                );
+            }
+        }
         let result: Result<Option<(i32, String)>, NodeError> = match query_type {
             "HANDSHAKE" => {
                 Self::handle_introduction_command(node, nodo_id, connections.clone(), is_seed)
@@ -360,10 +381,7 @@ impl InternodeProtocolHandler {
         let status = parts[1];
         let content = parts[2];
 
-        let keyspace = query_handler
-            .get_query_mut(&open_query_id)
-            .ok_or(NodeError::InternodeProtocolError)?
-            .get_keyspace();
+        let keyspace = query_handler.get_keyspace_of_query(open_query_id)?;
 
         let keyspace_name = if let Some(value) = keyspace {
             value.get_name()
@@ -704,10 +722,11 @@ mod tests {
             true,
             true,
             1,
+            "a",
         );
         assert_eq!(
             message,
-            "QUERY - 127.0.0.1 - 1 - CREATE_TABLE - table_structure - true - true - 1"
+            "QUERY - 127.0.0.1 - 1 - CREATE_TABLE - table_structure - true - true - 1 - a"
         );
     }
 

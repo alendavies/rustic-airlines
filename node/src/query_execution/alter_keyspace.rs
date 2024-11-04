@@ -16,9 +16,13 @@ impl QueryExecution {
     ) -> Result<(), NodeError> {
         // Look for the keyspace in the list of keyspaces
         let mut node = self.node_that_execute.lock()?;
+
         let mut keyspace = node
-            .get_client_keyspace(client_id)?
-            .ok_or(NodeError::KeyspaceError)?;
+            .keyspaces
+            .iter()
+            .find(|k| k.get_name() == alter_keyspace.get_name())
+            .ok_or(NodeError::KeyspaceError)?
+            .clone();
 
         // Validate if the replication class and factor are the same to avoid unnecessary operations
         if keyspace.get_replication_class() == alter_keyspace.get_replication_class()
@@ -42,6 +46,7 @@ impl QueryExecution {
                 true,
                 open_query_id,
                 client_id,
+                "None",
             )?;
         }
 

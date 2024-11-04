@@ -22,6 +22,7 @@ impl QueryExecution {
             .node_that_execute
             .lock()
             .map_err(|_| NodeError::LockError)?;
+
         node.remove_keyspace(keyspace_name.clone())?;
 
         // Generate the folder name where the keyspace is stored
@@ -45,6 +46,7 @@ impl QueryExecution {
                 true,
                 open_query_id,
                 client_id,
+                "None",
             )?;
         }
 

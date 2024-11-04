@@ -21,24 +21,21 @@ impl QueryExecution {
         let table;
         let mut do_in_this_node = true;
 
+        let client_keyspace;
         {
             // Get the table name and reference the node
             let table_name = delete_query.table_name.clone();
-            let node = self
+            let mut node = self
                 .node_that_execute
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
 
-            let client_keyspace = node
-                .get_client_keyspace(client_id)?
-                .ok_or(NodeError::KeyspaceError)?;
-
+            client_keyspace = node
+                .get_open_handle_query()
+                .get_keyspace_of_query(open_query_id)?
+                .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
             // Retrieve the table and replication factor
-            table = node.get_table(table_name.clone(), client_keyspace)?;
-
-            if !node.has_actual_keyspace(client_id)? {
-                return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
-            }
+            table = node.get_table(table_name.clone(), client_keyspace.clone())?;
 
             // Validate the primary and clustering keys
             let partition_keys = table.get_partition_keys()?;
@@ -84,6 +81,7 @@ impl QueryExecution {
                     true,
                     open_query_id,
                     client_id,
+                    &client_keyspace.get_name(),
                 )?;
                 do_in_this_node = false;
             }
@@ -99,6 +97,7 @@ impl QueryExecution {
                     true,
                     open_query_id,
                     client_id,
+                    &client_keyspace.get_name(),
                 )?;
             }
 

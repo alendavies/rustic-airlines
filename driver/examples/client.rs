@@ -14,9 +14,13 @@ fn main() {
         "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
         "ALTER KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2}".to_string(),
         "USE test_keyspace".to_string(),
-        // "CREATE TABLE test_table (id INT ,id_dos UUID, name TEXT, PRIMARY KEY (id, name))".to_string(),
-        // "INSERT INTO test_table (id, id_dos, name) VALUES (1, uuid(), 'bob@example.com')".to_string(),
-        // "SELECT id_dos FROM test_table WHERE id = 1".to_string()
+        "CREATE KEYSPACE test_keyspace_dos WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
+        "CREATE TABLE test_table (id INT ,name TEXT, PRIMARY KEY (id, name))".to_string(),
+        //"INSERT INTO test_table (id, name) VALUES (1, 'Loren')".to_string(),
+        "USE test_keyspace_dos".to_string(),
+        "USE test_keyspace".to_string(),
+        "INSERT INTO test_table (id, name) VALUES (2, 'Marcos')".to_string(),
+        "SELECT name FROM test_table WHERE id = 2".to_string()
     ];
 
     // Ejecutar cada consulta en un loop

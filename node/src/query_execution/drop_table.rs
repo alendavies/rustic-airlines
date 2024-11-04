@@ -20,19 +20,16 @@ impl QueryExecution {
             .lock()
             .map_err(|_| NodeError::LockError)?;
 
-        if !node.has_actual_keyspace(client_id)? {
-            return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
-        }
+        let client_keyspace = node
+            .get_open_handle_query()
+            .get_keyspace_of_query(open_query_id)?
+            .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
         // Get the name of the table to delete
         let table_name = drop_table.get_table_name();
 
         // Lock the node and remove the table from the internal list
         node.remove_table(table_name.clone(), client_id)?;
-
-        let client_keyspace = node
-            .get_client_keyspace(client_id)?
-            .ok_or(NodeError::KeyspaceError)?;
 
         // Generate the file name and folder where the table is stored
         let ip_str = node.get_ip_string().replace(".", "_");
@@ -53,6 +50,7 @@ impl QueryExecution {
                 true,
                 open_query_id,
                 client_id,
+                &client_keyspace.get_name(),
             )?;
         }
 

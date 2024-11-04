@@ -1,5 +1,6 @@
 // Ordered imports
 use crate::NodeError;
+use query_creator::clauses::keyspace;
 use query_creator::clauses::table::create_table_cql::CreateTable;
 use query_creator::errors::CQLError;
 use std::fs::OpenOptions;
@@ -23,18 +24,22 @@ impl QueryExecution {
             .lock()
             .map_err(|_| NodeError::LockError)?;
 
-        if !node.has_actual_keyspace(client_id)? {
-            return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
-        }
-        node.add_table(create_table.clone(), client_id)?;
+        println!(
+            "el client keyspace es {:?}",
+            node.get_open_handle_query()
+                .get_keyspace_of_query(open_query_id)
+        );
+
+        let client_keyspace = node
+            .get_open_handle_query()
+            .get_keyspace_of_query(open_query_id)?
+            .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
+
+        node.add_table(create_table.clone(), &client_keyspace.get_name())?;
 
         // Get the table name and column structure
         let table_name = create_table.get_name().clone();
         let columns = create_table.get_columns().clone();
-
-        let client_keyspace = node
-            .get_client_keyspace(client_id)?
-            .ok_or(NodeError::KeyspaceError)?;
 
         // Generate the primary and replication folder paths
         let ip_str = node.get_ip_string().replace(".", "_");
@@ -80,6 +85,7 @@ impl QueryExecution {
                 true,
                 open_query_id,
                 client_id,
+                &client_keyspace.get_name(),
             )?;
         }
 

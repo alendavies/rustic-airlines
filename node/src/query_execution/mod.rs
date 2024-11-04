@@ -89,7 +89,6 @@ impl QueryExecution {
         client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let mut content: Result<Option<String>, NodeError> = Ok(Some(String::from("_")));
-        println!("entro a ejecutar");
         let query_result = {
             match query.clone() {
                 Query::Select(select_query) => {
@@ -114,10 +113,17 @@ impl QueryExecution {
                     let table;
                     {
                         let table_name = insert_query.into_clause.table_name.clone();
-                        let guard_node = self.node_that_execute.lock()?;
+                        let mut guard_node = self.node_that_execute.lock()?;
                         let keyspace = guard_node
-                            .get_client_keyspace(client_id)?
-                            .ok_or(NodeError::KeyspaceError)?;
+                            .get_open_handle_query()
+                            .get_keyspace_of_query(open_query_id)?
+                            .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
+
+                        println!(
+                            "el keyspace donde voy a buscar la tabla es {:?}",
+                            keyspace.get_tables()
+                        );
+
                         table = guard_node.get_table(table_name, keyspace)?;
                     }
                     self.execute_insert(
@@ -237,6 +243,7 @@ impl QueryExecution {
         internode: bool,
         open_query_id: i32,
         client_id: i32,
+        keyspace_name: &str,
     ) -> Result<(), NodeError> {
         // Serializa el objeto que se quiere enviar
         let message = InternodeProtocolHandler::create_protocol_message(
@@ -247,6 +254,7 @@ impl QueryExecution {
             internode,
             false,
             client_id,
+            keyspace_name,
         );
 
         // Bloquea el nodo para obtener el partitioner y la IP
@@ -272,6 +280,7 @@ impl QueryExecution {
         internode: bool,
         open_query_id: i32,
         client_id: i32,
+        keyspace_name: &str,
     ) -> Result<(), NodeError> {
         // Serializa el objeto que se quiere enviar
         let message = InternodeProtocolHandler::create_protocol_message(
@@ -282,6 +291,7 @@ impl QueryExecution {
             internode,
             false,
             client_id,
+            keyspace_name,
         );
 
         // Conecta y envía el mensaje al nodo específico
@@ -300,6 +310,7 @@ impl QueryExecution {
         internode: bool,
         open_query_id: i32,
         client_id: i32,
+        keyspace_name: &str,
     ) -> Result<bool, NodeError> {
         // Serializa el objeto que se quiere enviar
         let message = InternodeProtocolHandler::create_protocol_message(
@@ -310,6 +321,7 @@ impl QueryExecution {
             internode,
             true,
             client_id,
+            keyspace_name,
         );
 
         // Bloquea el nodo para obtener el partitioner y la IP

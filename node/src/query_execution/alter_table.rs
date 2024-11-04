@@ -22,13 +22,10 @@ impl QueryExecution {
             .lock()
             .map_err(|_| NodeError::LockError)?;
 
-        if !node.has_actual_keyspace(client_id)? {
-            return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
-        }
-
         let client_keyspace = node
-            .get_client_keyspace(client_id)?
-            .ok_or(NodeError::KeyspaceError)?;
+            .get_open_handle_query()
+            .get_keyspace_of_query(open_query_id)?
+            .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
         // Get the table name and lock access to it
         let table_name = alter_table.get_table_name();
@@ -80,6 +77,7 @@ impl QueryExecution {
                 true,
                 open_query_id,
                 client_id,
+                &client_keyspace.get_name(),
             )?;
         }
 

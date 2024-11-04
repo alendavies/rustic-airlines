@@ -24,14 +24,14 @@ impl QueryExecution {
         open_query_id: i32,
         client_id: i32,
     ) -> Result<(), NodeError> {
-        let node = self.node_that_execute.lock()?;
+        let mut node = self.node_that_execute.lock()?;
 
         let mut do_in_this_node = true;
 
-        // Check if the keyspace exists in the node
-        if !node.has_actual_keyspace(client_id)? {
-            return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
-        }
+        let client_keyspace = node
+            .get_open_handle_query()
+            .get_keyspace_of_query(open_query_id)?
+            .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
         if !node.table_already_exist(table_to_insert.get_name(), client_id)? {
             return Err(NodeError::CQLError(CQLError::TableAlreadyExist));
@@ -91,10 +91,7 @@ impl QueryExecution {
         // Deterclient_keyspacemine the node responsible for the insert
         let node_to_insert = node.get_partitioner().get_ip(value_to_hash.clone())?;
         let self_ip = node.get_ip().clone();
-        let keyspace_name = node
-            .get_client_keyspace(client_id)?
-            .ok_or(NodeError::KeyspaceError)?
-            .get_name();
+        let keyspace_name = client_keyspace.get_name();
 
         // If not internode and the target IP differs, forward the insert
         if !internode {
@@ -108,6 +105,7 @@ impl QueryExecution {
                     true,
                     open_query_id,
                     client_id,
+                    &client_keyspace.get_name(),
                 )?;
                 do_in_this_node = false; // The actual insert will be done by another node
             } else {
@@ -124,6 +122,7 @@ impl QueryExecution {
                 true,
                 open_query_id,
                 client_id,
+                &client_keyspace.get_name(),
             )?;
             if replication {
                 self.execution_replicate_itself = true; // This node will replicate the insert

@@ -47,22 +47,18 @@ impl QueryExecution {
         {
             // Get the table name and reference the node
             let table_name = update_query.table_name.clone();
-            let node = self
+            let mut node = self
                 .node_that_execute
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
 
-            // Check if the keyspace exists in the node
-            if !node.has_actual_keyspace(client_id)? {
-                return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
-            }
-
             let client_keyspace = node
-                .get_client_keyspace(client_id)?
-                .ok_or(NodeError::KeyspaceError)?;
+                .get_open_handle_query()
+                .get_keyspace_of_query(open_query_id)?
+                .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
             // Get the table and replication factor
-            table = node.get_table(table_name.clone(), client_keyspace)?;
+            table = node.get_table(table_name.clone(), client_keyspace.clone())?;
 
             // Validate primary key and where clause
             let partition_keys = table.get_partition_keys()?;
@@ -104,6 +100,7 @@ impl QueryExecution {
                     true,
                     open_query_id,
                     client_id,
+                    &client_keyspace.get_name(),
                 )?;
                 do_in_this_node = false;
             }
@@ -119,6 +116,7 @@ impl QueryExecution {
                     true,
                     open_query_id,
                     client_id,
+                    &client_keyspace.get_name(),
                 )?;
             }
 
@@ -214,7 +212,6 @@ impl QueryExecution {
                         .unwrap_or(false)
                     {
                         // Si la cláusula `IF` está presente pero no se cumple, no actualizar
-                        println!("se cumple where pero if NO");
                         writeln!(temp_file, "{}", line)?;
                         return Ok(true);
                     }
@@ -231,7 +228,6 @@ impl QueryExecution {
 
                     columns[index] = new_value.clone();
                 }
-                println!("hay que actualizar, se cumple where y if");
                 writeln!(temp_file, "{}", columns.join(","))?;
                 return Ok(true);
             } else {
