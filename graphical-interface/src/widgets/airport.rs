@@ -190,7 +190,7 @@ impl WidgetAirport {
             .collapsible(false)
             .movable(false)
             // TODO: find the way to make the widgets fill the space one after the other
-            .fixed_pos([20., 400.])
+            .fixed_pos([20., 600.])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.open_tab, Tabs::Info, "Info");
