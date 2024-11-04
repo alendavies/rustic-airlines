@@ -449,7 +449,7 @@ impl QueryCreator {
     ) -> usize {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            if char.is_alphabetic() || char == '_' {
+            if char.is_alphabetic() || char == '_' || char == '@' || char == '.' {
                 current.push(char);
                 index += 1;
             } else {
