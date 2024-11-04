@@ -496,7 +496,7 @@ impl Airport {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Flight {
     pub number: String,
     pub status: String,

@@ -5,7 +5,7 @@ use crate::{
     db::{MockProvider, Provider},
     plugins,
     state::{SelectionState, ViewState},
-    widgets::{WidgetAirport, WidgetAirports},
+    widgets::{WidgetAirport, WidgetAirports, WidgetFlight},
     windows,
 };
 
@@ -18,6 +18,7 @@ pub struct MyApp<P: Provider> {
     selection_state: SelectionState,
     view_state: ViewState,
     airport_widget: Option<WidgetAirport>,
+    flight_widget: Option<WidgetFlight>,
     db: P,
 }
 
@@ -37,6 +38,7 @@ impl<P: Provider> MyApp<P> {
             selection_state: SelectionState::new(),
             view_state: ViewState::new(),
             airport_widget: None,
+            flight_widget: None,
             db,
         }
     }
@@ -64,14 +66,14 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 // Add the map widget.
                 ui.add(map);
 
-                // Add the airport pins in the map.
+                // List of airports window.
                 ui.add(WidgetAirports::new(
                     &self.view_state,
                     &mut self.selection_state,
                 ));
 
+                // Airport window.
                 if let Some(airport) = &self.selection_state.airport {
-                    // Add the selected airport window, if there any.
                     if let Some(widget) = &mut self.airport_widget {
                         if widget.selected_airport == *airport {
                             widget.show(ctx);
@@ -83,6 +85,21 @@ impl<P: Provider> eframe::App for MyApp<P> {
                     }
                 } else {
                     self.airport_widget = None;
+                }
+
+                // Flight window.
+                if let Some(flight) = &self.selection_state.flight {
+                    if let Some(widget) = &mut self.flight_widget {
+                        if widget.selected_flight == *flight {
+                            widget.show(ctx);
+                        } else {
+                            self.flight_widget = None;
+                        }
+                    } else {
+                        self.flight_widget = Some(WidgetFlight::new(flight.clone()));
+                    }
+                } else {
+                    self.flight_widget = None;
                 }
 
                 // Draw utility windows.
