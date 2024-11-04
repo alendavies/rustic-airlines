@@ -69,9 +69,19 @@ impl<P: Provider> eframe::App for MyApp<P> {
                     &mut self.selection_state,
                 ));
 
-                // Add the selected airport window, if there any.
-                if let Some(widget) = &mut self.airport_widget {
-                    widget.show(ctx);
+                if let Some(airport) = &self.selection_state.airport {
+                    // Add the selected airport window, if there any.
+                    if let Some(widget) = &mut self.airport_widget {
+                        if widget.selected_airport == *airport {
+                            widget.show(ctx);
+                        } else {
+                            self.airport_widget = None;
+                        }
+                    } else {
+                        self.airport_widget = Some(WidgetAirport::new(airport.clone()));
+                    }
+                } else {
+                    self.airport_widget = None;
                 }
 
                 // Draw utility windows.

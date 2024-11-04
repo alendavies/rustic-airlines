@@ -174,6 +174,7 @@ pub struct WidgetAirport {
 impl WidgetAirport {
     pub fn new(selected_airport: Airport) -> Self {
         Self {
+            // TODO: should actually receive a reference to the airport
             selected_airport: selected_airport.clone(),
             open_tab: Tabs::Info,
             widget_arrivals: WidgetArrivals::new(selected_airport.iata.clone()),
