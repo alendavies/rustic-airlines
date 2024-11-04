@@ -5,8 +5,9 @@ use crate::types::flight_status::FlightStatus;
 use crate::types::flight::Flight;
 use crate::types::airport::Airport;
 
-use std::env;
-use std::sync::{Arc, Mutex};
+use chrono::{NaiveDateTime, Utc};
+use std::io::{self, Write};
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::thread;
 use client::Client;
 use threadpool::ThreadPool;
@@ -15,98 +16,132 @@ use std::time::Duration;
 use std::error::Error;
 
 
-fn list_flights(flights: &Vec<Arc<Mutex<Flight>>>) {
-    if flights.is_empty() {
-        println!("No flights available.");
-        return;
+fn list_flights(
+    flights: &Vec<Arc<Mutex<Flight>>>,
+    is_listing: &Arc<AtomicBool>,
+    time_rate: &Arc<Mutex<Duration>>,
+    current_time: &Arc<Mutex<NaiveDateTime>>
+) {
+    is_listing.store(true, Ordering::SeqCst);
+
+    let mut input = String::new();
+    let stdin = io::stdin();
+
+    loop {
+        // Limpiar pantalla (compatible con la mayoría de terminales)
+        print!("\x1B[2J\x1B[1;1H");
+        io::stdout().flush().unwrap();
+
+        if flights.is_empty() {
+            println!("No flights available.");
+        } else {
+            println!("Current Time: {}", current_time.lock().unwrap().format("%Y-%m-%d %H:%M:%S"));
+            println!("\n{:<15} {:<10} {:<10} {:<15} {:<10} {:<10}", 
+                "Flight Number", "Status", "Origin", "Destination", "Latitude", "Longitude");
+
+            for flight in flights {
+                if let Ok(flight_data) = flight.lock() {
+                    let status = flight_data.status.as_str();
+                    println!(
+                        "{:<15} {:<10} {:<10} {:<10} {:<15.5} {:<15.5}", 
+                        flight_data.flight_number, 
+                        status, 
+                        flight_data.origin.iata_code, 
+                        flight_data.destination.iata_code, 
+                        flight_data.latitude, 
+                        flight_data.longitude
+                    );
+                }
+            }
+        }
+
+        println!("\nPress 'q' and Enter to exit list-flights mode");
+        
+        // Intentar leer input sin bloquear
+        if let Ok(n) = stdin.read_line(&mut input) {
+            if n > 0 && input.trim().to_lowercase() == "q" {
+                break;
+            }
+            input.clear();
+        }
+
+        // Actualizar current_time basado en time_rate
+        if let (Ok(mut time), Ok(rate)) = (current_time.lock(), time_rate.lock()) {
+            *time = *time + chrono::Duration::from_std(*rate).unwrap_or(chrono::Duration::seconds(1));
+        }
+
+        thread::sleep(Duration::from_secs(1));
     }
 
-    println!("{:<15} {:<10} {:<10} {:<15} {:<10} {:<10}", 
-        "Flight Number", "Status", "Origin", "Destination", "Latitude", "Longitude");
-
-    for flight in flights {
-        let flight_data = flight.lock().unwrap();
-
-        let status = flight_data.status.as_str();
-
-        println!(
-            "{:<15} {:<10} {:<10} {:<10} {:<15.5} {:<15.5}", 
-            flight_data.flight_number, 
-            status, 
-            flight_data.origin.iata_code, 
-            flight_data.destination.iata_code, 
-            flight_data.latitude, 
-            flight_data.longitude
-        );
-    }
+    is_listing.store(false, Ordering::SeqCst);
+    println!("\nExited list-flights mode");
 }
 
-fn simulate_flight(flight: Arc<Mutex<Flight>>, client: Arc<Mutex<Client>>) {
+fn simulate_flight(
+    flight: Arc<Mutex<Flight>>, 
+    client: Arc<Mutex<Client>>, 
+    current_time: Arc<Mutex<NaiveDateTime>>,
+    is_listing: Arc<AtomicBool>
+) {
     loop {
-        let mut flight_data = flight.lock().unwrap();
+        if !is_listing.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_secs(1));
+            continue;
+        }
+
+        let mut flight_data = match flight.lock() {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("Failed to lock flight data for simulation: {}", e);
+                return;
+            }
+        };
+
+        let current = current_time.lock().unwrap().clone();
 
         match flight_data.status {
             FlightStatus::Pending => {
-                println!("Flight {} pending, waiting for departure...", flight_data.flight_number);
+                if current >= flight_data.departure_time {
+                    flight_data.status = FlightStatus::InFlight;
+                }
             }
-            FlightStatus::InFlight => {
-                let direction = flight_data.calculate_current_direction();
-                flight_data.update_position(direction);
+            FlightStatus::InFlight | FlightStatus::Delayed => {
+                flight_data.update_position(current);
 
-                println!(
-                    "Flight {} in progress: latitude={}, longitude={}, distance_traveled={}", 
-                    flight_data.flight_number, flight_data.latitude, flight_data.longitude,
-                    flight_data.distance_traveled
-                );
-
-                let mut client_locked = client.lock().unwrap();
-                if let Err(e) = client_locked.update_flight(&*flight_data) {
-                    eprintln!("Failed to update flight {}: {}", flight_data.flight_number, e);
+                if let Ok(mut client_locked) = client.lock() {
+                    if let Err(e) = client_locked.update_flight(&*flight_data) {
+                        eprintln!("Failed to update flight {}: {}", flight_data.flight_number, e);
+                    }
                 }
             }
             FlightStatus::Finished => {
-                println!("Flight {} has landed.", flight_data.flight_number);
-
-                let mut client_locked = client.lock().unwrap();
-                if let Err(e) = client_locked.update_flight(&*flight_data) {
-                    eprintln!("Failed to update flight {}: {}", flight_data.flight_number, e);
+                if let Ok(mut client_locked) = client.lock() {
+                    if let Err(e) = client_locked.update_flight(&*flight_data) {
+                        eprintln!("Failed to update flight {}: {}", flight_data.flight_number, e);
+                    }
                 }
-
                 break;
             }
         }
 
-        flight_data.check_status();
         thread::sleep(Duration::from_secs(1));
     }
 }
 
-
 fn add_flight(
-    airports: &HashMap<String, Airport>,
     pool: &ThreadPool,
     flights: &mut Vec<Arc<Mutex<Flight>>>,
-    flight_number: &str,
-    origin_code: &str,
-    destination_code: &str,
-    average_speed: f64,
+    flight: Flight,
     client: Arc<Mutex<Client>>,
+    current_time: Arc<Mutex<NaiveDateTime>>,
+    is_listing: Arc<AtomicBool>,
 ) -> Result<(), Box<dyn Error>> {
-    let origin = airports.get(origin_code)
-        .ok_or(format!("Origin airport with IATA code '{}' not found.", origin_code))?
-        .clone();
-
-    let destination = airports.get(destination_code)
-        .ok_or(format!("Destination airport with IATA code '{}' not found.", destination_code))?
-        .clone();
-
-    let flight = Flight::new(flight_number.to_string(), origin, destination, average_speed);
-
     let flight_arc = Arc::new(Mutex::new(flight));
-    {
-        // Insert the new flight into Cassandra
-        let mut client_locked = client.lock().unwrap();
-        client_locked.insert_flight(&flight_arc.lock().unwrap())?;
+    
+    if let Ok(mut client_locked) = client.lock() {
+        client_locked.insert_flight(&flight_arc.lock().map_err(|e| format!("Failed to lock flight data: {}", e))?)?;
+    } else {
+        return Err("Failed to lock client for inserting flight.".into());
     }
 
     flights.push(Arc::clone(&flight_arc));
@@ -114,8 +149,10 @@ fn add_flight(
     pool.execute({
         let client = Arc::clone(&client);
         let flight_arc = Arc::clone(&flight_arc);
+        let current_time = Arc::clone(&current_time);
+        let is_listing = Arc::clone(&is_listing);
         move || {
-            simulate_flight(flight_arc, client);
+            simulate_flight(flight_arc, client, current_time, is_listing);
         }
     });
 
@@ -125,82 +162,122 @@ fn add_flight(
 
 fn print_help() {
     println!("Available commands:");
-    println!("  add-flight <flight_number> <origin> <destination> <average_speed>");
+    println!("  add-flight <flight_number> <origin> <destination> <departure_time[DD/MM/YY-HH:MM:SS]> <arrival_time[DD/MM/YY-HH:MM:SS]> <average_speed>");
     println!("    Add a new flight with the specified parameters.");
-    println!("  add-airport <IATA_code> <name> <latitude> <longitude>");
+    println!("  add-airport <IATA_code> <country> <name> <latitude> <longitude>");
     println!("    Add a new airport with the specified parameters.");
-    println!("  list-flights");
-    println!("    Prints all recorded flights.");
-    println!("  -h or --help");
+    println!("  time-rate <minutes>");
+    println!("    Changes the simulation's elapsed time per tick.");
+    println!("  exit");
+    println!("    Closes this application.");
+    println!("  -h or help");
     println!("    Show this help message.");
 }
 
-
 fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<String> = env::args().collect();
-    let pool = ThreadPool::new(4); // Create a thread pool with 4 threads (arbitrary number)
+    let pool = ThreadPool::new(4);
     let mut flights = vec![];
     let mut airports: HashMap<String, Airport> = HashMap::new();
 
-    let ip = "127.0.0.1".parse().unwrap();  // Replace with actual IP
+    let ip = "127.0.0.1".parse().expect("Invalid IP format");
     let flight_sim_client = Arc::new(Mutex::new(Client::new(ip)?));
 
-    if args.len() < 2 {
-        print_help();
-        return Ok(());
+    let current_time = Arc::new(Mutex::new(Utc::now().naive_utc()));
+    let time_rate = Arc::new(Mutex::new(Duration::from_secs(1)));
+    let is_listing = Arc::new(AtomicBool::new(false));
+
+    loop {
+        if !is_listing.load(Ordering::SeqCst) {
+            println!("\nEnter command (type '-h' or '--help' for options): ");
+            let mut command = String::new();
+            io::stdin().read_line(&mut command)?;
+            let args: Vec<&str> = command.trim().split_whitespace().collect();
+
+            if args.is_empty() {
+                continue;
+            }
+
+            match args[0] {
+                "add-flight" => {
+                    if args.len() < 7 {
+                        eprintln!("Usage: add-flight <flight_number> <origin> <destination> <departure_time[DD/MM/YY-HH:MM:SS]> <arrival_time[DD/MM/YY-HH:MM:SS]> <average_speed>");
+                        continue;
+                    }
+                    
+                    let flight = Flight::new_from_console(
+                        &airports, 
+                        &args[1], 
+                        &args[2], 
+                        &args[3], 
+                        &args[4], 
+                        &args[5], 
+                        args[6].parse().map_err(|e| format!("Invalid speed: {}", e))?
+                    )?;
+
+                    add_flight(
+                        &pool,
+                        &mut flights,
+                        flight,
+                        Arc::clone(&flight_sim_client),
+                        Arc::clone(&current_time),
+                        Arc::clone(&is_listing)
+                    )?;
+                }
+
+                "add-airport" => {
+                    if args.len() < 6 {
+                        eprintln!("Usage: add-airport <IATA_code> <country> <name> <latitude> <longitude>");
+                        continue;
+                    }
+                    
+                    let airport = Airport::new(
+                        args[1].to_string(),
+                        args[2].to_string(),
+                        args[3].to_string(),
+                        args[4].parse().map_err(|e| format!("Invalid latitude: {}", e))?,
+                        args[5].parse().map_err(|e| format!("Invalid longitude: {}", e))?
+                    );
+
+                    airports.insert(args[1].to_string(), airport.clone());
+                    
+                    if let Ok(mut client_locked) = flight_sim_client.lock() {
+                        client_locked.insert_airport(&airport)?;
+                    }
+                }
+
+                "list-flights" => {
+                    list_flights(&flights, &is_listing, &time_rate, &current_time);
+                }
+
+                "time-rate" => {
+                    if args.len() != 2 {
+                        eprintln!("Usage: time-rate <seconds>");
+                        continue;
+                    }
+
+                    let seconds: u64 = args[1].parse().map_err(|e| format!("Invalid time: {}", e))?;
+                    if let Ok(mut rate) = time_rate.lock() {
+                        *rate = Duration::from_secs(seconds);
+                        println!("Time rate updated to {} seconds per tick", seconds);
+                    }
+                }
+
+                "-h" | "help" => {
+                    print_help();
+                }
+
+                "exit" => {
+                    break;
+                }
+
+                _ => {
+                    eprintln!("Invalid command. Use -h for help.");
+                }
+            }
+        }
     }
 
-    match args[1].as_str() {
-
-        "add-flight" => {
-            if args.len() < 5 {
-                eprintln!("Usage: add-flight <flight_number> <origin> <destination> <average_speed>");
-                return Ok(());
-            }
-            let flight_number = &args[2];
-            let origin_code = &args[3];
-            let destination_code = &args[4];
-            let average_speed: f64 = args[5].parse()?;
-
-            add_flight(&airports, &pool, &mut flights, flight_number, origin_code, destination_code, average_speed, Arc::clone(&flight_sim_client))?;
-        }
-
-        "add-airport" => {
-            if args.len() < 5 {
-                eprintln!("Usage: add-airport <IATA_code> <name> <latitude> <longitude>");
-                return Ok(());
-            }
-            let iata_code = &args[2];
-            let name = &args[3];
-            let latitude: f64 = args[4].parse()?;
-            let longitude: f64 = args[5].parse()?;
-
-            let airport = Airport::new (
-                iata_code.to_string(),
-                name.to_string(),
-                latitude,
-                longitude,
-            );
-
-            airports.insert(iata_code.to_string(), airport.clone());
-            {
-                let mut client_locked = flight_sim_client.lock().unwrap();
-                client_locked.insert_airport(&airport)?;
-            }
-            
-        }
-        "list-flights" => {
-            list_flights(&flights);
-        }
-        "-h" | "--help" => {
-            print_help();
-        }
-        _ => {
-            eprintln!("Invalid command. Use -h for help.");
-        }
-    }
-
-    pool.join(); 
+    pool.join();
     Ok(())
 }
 

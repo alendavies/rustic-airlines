@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+﻿use std::net::Ipv4Addr;
 use crate::types::flight::Flight;
 use crate::types::airport::Airport;
 use crate::native_protocol::{messages::query::QueryParams, CassandraClient, ClientError, QueryResult};
@@ -25,7 +25,7 @@ impl Client {
     fn setup_keyspace_and_tables(&self) -> Result<(), ClientError> {
         
         let create_keyspace_query = r#"
-            CREATE KEYSPACE simulation
+            CREATE KEYSPACE sky
             WITH REPLICATION = {
                 'class': 'SimpleStrategy',
                 'replication_factor': 3
@@ -35,27 +35,40 @@ impl Client {
 
         
         let create_flights_table = r#"
-            CREATE TABLE simulation.flights (
-                flight_number TEXT PRIMARY KEY,
-                origin TEXT,
-                destination TEXT,
-                average_speed DOUBLE,
+            CREATE TABLE sky.flights (
+                number TEXT,
                 status TEXT,
-                latitude DOUBLE,
-                longitude DOUBLE,
-                altitude DOUBLE,
-                fuel_level DOUBLE
-            ) WITH CLUSTERING ORDER BY (flight_number DESC);
+                departure_time TIMESTAMP,
+                arrival_time TIMESTAMP,
+                airport TEXT,
+                direction TEXT,
+                PRIMARY KEY (airport, direction, departure_time, arrival_time)
+            )
         "#;
         self.cassandra_client.execute(create_flights_table)?;
 
+        let create_flight_info_table = r#"
+            CREATE TABLE sky.flight_info (
+                number TEXT,
+                lat DOUBLE,
+                lon DOUBLE,
+                fuel DOUBLE,
+                height INT,
+                speed INT,
+                PRIMARY KEY (number, lat)
+            )
+        "#;
+        self.cassandra_client.execute(create_flight_info_table)?;
+
         let create_airports_table = r#"
-            CREATE TABLE simulation.airports (
-                iata_code TEXT PRIMARY KEY,
+            CREATE TABLE sky.airports (
+                iata TEXT,
+                country TEXT,
                 name TEXT,
-                latitude DOUBLE,
-                longitude DOUBLE
-            ) WITH CLUSTERING ORDER BY (iata_code DESC);
+                lat DOUBLE,
+                lon DOUBLE,
+                PRIMARY KEY (country, iata)
+            )
         "#;
         self.cassandra_client.execute(create_airports_table)?;
 
@@ -68,8 +81,8 @@ impl Client {
         airport: &Airport
     ) -> Result<(), ClientError> {
         let insert_airport_query = format!(
-            "INSERT INTO simulation.airports (iata_code, name, latitude, longitude) VALUES ('{}', '{}', {}, {});",
-            airport.iata_code, airport.name, airport.latitude, airport.longitude
+            "INSERT INTO simulation.airports (iata, country, name, lat, lon) VALUES ('{}', '{}', '{}', {}, {});",
+            airport.iata_code, airport.country, airport.name, airport.latitude, airport.longitude
         );
         self.cassandra_client.execute(insert_airport_query)?;
         println!("Airport '{}' added successfully.", airport.iata_code);
@@ -80,20 +93,43 @@ impl Client {
         &mut self,
         flight: &Flight
     ) -> Result<(), ClientError> {
-        let insert_flight_query = format!(
-            "INSERT INTO simulation.flights (flight_number, origin, destination, average_speed, status, latitude, longitude, altitude, fuel_level) \
-             VALUES ('{}', '{}', '{}', {}, '{}', {}, {}, {}, {});",
+        // Inserción en la tabla flights para el origen (DEPARTURE)
+        let insert_departure_query = format!(
+            "INSERT INTO simulation.flights (number, status, departure_time, arrival_time, airport, direction) \
+             VALUES ('{}', '{}', '{}', '{}', '{}', 'DEPARTURE');",
             flight.flight_number,
-            flight.origin.iata_code,
-            flight.destination.iata_code,
-            flight.average_speed,
             flight.status.as_str(),
+            flight.departure_time,
+            flight.arrival_time,
+            flight.origin.iata_code,
+        );
+
+        // Inserción en la tabla flights para el destino (ARRIVAL)
+        let insert_arrival_query = format!(
+            "INSERT INTO simulation.flights (number, status, departure_time, arrival_time, airport, direction) \
+             VALUES ('{}', '{}', null, toTimestamp(now()), '{}', 'ARRIVAL');",
+            flight.flight_number,
+            flight.status.as_str(),
+            flight.destination.iata_code,
+        );
+
+        // Inserción en la tabla flight_info con la información del vuelo
+        let insert_flight_info_query = format!(
+            "INSERT INTO simulation.flight_info (number, lat, lon, fuel, alt, speed) \
+             VALUES ('{}', {}, {}, {}, {}, {});",
+            flight.flight_number,
             flight.latitude,
             flight.longitude,
+            flight.fuel_level,
             flight.altitude,
-            flight.fuel_level
+            flight.average_speed,
         );
-        self.cassandra_client.execute(insert_flight_query)?;
+
+        // Ejecución de las consultas en Cassandra
+        self.cassandra_client.execute(insert_departure_query)?;
+        self.cassandra_client.execute(insert_arrival_query)?;
+        self.cassandra_client.execute(insert_flight_info_query)?;
+
         Ok(())
     }
 
@@ -101,7 +137,7 @@ impl Client {
         &mut self,
         flight: &Flight
     ) -> Result<(), ClientError> {
-        let update_query = format!(
+        let update_query_status = format!(
                 "UPDATE simulation.flights SET latitude = {}, longitude = {}, altitude = {}, fuel_level = {}, status = '{}' WHERE flight_number = '{}';",
                 flight.latitude,
                 flight.longitude,
@@ -110,7 +146,7 @@ impl Client {
                 flight.status.as_str(),
                 flight.flight_number
             );
-        self.cassandra_client.execute(update_query)?;
+        self.cassandra_client.execute(update_query_status)?;
         Ok(())
     }
 

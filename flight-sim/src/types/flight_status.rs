@@ -1,7 +1,8 @@
-#[derive(Debug, PartialEq, Display, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum FlightStatus {
     Pending,
     InFlight,
+    Delayed,
     Finished,
 }
 
@@ -10,6 +11,7 @@ impl FlightStatus {
         match self {
             FlightStatus::Pending => "Pending",
             FlightStatus::InFlight => "In Flight",
+            FlightStatus::Delayed => "Delayed",
             FlightStatus::Finished => "Finished",
         }
     }
