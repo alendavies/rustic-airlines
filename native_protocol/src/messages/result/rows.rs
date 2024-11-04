@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::{io::Read, net::IpAddr};
 
+use uuid::Uuid;
+
 use crate::types::FromCursorDeserializable;
 use crate::{
     types::{Bytes, CassandraString, Int, OptionBytes, OptionSerializable},
@@ -238,8 +240,6 @@ impl OptionSerializable for ColumnType {
     }
 }
 
-type Uuid = [u8; 16];
-
 #[derive(Debug, PartialEq)]
 pub enum ColumnValue {
     Custom(String),
@@ -313,7 +313,7 @@ impl ColumnValue {
                 bytes.extend_from_slice(&timestamp.to_be_bytes());
             }
             ColumnValue::Uuid(uuid) => {
-                bytes.extend_from_slice(uuid);
+                bytes.extend_from_slice(uuid.as_bytes());
             }
             ColumnValue::Varchar(varchar) => {
                 bytes.extend_from_slice(varchar.to_string_bytes()?.as_slice());
@@ -322,7 +322,7 @@ impl ColumnValue {
                 bytes.extend_from_slice(varint.as_slice());
             }
             ColumnValue::Timeuuid(timeuuid) => {
-                bytes.extend_from_slice(timeuuid);
+                bytes.extend_from_slice(timeuuid.as_bytes());
             }
             ColumnValue::Inet(inet) => match inet {
                 IpAddr::V4(ipv4) => {
@@ -474,7 +474,7 @@ impl ColumnValue {
                 cursor
                     .read_exact(&mut uuid)
                     .map_err(|_| NativeError::CursorError)?;
-                ColumnValue::Uuid(uuid)
+                ColumnValue::Uuid(Uuid::from_bytes(uuid))
             }
             ColumnType::Varchar => {
                 let varchar = String::from_string_bytes(cursor)?;
@@ -494,7 +494,7 @@ impl ColumnValue {
                 cursor
                     .read_exact(&mut timeuuid)
                     .map_err(|_| NativeError::CursorError)?;
-                ColumnValue::Timeuuid(timeuuid)
+                ColumnValue::Timeuuid(Uuid::from_bytes(timeuuid))
             }
             ColumnType::Inet => {
                 let mut bytes = [0u8; 16];
@@ -723,6 +723,29 @@ mod tests {
     }
 
     #[test]
+    fn column_value_uuid_to_bytes() {
+        let uuid = uuid::Uuid::from_u128(0x1234567890abcdef1234567890abcdef);
+
+        let value = ColumnValue::Uuid(uuid).to_bytes().unwrap();
+
+        assert_eq!(value, uuid.as_bytes())
+    }
+
+    #[test]
+    fn column_value_uuid_from_bytes() {
+        let uuid = uuid::Uuid::from_u128(0x1234567890abcdef1234567890abcdef);
+
+        let value = ColumnValue::Uuid(uuid);
+
+        let bytes = value.to_bytes().unwrap();
+
+        assert_eq!(
+            ColumnValue::from_bytes(&mut Cursor::new(&bytes), &ColumnType::Uuid).unwrap(),
+            value
+        )
+    }
+
+    #[test]
     fn column_value_list_to_bytes() {
         let blob_1 = vec![0x01u8, 0x02, 0x03, 0x04];
         let blob_2 = vec![0x02, 0x01];
@@ -918,32 +941,41 @@ mod tests {
     #[test]
     fn rows_from_bytes_empty() {
         let cols = vec![
-            ("user_id".to_string(), ColumnType::Int),
+            ("user_id".to_string(), ColumnType::Uuid),
             ("age".to_string(), ColumnType::Int),
             ("last_name".to_string(), ColumnType::Ascii),
             ("weight".to_string(), ColumnType::Int),
-            //("email".to_string(), ColumnType::Ascii),
         ];
         let rows = vec![
             BTreeMap::from([
-                ("user_id".to_string(), ColumnValue::Int(1)),
+                (
+                    "user_id".to_string(),
+                    ColumnValue::Uuid(uuid::Uuid::from_u128(0x1234567890abcdef1234567890abcdef)),
+                ),
+                ("age".to_string(), ColumnValue::Int(1)),
+                (
+                    "last_name".to_string(),
+                    ColumnValue::Ascii("Doe".to_string()),
+                ),
+                ("weight".to_string(), ColumnValue::Int(70)),
                 ("age".to_string(), ColumnValue::Int(2)),
                 (
                     "last_name".to_string(),
                     ColumnValue::Ascii("Doe".to_string()),
                 ),
                 ("weight".to_string(), ColumnValue::Int(70)),
-                //("email".to_string(), ColumnValue::Ascii("".to_string())),
             ]),
             BTreeMap::from([
-                ("user_id".to_string(), ColumnValue::Int(2)),
+                (
+                    "user_id".to_string(),
+                    ColumnValue::Uuid(uuid::Uuid::from_u128(0x1234567890abcdef1234567890cdefab)),
+                ),
                 ("age".to_string(), ColumnValue::Int(3)),
                 (
                     "last_name".to_string(),
                     ColumnValue::Ascii("Smith".to_string()),
                 ),
                 ("weight".to_string(), ColumnValue::Int(80)),
-                //("email".to_string(), ColumnValue::Ascii("".to_string())),
             ]),
         ];
 
