@@ -141,7 +141,7 @@ fn create_column_value_from_type(
         )),
         ColumnType::Uuid => {
             let bytes = value.as_bytes();
-            let uuid: [u8; 16] = bytes.try_into().map_err(|_| CQLError::Error)?;
+            let uuid = uuid::Uuid::from_slice(bytes).map_err(|_| CQLError::Error)?;
             Ok(ColumnValue::Uuid(uuid))
         }
         ColumnType::Varchar => Ok(ColumnValue::Varchar(value.to_string())),
