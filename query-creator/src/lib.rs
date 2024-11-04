@@ -449,7 +449,7 @@ impl QueryCreator {
     ) -> usize {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            if char.is_alphabetic() || char == '_' {
+            if char.is_alphabetic() || char == '_' || char == '.' {
                 current.push(char);
                 index += 1;
             } else {
@@ -624,7 +624,7 @@ mod tests {
     fn test_create_table_query_success() {
         let coordinator = QueryCreator::new();
         let query =
-            "CREATE TABLE t (a int, b int, c int, d int, PRIMARY KEY ((a, b), c, d));".to_string();
+            "CREATE TABLE IF NOT EXISTS test.t (a int, b int, c int, d int, PRIMARY KEY ((a, b), c, d));".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::CreateTable(_))));
 
