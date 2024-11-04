@@ -939,7 +939,7 @@ mod tests {
     }
 
     #[test]
-    fn rows_from_bytes_empty() {
+    fn rows_from_bytes_2() {
         let cols = vec![
             ("user_id".to_string(), ColumnType::Uuid),
             ("age".to_string(), ColumnType::Int),
@@ -958,12 +958,6 @@ mod tests {
                     ColumnValue::Ascii("Doe".to_string()),
                 ),
                 ("weight".to_string(), ColumnValue::Int(70)),
-                ("age".to_string(), ColumnValue::Int(2)),
-                (
-                    "last_name".to_string(),
-                    ColumnValue::Ascii("Doe".to_string()),
-                ),
-                ("weight".to_string(), ColumnValue::Int(70)),
             ]),
             BTreeMap::from([
                 (
@@ -976,6 +970,50 @@ mod tests {
                     ColumnValue::Ascii("Smith".to_string()),
                 ),
                 ("weight".to_string(), ColumnValue::Int(80)),
+            ]),
+        ];
+
+        let expected_rows = Rows::new(cols, rows);
+
+        let bytes = expected_rows.to_bytes().unwrap();
+
+        let rows = Rows::from_bytes(&bytes).unwrap();
+
+        assert_eq!(rows, expected_rows)
+    }
+
+    #[test]
+    fn rows_to_from_bytes_with_email() {
+        let cols = vec![
+            ("age".to_string(), ColumnType::Int),
+            ("name".to_string(), ColumnType::Ascii),
+            ("email".to_string(), ColumnType::Ascii),
+            ("email2".to_string(), ColumnType::Ascii),
+        ];
+        let rows = vec![
+            BTreeMap::from([
+                ("age".to_string(), ColumnValue::Int(25)),
+                ("name".to_string(), ColumnValue::Ascii("John".to_string())),
+                (
+                    "email".to_string(),
+                    ColumnValue::Ascii("john@gmail.com".to_string()),
+                ),
+                (
+                    "email2".to_string(),
+                    ColumnValue::Ascii("marston@hotmail.com".to_string()),
+                ),
+            ]),
+            BTreeMap::from([
+                ("age".to_string(), ColumnValue::Int(30)),
+                ("name".to_string(), ColumnValue::Ascii("Bill".to_string())),
+                (
+                    "email".to_string(),
+                    ColumnValue::Ascii("bill@gmail.com".to_string()),
+                ),
+                (
+                    "email2".to_string(),
+                    ColumnValue::Ascii("williamson@hotmail.com".to_string()),
+                ),
             ]),
         ];
 
