@@ -3,24 +3,24 @@ use walkers::{extras::Style, Plugin, Projector};
 
 use crate::db::Airport;
 
-pub struct Airports {
-    airports: Vec<Airport>,
+pub struct Airports<'a> {
+    airports: &'a Vec<Airport>,
 }
 
-impl Airports {
-    pub fn new(airports: Vec<Airport>) -> Self {
+impl<'a> Airports<'a> {
+    pub fn new(airports: &'a Vec<Airport>) -> Self {
         Self { airports }
     }
 }
 
-impl Plugin for Airports {
+impl Plugin for Airports<'_> {
     fn run(
         &mut self,
         response: &egui::Response,
         painter: egui::Painter,
         projector: &walkers::Projector,
     ) {
-        for airport in &self.airports {
+        for airport in self.airports {
             let mut style = Style::default();
             style.symbol_font.size = 24.;
             airport.draw(response, painter.clone(), projector, style);

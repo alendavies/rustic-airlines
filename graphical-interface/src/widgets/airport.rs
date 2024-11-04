@@ -1,6 +1,6 @@
 use egui_extras::{Column, TableBuilder};
 
-use crate::db::{Airport, Db, Flight};
+use crate::db::{Airport, Db, Flight, Provider};
 
 use super::View;
 

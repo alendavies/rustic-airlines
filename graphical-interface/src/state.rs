@@ -1,40 +1,60 @@
 use crate::{
-    db::{Airport, Db},
+    db::{Airport, Db, Flight, MockProvider, Provider},
     widgets::WidgetAirport,
 };
 
-pub struct AppState {
-    pub displayed_airports: Vec<Airport>,
-    pub airport_widget: Option<WidgetAirport>, // Add this
+/// Tracks the state for the selection of flights and airports.
+pub struct SelectionState {
+    pub flight: Option<Flight>,
+    pub airport: Option<Airport>,
 }
 
-impl AppState {
-    pub fn new() -> Self {
+impl SelectionState {
+    pub fn new() -> SelectionState {
         Self {
-            displayed_airports: vec![],
-            airport_widget: None,
+            flight: None,
+            airport: None,
         }
     }
 
-    pub fn init(&mut self) {
-        let initial_airports = Db::get_airports("ARG").unwrap();
-
-        self.displayed_airports = initial_airports;
-    }
-
+    /// If the provided airport is already selected, it will be deselected.
+    /// Otherwise, it will be selected.
     pub fn toggle_airport_selection(&mut self, airport: &Airport) {
-        if let Some(widget) = &self.airport_widget {
-            if widget.selected_airport == *airport {
-                self.airport_widget = None;
+        if let Some(selected_airport) = &self.airport {
+            if *selected_airport == *airport {
+                self.airport = None;
             } else {
-                self.select_airport(airport.clone());
+                self.airport = Some(airport.clone());
             }
         } else {
-            self.select_airport(airport.clone());
+            self.airport = Some(airport.clone());
         }
     }
 
-    fn select_airport(&mut self, airport: Airport) {
-        self.airport_widget = Some(WidgetAirport::new(airport));
+    /// If the provided flight is already selected, it will be deselected.
+    /// Otherwise, it will be selected.
+    pub fn toggle_selected_flight(&self, flight: &Flight) {
+        todo!()
     }
+}
+
+/// Tracks the flights and airports to display.
+pub struct ViewState {
+    // pub flights: Vec<Flight>,
+    pub airports: Vec<Airport>,
+}
+
+impl ViewState {
+    pub fn new() -> Self {
+        Self {
+            // TODO: pass a parameter?
+            // flights: MockProvider::get_flights().unwrap(),
+            airports: MockProvider::get_airports().unwrap(),
+        }
+    }
+
+    // pub fn update_flights(&mut self) {
+    //     // TODO: should spawn a thread to not block main thread?
+    //     self.flights = MockProvider::get_flights().unwrap();
+    // }
 }

@@ -1,6 +1,4 @@
-use std::{net::Ipv4Addr, str::FromStr};
-
-use driver::CassandraClient;
+use db::MockProvider;
 
 pub mod db;
 mod map;
@@ -14,6 +12,6 @@ pub fn run() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Flight Tracker",
         Default::default(),
-        Box::new(|cc| Ok(Box::new(MyApp::new(cc.egui_ctx.clone())))),
+        Box::new(|cc| Ok(Box::new(MyApp::new(cc.egui_ctx.clone(), MockProvider)))),
     )
 }

@@ -1,14 +1,24 @@
 use egui::Widget;
 use egui_extras::{Column, TableBuilder};
 
-use crate::state::AppState;
+use crate::state::{SelectionState, ViewState};
 
-pub struct WidgetAirports<'a> {
-    // airports: Vec<Airport>,
-    pub app_state: &'a mut AppState,
+/// Shows a list of the currently visible airports.
+pub struct WidgetAirports<'a, 'b> {
+    pub view_state: &'a ViewState,
+    pub selection_state: &'b mut SelectionState,
 }
 
-impl Widget for WidgetAirports<'_> {
+impl<'a, 'b> WidgetAirports<'a, 'b> {
+    pub fn new(view_state: &'a ViewState, selection_state: &'b mut SelectionState) -> Self {
+        Self {
+            view_state,
+            selection_state,
+        }
+    }
+}
+
+impl Widget for WidgetAirports<'_, '_> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let response = ui.allocate_response(egui::vec2(0., 0.), egui::Sense::hover());
 
@@ -32,12 +42,13 @@ impl Widget for WidgetAirports<'_> {
                             });
                         })
                         .body(|mut body| {
-                            for airport in &self.app_state.displayed_airports.clone() {
+                            for airport in &self.view_state.airports {
                                 body.row(18.0, |mut row| {
                                     row.set_selected({
-                                        self.app_state.airport_widget.as_ref().is_some_and(
-                                            |widget| widget.selected_airport == *airport,
-                                        )
+                                        self.selection_state
+                                            .airport
+                                            .as_ref()
+                                            .is_some_and(|a| *a == *airport)
                                     });
 
                                     row.col(|ui| {
@@ -49,7 +60,7 @@ impl Widget for WidgetAirports<'_> {
                                     });
 
                                     if row.response().clicked() {
-                                        self.app_state.toggle_airport_selection(airport);
+                                        self.selection_state.toggle_airport_selection(&airport);
                                     }
                                 });
                             }

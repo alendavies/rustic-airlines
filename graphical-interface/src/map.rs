@@ -2,35 +2,27 @@ use egui::Context;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
 use crate::{
-    db::{Airport, Db},
+    db::{MockProvider, Provider},
     plugins,
-    state::AppState,
-    widgets::WidgetAirports,
+    state::{SelectionState, ViewState},
+    widgets::{WidgetAirport, WidgetAirports},
     windows,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Provider {
-    OpenStreetMap,
-    Geoportal,
-    MapboxStreets,
-    MapboxSatellite,
-    LocalTiles,
-}
+const INITIAL_LAT: f64 = -34.608406;
+const INITIAL_LON: f64 = -58.372159;
 
-pub struct MyApp {
+pub struct MyApp<P: Provider> {
     tiles: Box<dyn Tiles>,
-    selected_provider: Provider,
     map_memory: MapMemory,
-    app_state: AppState,
+    selection_state: SelectionState,
+    view_state: ViewState,
+    airport_widget: Option<WidgetAirport>,
+    db: P,
 }
 
-impl MyApp {
-    pub fn new(egui_ctx: Context) -> Self {
-        // create and initialize the AppState (to show some airports)
-        let mut initial_state = AppState::new();
-        initial_state.init();
-
+impl<P: Provider> MyApp<P> {
+    pub fn new(egui_ctx: Context, db: P) -> Self {
         let mut initial_map_memory = MapMemory::default();
         // zoom inicial para mostrar argentina y uruguay
         initial_map_memory.set_zoom(5.).unwrap();
@@ -41,18 +33,16 @@ impl MyApp {
                 HttpOptions::default(),
                 egui_ctx.to_owned(),
             )),
-            selected_provider: Provider::OpenStreetMap,
             map_memory: initial_map_memory,
-            app_state: initial_state,
+            selection_state: SelectionState::new(),
+            view_state: ViewState::new(),
+            airport_widget: None,
+            db,
         }
-    }
-
-    fn airports(&self) -> Vec<Airport> {
-        self.app_state.displayed_airports.clone()
     }
 }
 
-impl eframe::App for MyApp {
+impl<P: Provider> eframe::App for MyApp<P> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let rimless = egui::Frame {
             fill: ctx.style().visuals.panel_fill,
@@ -62,23 +52,25 @@ impl eframe::App for MyApp {
         egui::CentralPanel::default()
             .frame(rimless)
             .show(ctx, |ui| {
-                // centrar en pza de mayo
-                let my_position = Position::from_lat_lon(-34.608406, -58.372159);
-                let airports = self.airports();
+                let my_position = Position::from_lat_lon(INITIAL_LAT, INITIAL_LON);
 
                 let tiles = self.tiles.as_mut();
 
                 // In egui, widgets are constructed and consumed in each frame.
                 let map = Map::new(Some(tiles), &mut self.map_memory, my_position)
-                    .with_plugin(plugins::Airports::new(airports.clone()));
+                    .with_plugin(plugins::Airports::new(&self.view_state.airports));
 
-                // Draw the map widget.
+                // Add the map widget.
                 ui.add(map);
-                ui.add(WidgetAirports {
-                    app_state: &mut self.app_state,
-                });
 
-                if let Some(widget) = &mut self.app_state.airport_widget {
+                // Add the airport pins in the map.
+                ui.add(WidgetAirports::new(
+                    &self.view_state,
+                    &mut self.selection_state,
+                ));
+
+                // Add the selected airport window, if there any.
+                if let Some(widget) = &mut self.airport_widget {
                     widget.show(ctx);
                 }
 
