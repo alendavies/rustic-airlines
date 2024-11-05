@@ -144,7 +144,7 @@ fn create_column_value_from_type(
         )),
         ColumnType::Uuid => {
             let bytes = value.as_bytes();
-            let uuid: [u8; 16] = bytes.try_into().map_err(|_| CQLError::Error)?;
+            let uuid = uuid::Uuid::from_slice(bytes).map_err(|_| CQLError::Error)?;
             Ok(ColumnValue::Uuid(uuid))
         }
         ColumnType::Varchar => Ok(ColumnValue::Varchar(value.to_string())),
@@ -512,7 +512,8 @@ impl QueryCreator {
     ) -> usize {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            if char.is_alphabetic() || char == '_' || char == '.' {
+
+            if char.is_alphabetic() || char == '_' || char == '@' || char == '.' {
                 current.push(char);
                 index += 1;
             } else {
