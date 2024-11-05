@@ -15,6 +15,7 @@ use crate::QueryCreator;
 #[derive(PartialEq, Debug, Clone)]
 pub struct Delete {
     pub table_name: String,
+    pub keyspace_used_name: String,
     pub columns: Option<Vec<String>>, // Agregamos un vector opcional para las columnas
     pub where_clause: Option<Where>,
     pub if_clause: Option<If>,
@@ -42,6 +43,7 @@ impl Delete {
         let mut i = 0;
         let mut columns = None;
         let table_name: String;
+        let keyspace_used_name: String;
         let mut where_tokens: Vec<&str> = Vec::new();
         let mut if_tokens: Vec<&str> = Vec::new();
 
@@ -63,7 +65,13 @@ impl Delete {
 
         // Verificamos que la palabra clave FROM esté presente y que haya un nombre de tabla después
         if i < tokens.len() && is_from(&tokens[i]) && i + 1 < tokens.len() {
-            table_name = tokens[i + 1].clone();
+            let full_table_name = &tokens[i + 1];
+            (keyspace_used_name, table_name) = if full_table_name.contains('.') {
+                let parts: Vec<&str> = full_table_name.split('.').collect();
+                (parts[0].to_string(), parts[1].to_string())
+            } else {
+                (String::new(), full_table_name.clone())
+            };
             i += 2;
         } else {
             return Err(CQLError::InvalidSyntax);
@@ -105,6 +113,7 @@ impl Delete {
 
         Ok(Self {
             table_name,
+            keyspace_used_name,
             columns,
             where_clause,
             if_clause,
@@ -121,7 +130,13 @@ impl Delete {
             serialized.push_str(&format!(" {}", columns.join(", ")));
         }
 
-        serialized.push_str(&format!(" FROM {}", self.table_name));
+        let table_name_str = if !self.keyspace_used_name.is_empty() {
+            format!("{}.{}", self.keyspace_used_name, self.table_name)
+        } else {
+            self.table_name.clone()
+        };
+
+        serialized.push_str(&format!(" FROM {}", table_name_str));
 
         if let Some(where_clause) = &self.where_clause {
             serialized.push_str(&format!(" WHERE {}", where_clause.serialize()));
@@ -177,6 +192,7 @@ mod tests {
             delete,
             Delete {
                 table_name: String::from("table"),
+                keyspace_used_name: String::new(),
                 where_clause: None,
                 columns: None,
                 if_clause: None,
@@ -184,6 +200,27 @@ mod tests {
             }
         );
     }
+
+    fn new_with_keyspace() {
+        let tokens = vec![
+            String::from("DELETE"),
+            String::from("FROM"),
+            String::from("keyspace.table"),
+        ];
+        let delete = Delete::new_from_tokens(tokens).unwrap();
+        assert_eq!(
+            delete,
+            Delete {
+                table_name: String::from("table"),
+                keyspace_used_name: String::from("keyspace"),
+                where_clause: None,
+                columns: None,
+                if_clause: None,
+                if_exist: false,
+            }
+        );
+    }
+
 
     #[test]
     fn new_4_tokens() {
@@ -213,6 +250,7 @@ mod tests {
             delete,
             Delete {
                 table_name: String::from("table"),
+                keyspace_used_name: String::new(),
                 where_clause: Some(Where {
                     condition: Condition::Simple {
                         field: String::from("cantidad"),
@@ -245,6 +283,7 @@ mod tests {
             delete,
             Delete {
                 table_name: String::from("table"),
+                keyspace_used_name: String::new(),
                 columns: Some(vec![String::from("columna_a"), String::from("columna_b")]),
                 where_clause: Some(Where {
                     condition: Condition::Simple {
@@ -282,6 +321,7 @@ mod tests {
             delete,
             Delete {
                 table_name: String::from("table"),
+                keyspace_used_name: String::new(),
                 columns: Some(vec![String::from("columna_a"), String::from("columna_b")]),
                 where_clause: Some(Where {
                     condition: Condition::Simple {
@@ -323,6 +363,7 @@ mod tests {
             delete,
             Delete {
                 table_name: String::from("table"),
+                keyspace_used_name: String::new(),
                 columns: Some(vec![String::from("columna_a"), String::from("columna_b")]),
                 where_clause: Some(Where {
                     condition: Condition::Simple {

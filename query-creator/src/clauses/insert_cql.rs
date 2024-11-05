@@ -120,9 +120,15 @@ impl Insert {
             ""
         };
 
+        let table_name_str = if !self.into_clause.keyspace_used_name.is_empty() {
+            format!("{}.{}", self.into_clause.keyspace_used_name, self.into_clause.table_name)
+        } else {
+            self.into_clause.table_name.clone()
+        };
+
         format!(
             "INSERT INTO {} ({}) VALUES ({}){}",
-            self.into_clause.table_name, columns, values, if_not_exists
+            table_name_str, columns, values, if_not_exists
         )
     }
 
@@ -146,7 +152,8 @@ mod test {
         let insert = Insert {
             values: vec![String::from("Alen"), String::from("25")],
             into_clause: into_cql::Into {
-                table_name: String::from("table"),
+                table_name: String::from("keyspace.table"),
+                keyspace_used_name: String::new(),
                 columns: vec![String::from("name"), String::from("age")],
             },
             if_not_exists: false,
@@ -155,7 +162,7 @@ mod test {
         let serialized = insert.serialize();
         assert_eq!(
             serialized,
-            "INSERT INTO table (name, age) VALUES (Alen, 25)"
+            "INSERT INTO keyspace.table (name, age) VALUES (Alen, 25)"
         );
     }
 
@@ -165,6 +172,7 @@ mod test {
             values: vec![String::from("Alen"), String::from("25")],
             into_clause: into_cql::Into {
                 table_name: String::from("table"),
+                keyspace_used_name: String::new(),
                 columns: vec![String::from("name"), String::from("age")],
             },
             if_not_exists: true,
@@ -188,6 +196,7 @@ mod test {
                 values: vec![String::from("Alen"), String::from("25")],
                 into_clause: into_cql::Into {
                     table_name: String::from("table"),
+                    keyspace_used_name: String::new(),
                     columns: vec![String::from("name"), String::from("age")],
                 },
                 if_not_exists: false,
@@ -206,6 +215,7 @@ mod test {
                 values: vec![String::from("Alen"), String::from("25")],
                 into_clause: into_cql::Into {
                     table_name: String::from("table"),
+                    keyspace_used_name: String::new(),
                     columns: vec![String::from("name"), String::from("age")],
                 },
                 if_not_exists: true,

@@ -8,13 +8,15 @@ use std::cmp::PartialEq;
 #[derive(Debug, Clone)]
 pub struct AlterTable {
     table_name: String,
+    keyspace_used_name: String,
     operations: Vec<AlterTableOperation>,
 }
 
 impl AlterTable {
-    pub fn new(table_name: String, operations: Vec<AlterTableOperation>) -> AlterTable {
+    pub fn new(table_name: String, keyspace_used_name: String, operations: Vec<AlterTableOperation>) -> AlterTable {
         AlterTable {
-            table_name: table_name.to_string(),
+            table_name,
+            keyspace_used_name,
             operations,
         }
     }
@@ -34,7 +36,14 @@ impl AlterTable {
             return Err(CQLError::InvalidSyntax);
         }
 
-        let table_name = query[2].to_string();
+        let full_table_name = query[2].to_string();
+        let (keyspace_used_name, table_name) = if full_table_name.contains('.') {
+            let parts: Vec<&str> = full_table_name.split('.').collect();
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            (String::new(), full_table_name.clone())
+        };
+
         let operations = &query[3..];
 
         let mut ops: Vec<AlterTableOperation> = Vec::new();
@@ -117,7 +126,7 @@ impl AlterTable {
             }
             i += 1;
         }
-        Ok(AlterTable::new(table_name, ops))
+        Ok(AlterTable::new(table_name, keyspace_used_name, ops))
     }
 
     // Método para serializar una instancia de `AlterTable` a una cadena de texto
@@ -148,9 +157,16 @@ impl AlterTable {
             })
             .collect();
 
+
+        let table_name_str = if !self.keyspace_used_name.is_empty() {
+            format!("{}.{}", self.keyspace_used_name, self.table_name)
+        } else {
+            self.table_name.clone()
+        };
+
         format!(
             "ALTER TABLE {} {}",
-            self.table_name,
+            table_name_str,
             operations_str.join(" ")
         )
     }
@@ -181,13 +197,14 @@ mod tests {
         let query = vec![
             "ALTER".to_string(),
             "TABLE".to_string(),
-            "airports".to_string(),
+            "sky.airports".to_string(),
             "ADD".to_string(),
             "new_col".to_string(),
             "INT".to_string(),
         ];
         let alter_table = AlterTable::new_from_tokens(query).unwrap();
         assert_eq!(alter_table.get_table_name(), "airports");
+        assert_eq!(alter_table.keyspace_used_name, "sky");
         assert_eq!(
             alter_table.get_operations(),
             vec![AlterTableOperation::AddColumn(Column::new(
@@ -207,7 +224,7 @@ mod tests {
             false,
             true,
         ))];
-        let alter_table = AlterTable::new("airports".to_string(), operations.clone());
+        let alter_table = AlterTable::new("airports".to_string(), String::new(), operations.clone());
         let serialized = alter_table.serialize();
         assert_eq!(serialized, "ALTER TABLE airports ADD new_col INT");
     }
@@ -230,8 +247,8 @@ mod tests {
 
     #[test]
     fn test_alter_table_equality() {
-        let alter_table1 = AlterTable::new("airports".to_string(), vec![]);
-        let alter_table2 = AlterTable::new("airports".to_string(), vec![]);
+        let alter_table1 = AlterTable::new("airports".to_string(), String::new(), vec![]);
+        let alter_table2 = AlterTable::new("airports".to_string(), String::new(), vec![]);
         assert_eq!(alter_table1, alter_table2);
     }
 
