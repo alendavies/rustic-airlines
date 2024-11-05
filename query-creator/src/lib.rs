@@ -44,6 +44,9 @@ pub trait CreateClientResponse {
     ) -> Result<Frame, CQLError>;
 }
 
+pub trait GetUsedKeyspace {
+    fn get_used_keyspace(&self) -> Option<String>;
+}
 /// Represents the count of responses needed for a query. It can either be all nodes
 /// or a specific number of nodes based on the query type.
 #[derive(Debug, Clone)]
@@ -141,7 +144,7 @@ fn create_column_value_from_type(
         )),
         ColumnType::Uuid => {
             let bytes = value.as_bytes();
-            let uuid: [u8; 16] = bytes.try_into().map_err(|_| CQLError::Error)?;
+            let uuid = uuid::Uuid::from_slice(bytes).map_err(|_| CQLError::Error)?;
             Ok(ColumnValue::Uuid(uuid))
         }
         ColumnType::Varchar => Ok(ColumnValue::Varchar(value.to_string())),
@@ -290,6 +293,66 @@ impl GetTableName for Query {
                 Query::AlterKeyspace(_) => None,
                 Query::Use(_) => None,
             }
+        }
+    }
+}
+
+impl GetUsedKeyspace for Query {
+    fn get_used_keyspace(&self) -> Option<String> {
+        match self {
+            Query::Select(select) => {
+                if select.keyspace_used_name.is_empty() {
+                    None
+                } else {
+                    Some(select.keyspace_used_name.clone())
+                }
+            }
+            Query::Insert(insert) => {
+                if insert.into_clause.keyspace_used_name.is_empty() {
+                    None
+                } else {
+                    Some(insert.into_clause.keyspace_used_name.clone())
+                }
+            }
+            Query::Update(update) => {
+                if update.keyspace_used_name.is_empty() {
+                    None
+                } else {
+                    Some(update.keyspace_used_name.clone())
+                }
+            }
+            Query::Delete(delete) => {
+                if delete.keyspace_used_name.is_empty() {
+                    None
+                } else {
+                    Some(delete.keyspace_used_name.clone())
+                }
+            }
+            Query::CreateTable(create_table) => {
+                if create_table.get_used_keyspace().is_empty() {
+                    None
+                } else {
+                    Some(create_table.get_used_keyspace().clone())
+                }
+            }
+            Query::DropTable(drop_table) => {
+                if drop_table.get_used_keyspace().is_empty() {
+                    None
+                } else {
+                    Some(drop_table.get_used_keyspace().clone())
+                }
+            }
+            Query::AlterTable(alter_table) => {
+                if alter_table.get_used_keyspace().is_empty() {
+                    None
+                } else {
+                    Some(alter_table.get_used_keyspace().clone())
+                }
+            }
+            Query::CreateKeyspace(_) => None,
+            Query::DropKeyspace(_) => None,
+            Query::AlterKeyspace(_) => None,
+            Query::Use(_) => None,
         }
     }
 }
@@ -449,7 +512,8 @@ impl QueryCreator {
     ) -> usize {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            if char.is_alphabetic() || char == '_' {
+
+            if char.is_alphabetic() || char == '_' || char == '@' || char == '.' {
                 current.push(char);
                 index += 1;
             } else {
@@ -624,7 +688,7 @@ mod tests {
     fn test_create_table_query_success() {
         let coordinator = QueryCreator::new();
         let query =
-            "CREATE TABLE t (a int, b int, c int, d int, PRIMARY KEY ((a, b), c, d));".to_string();
+            "CREATE TABLE IF NOT EXISTS test.t (a int, b int, c int, d int, PRIMARY KEY ((a, b), c, d));".to_string();
         let result = coordinator.handle_query(query);
         assert!(matches!(result, Ok(Query::CreateTable(_))));
 
