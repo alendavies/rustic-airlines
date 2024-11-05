@@ -360,6 +360,7 @@ mod tests {
     fn get_dummy_query() -> Query {
         Query::Select(query_creator::clauses::select_cql::Select {
             table_name: "dummy_table".to_string(),
+            keyspace_used_name: "".to_string(),
             columns: vec!["col1".to_string(), "col2".to_string()],
             where_clause: None,
             orderby_clause: None,
@@ -449,6 +450,7 @@ mod tests {
         let table = get_dummy_table();
         let keyspace = Keyspace::new(CreateKeyspace {
             name: "test_keyspace".to_string(),
+            if_not_exists_clause: true,
             replication_class: "SimpleStrategy".to_string(),
             replication_factor: 3,
         });
@@ -484,6 +486,7 @@ mod tests {
         let table = get_dummy_table();
         let keyspace = Keyspace::new(CreateKeyspace {
             name: "test_keyspace".to_string(),
+            if_not_exists_clause: false,
             replication_class: "SimpleStrategy".to_string(),
             replication_factor: 3,
         });

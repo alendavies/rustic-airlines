@@ -201,6 +201,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn new_with_keyspace() {
         let tokens = vec![
             String::from("DELETE"),
@@ -220,7 +221,6 @@ mod tests {
             }
         );
     }
-
 
     #[test]
     fn new_4_tokens() {

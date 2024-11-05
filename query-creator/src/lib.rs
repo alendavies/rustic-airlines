@@ -44,6 +44,9 @@ pub trait CreateClientResponse {
     ) -> Result<Frame, CQLError>;
 }
 
+pub trait GetUsedKeyspace {
+    fn get_used_keyspace(&self) -> Option<String>;
+}
 /// Represents the count of responses needed for a query. It can either be all nodes
 /// or a specific number of nodes based on the query type.
 #[derive(Debug, Clone)]
@@ -290,6 +293,66 @@ impl GetTableName for Query {
                 Query::AlterKeyspace(_) => None,
                 Query::Use(_) => None,
             }
+        }
+    }
+}
+
+impl GetUsedKeyspace for Query {
+    fn get_used_keyspace(&self) -> Option<String> {
+        match self {
+            Query::Select(select) => {
+                if select.keyspace_used_name.is_empty() {
+                    None
+                } else {
+                    Some(select.keyspace_used_name.clone())
+                }
+            }
+            Query::Insert(insert) => {
+                if insert.into_clause.keyspace_used_name.is_empty() {
+                    None
+                } else {
+                    Some(insert.into_clause.keyspace_used_name.clone())
+                }
+            }
+            Query::Update(update) => {
+                if update.keyspace_used_name.is_empty() {
+                    None
+                } else {
+                    Some(update.keyspace_used_name.clone())
+                }
+            }
+            Query::Delete(delete) => {
+                if delete.keyspace_used_name.is_empty() {
+                    None
+                } else {
+                    Some(delete.keyspace_used_name.clone())
+                }
+            }
+            Query::CreateTable(create_table) => {
+                if create_table.get_used_keyspace().is_empty() {
+                    None
+                } else {
+                    Some(create_table.get_used_keyspace().clone())
+                }
+            }
+            Query::DropTable(drop_table) => {
+                if drop_table.get_used_keyspace().is_empty() {
+                    None
+                } else {
+                    Some(drop_table.get_used_keyspace().clone())
+                }
+            }
+            Query::AlterTable(alter_table) => {
+                if alter_table.get_used_keyspace().is_empty() {
+                    None
+                } else {
+                    Some(alter_table.get_used_keyspace().clone())
+                }
+            }
+            Query::CreateKeyspace(_) => None,
+            Query::DropKeyspace(_) => None,
+            Query::AlterKeyspace(_) => None,
+            Query::Use(_) => None,
         }
     }
 }

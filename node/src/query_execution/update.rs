@@ -44,6 +44,7 @@ impl QueryExecution {
     ) -> Result<(), NodeError> {
         let table;
         let mut do_in_this_node = true;
+        let client_keyspace;
         {
             // Get the table name and reference the node
             let table_name = update_query.table_name.clone();
@@ -52,7 +53,7 @@ impl QueryExecution {
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
 
-            let client_keyspace = node
+            client_keyspace = node
                 .get_open_handle_query()
                 .get_keyspace_of_query(open_query_id)?
                 .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
@@ -137,8 +138,11 @@ impl QueryExecution {
         }
 
         // Perform the update on this node
-        let (file_path, temp_file_path) =
-            self.get_file_paths(&update_query.table_name, replication, client_id)?;
+        let (file_path, temp_file_path) = self.get_file_paths(
+            &update_query.table_name,
+            replication,
+            &client_keyspace.get_name(),
+        )?;
         if let Err(e) = self.update_in_this_node(update_query, table, &file_path, &temp_file_path) {
             let _ = std::fs::remove_file(temp_file_path); // Cleanup temp file on error
             return Err(e);

@@ -145,13 +145,6 @@ impl QueryExecution {
                     client_id,
                 ),
                 Query::CreateTable(create_table) => {
-                    if self
-                        .node_that_execute
-                        .lock()?
-                        .table_already_exist(create_table.get_name(), client_id)?
-                    {
-                        return Err(NodeError::CQLError(CQLError::InvalidTable));
-                    }
                     self.execute_create_table(create_table, internode, open_query_id, client_id)
                 }
                 Query::DropTable(drop_table) => {
@@ -363,7 +356,7 @@ impl QueryExecution {
         &self,
         table_name: &str,
         replication: bool,
-        client_id: i32,
+        keyspace_name: &str,
     ) -> Result<(String, String), NodeError> {
         let node = self
             .node_that_execute
@@ -371,13 +364,7 @@ impl QueryExecution {
             .map_err(|_| NodeError::LockError)?;
 
         let add_str = node.get_ip_string().replace(".", "_");
-        let base_folder = format!(
-            "keyspaces_{}/{}",
-            add_str,
-            node.get_client_keyspace(client_id)?
-                .ok_or(NodeError::KeyspaceError)?
-                .get_name()
-        );
+        let base_folder = format!("keyspaces_{}/{}", add_str, keyspace_name);
 
         // Agrega la carpeta "replication" si el parámetro es verdadero
         let folder_name = if replication {

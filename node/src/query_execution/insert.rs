@@ -33,7 +33,7 @@ impl QueryExecution {
             .get_keyspace_of_query(open_query_id)?
             .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
-        if !node.table_already_exist(table_to_insert.get_name(), client_id)? {
+        if !node.table_already_exist(table_to_insert.get_name(), client_keyspace.get_name())? {
             return Err(NodeError::CQLError(CQLError::TableAlreadyExist));
         }
 

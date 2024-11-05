@@ -20,6 +20,7 @@ impl QueryExecution {
         let table;
         let mut do_in_this_node = true;
 
+        let client_keyspace;
         {
             // Get the table name and reference the node
             let table_name = select_query.table_name.clone();
@@ -28,7 +29,7 @@ impl QueryExecution {
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
 
-            let client_keyspace = node
+            client_keyspace = node
                 .get_open_handle_query()
                 .get_keyspace_of_query(open_query_id)?
                 .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
@@ -120,8 +121,12 @@ impl QueryExecution {
         }
 
         // Execute the SELECT query on this node if applicable
-        let result =
-            self.execute_select_in_this_node(select_query, table, replication, client_id)?;
+        let result = self.execute_select_in_this_node(
+            select_query,
+            table,
+            replication,
+            &client_keyspace.get_name(),
+        )?;
         Ok(result)
     }
 
@@ -131,10 +136,10 @@ impl QueryExecution {
         select_query: Select,
         table: Table,
         replication: bool,
-        client_id: i32,
+        client_keyspace_name: &str,
     ) -> Result<Vec<String>, NodeError> {
         let (file_path, _) =
-            self.get_file_paths(&select_query.table_name, replication, client_id)?;
+            self.get_file_paths(&select_query.table_name, replication, client_keyspace_name)?;
         let file = OpenOptions::new().read(true).open(&file_path)?;
         let reader = BufReader::new(file);
         let mut results = Vec::new();

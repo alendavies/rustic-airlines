@@ -13,7 +13,11 @@ pub struct AlterTable {
 }
 
 impl AlterTable {
-    pub fn new(table_name: String, keyspace_used_name: String, operations: Vec<AlterTableOperation>) -> AlterTable {
+    pub fn new(
+        table_name: String,
+        keyspace_used_name: String,
+        operations: Vec<AlterTableOperation>,
+    ) -> AlterTable {
         AlterTable {
             table_name,
             keyspace_used_name,
@@ -157,7 +161,6 @@ impl AlterTable {
             })
             .collect();
 
-
         let table_name_str = if !self.keyspace_used_name.is_empty() {
             format!("{}.{}", self.keyspace_used_name, self.table_name)
         } else {
@@ -177,6 +180,10 @@ impl AlterTable {
 
     pub fn get_operations(&self) -> Vec<AlterTableOperation> {
         self.operations.clone()
+    }
+
+    pub fn get_used_keyspace(&self) -> String {
+        self.keyspace_used_name.clone()
     }
 }
 
@@ -224,7 +231,8 @@ mod tests {
             false,
             true,
         ))];
-        let alter_table = AlterTable::new("airports".to_string(), String::new(), operations.clone());
+        let alter_table =
+            AlterTable::new("airports".to_string(), String::new(), operations.clone());
         let serialized = alter_table.serialize();
         assert_eq!(serialized, "ALTER TABLE airports ADD new_col INT");
     }

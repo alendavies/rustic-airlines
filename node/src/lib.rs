@@ -32,7 +32,7 @@ use query_creator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
 use query_creator::clauses::table::create_table_cql::CreateTable;
 use query_creator::clauses::types::column::Column;
 use query_creator::errors::CQLError;
-use query_creator::{GetTableName, Query};
+use query_creator::{GetTableName, GetUsedKeyspace, Query};
 use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
 
@@ -221,6 +221,11 @@ impl Node {
             let keyspace = &mut self.keyspaces[index];
 
             // Modifica el Keyspace agregando la nueva tabla
+            for table in &keyspace.get_tables() {
+                if table.get_name() == new_table.get_name() {
+                    return Err(NodeError::CQLError(CQLError::TableAlreadyExist));
+                }
+            }
             keyspace.add_table(Table::new(new_table))?;
         } else {
             // Retorna un error si el Keyspace no se encuentra
@@ -285,18 +290,10 @@ impl Node {
     fn table_already_exist(
         &mut self,
         table_name: String,
-        client_id: i32,
+        keyspace_name: String,
     ) -> Result<bool, NodeError> {
-        let client_keyspace_name = self
-            .clients_keyspace
-            .get_mut(&client_id)
-            .ok_or(NodeError::KeyspaceError)?
-            .as_mut()
-            .ok_or(NodeError::KeyspaceError)?;
         let keyspace = self
-            .keyspaces
-            .iter_mut()
-            .find(|k| &k.get_name() == client_keyspace_name)
+            .get_keyspace(&keyspace_name)?
             .ok_or(NodeError::KeyspaceError)?;
 
         // Verifica si la tabla ya existe en el keyspace del cliente
@@ -686,9 +683,13 @@ impl Node {
         let open_query_id;
         {
             let mut guard_node = node.lock()?;
-
+            let keyspace;
             // Obtener el keyspace especificado o el actual del cliente
-            let keyspace = guard_node.get_client_keyspace(client_id)?;
+            if let Some(keyspace_name) = query.get_used_keyspace() {
+                keyspace = guard_node.get_keyspace(&keyspace_name)?
+            } else {
+                keyspace = guard_node.get_client_keyspace(client_id)?;
+            }
 
             // Intentar obtener el nombre de la tabla y buscar la tabla correspondiente en el keyspace
             let table = query.get_table_name().and_then(|table_name| {

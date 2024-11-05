@@ -2,16 +2,14 @@ use crate::{errors::CQLError, QueryCreator};
 
 #[derive(Debug, Clone)]
 pub struct CreateKeyspace {
-    name: String,
-    if_not_exists_clause: bool,
-    replication_class: String,
-    replication_factor: u32,
+    pub name: String,
+    pub if_not_exists_clause: bool,
+    pub replication_class: String,
+    pub replication_factor: u32,
 }
 
 impl CreateKeyspace {
-
     pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
-
         if query.len() < 10
             || query[0].to_uppercase() != "CREATE"
             || query[1].to_uppercase() != "KEYSPACE"
@@ -21,7 +19,11 @@ impl CreateKeyspace {
 
         // Check for IF NOT EXISTS
         let mut index = 2;
-        let if_not_exists_clause = if query.len() > 3 && query[2].to_uppercase() == "IF" && query[3].to_uppercase() == "NOT" && query[4].to_uppercase() == "EXISTS" {
+        let if_not_exists_clause = if query.len() > 3
+            && query[2].to_uppercase() == "IF"
+            && query[3].to_uppercase() == "NOT"
+            && query[4].to_uppercase() == "EXISTS"
+        {
             index += 3; // Skip the "IF NOT EXISTS" part
             true
         } else {
@@ -70,7 +72,6 @@ impl CreateKeyspace {
             replication_class,
             replication_factor,
         })
-        
     }
 
     pub fn get_name(&self) -> String {
@@ -97,8 +98,14 @@ impl CreateKeyspace {
     pub fn serialize(&self) -> String {
         format!(
             "CREATE KEYSPACE {}{} WITH replication = {{'class': '{}', 'replication_factor': {}}};",
-            if self.if_not_exists_clause { "IF NOT EXISTS " } else { "" },
-            self.name, self.replication_class, self.replication_factor
+            if self.if_not_exists_clause {
+                "IF NOT EXISTS "
+            } else {
+                ""
+            },
+            self.name,
+            self.replication_class,
+            self.replication_factor
         )
     }
 

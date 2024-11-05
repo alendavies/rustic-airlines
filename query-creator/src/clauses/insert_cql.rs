@@ -121,7 +121,10 @@ impl Insert {
         };
 
         let table_name_str = if !self.into_clause.keyspace_used_name.is_empty() {
-            format!("{}.{}", self.into_clause.keyspace_used_name, self.into_clause.table_name)
+            format!(
+                "{}.{}",
+                self.into_clause.keyspace_used_name, self.into_clause.table_name
+            )
         } else {
             self.into_clause.table_name.clone()
         };

@@ -118,8 +118,11 @@ impl QueryExecution {
         }
 
         // Execute the delete on this node
-        let (file_path, temp_file_path) =
-            self.get_file_paths(&delete_query.table_name, replication, client_id)?;
+        let (file_path, temp_file_path) = self.get_file_paths(
+            &delete_query.table_name,
+            replication,
+            &client_keyspace.get_name(),
+        )?;
 
         if let Err(e) = self.delete_in_this_node(delete_query, table, &file_path, &temp_file_path) {
             let _ = std::fs::remove_file(temp_file_path); // Cleanup temp file on error

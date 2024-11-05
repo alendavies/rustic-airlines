@@ -9,20 +9,17 @@ fn main() {
     // Conectarse al servidor Cassandra
     let mut client = CassandraClient::connect(ip).unwrap();
     client.startup().unwrap();
-
     let queries = vec![
         "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
-        "ALTER KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2}".to_string(),
-        "USE test_keyspace".to_string(),
         "CREATE KEYSPACE test_keyspace_dos WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
-        "CREATE TABLE test_table (id INT ,name TEXT, PRIMARY KEY (id, name))".to_string(),
-        "INSERT INTO test_table (id, name) VALUES (1, 'Loren')".to_string(),
-        "ALTER TABLE test_table ADD last_name TEXT".to_string(),
+        "CREATE KEYSPACE IF NOT EXISTS test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
         "USE test_keyspace_dos".to_string(),
-        "USE test_keyspace".to_string(),
-        "INSERT INTO test_table (id, name) VALUES (2, 'Marcos')".to_string(),
-        "SELECT name FROM test_table WHERE id = 2".to_string()
-     ];
+        "CREATE TABLE test_keyspace.test_table (id INT, name TEXT, PRIMARY KEY (id, name))".to_string(),
+        "INSERT INTO test_keyspace.test_table (id, name) VALUES (1, 'Loren')".to_string(),
+        "INSERT INTO test_keyspace.test_table (id, name) VALUES (2, 'Loren')".to_string(),
+        "DELETE FROM test_keyspace.test_table WHERE id = 1".to_string(),
+        "SELECT name FROM test_keyspace.test_table WHERE id = 2".to_string(),
+    ];
 
     // Ejecutar cada consulta en un loop
     let mut contador = 0;
@@ -39,7 +36,7 @@ fn main() {
                         );
                     }
                     driver::QueryResult::Error(error) => {
-                        println!("La query fallo con el error {:?}", error);
+                        println!("La query: {:?} fallo con el error {:?}", query, error);
                     }
                 }
                 println!("exitosas {:?}/{:?}", contador, len)

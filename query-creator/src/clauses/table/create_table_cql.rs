@@ -78,27 +78,34 @@ impl CreateTable {
         self.columns.clone()
     }
 
+    pub fn get_if_not_exists_clause(&self) -> bool {
+        self.if_not_exists_clause
+    }
+
+    pub fn get_used_keyspace(&self) -> String {
+        self.keyspace_used_name.clone()
+    }
     // Constructor
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
         }
-    
+
         let mut index = 0;
-    
+
         // Asegurarse de que comenzamos con "CREATE" y "TABLE"
         if tokens[index] != "CREATE" || tokens[index + 1] != "TABLE" {
             return Err(CQLError::InvalidSyntax);
         }
         index += 2;
-    
+
         // Verificar si IF NOT EXISTS está presente
         let mut if_not_exists_clause = false;
         if tokens[index] == "IF" && tokens[index + 1] == "NOT" && tokens[index + 2] == "EXISTS" {
             if_not_exists_clause = true;
             index += 3;
         }
-    
+
         // Obtener el nombre de la tabla, incluyendo el keyspace si está presente
         let full_table_name = &tokens[index];
         let (keyspace_used_name, table_name) = if full_table_name.contains('.') {
@@ -108,7 +115,7 @@ impl CreateTable {
             (String::new(), full_table_name.clone())
         };
         index += 1;
-    
+
         // Procesar los siguientes tokens para definir columnas y claves primarias
         let mut column_def = &tokens[index][..];
         if column_def.starts_with('(') {
@@ -117,16 +124,16 @@ impl CreateTable {
         if column_def.ends_with(')') {
             column_def = &column_def[..column_def.len() - 1];
         }
-    
+
         let column_parts = split_preserving_parentheses(column_def);
-    
+
         let mut columns = Vec::new();
         let mut partition_key_cols = Vec::new();
         let mut clustering_key_cols = Vec::new();
         let mut clustering_orders = HashMap::new();
-    
+
         let mut primary_key_def: Option<String> = None;
-    
+
         // Procesar columnas y primary key
         for part in &column_parts {
             if part.to_uppercase().starts_with("PRIMARY KEY") {
@@ -136,15 +143,15 @@ impl CreateTable {
                 primary_key_def = Some(part.to_string());
                 continue;
             }
-    
+
             let col_parts: Vec<&str> = part.split_whitespace().collect();
             if col_parts.len() < 2 {
                 return Err(CQLError::InvalidSyntax);
             }
-    
+
             let col_name = col_parts[0];
             let data_type = DataType::from_str(col_parts[1])?;
-    
+
             if col_parts
                 .get(2)
                 .map_or(false, |&s| s.to_uppercase() == "PRIMARY")
@@ -154,10 +161,10 @@ impl CreateTable {
                 }
                 primary_key_def = Some(format!("PRIMARY KEY ({})", col_name));
             }
-    
+
             columns.push(Column::new(col_name, data_type, false, true));
         }
-    
+
         // Procesar primary key
         if let Some(pk_def) = primary_key_def {
             let pk_content = pk_def
@@ -169,9 +176,9 @@ impl CreateTable {
                         .and_then(|s| s.strip_suffix(")").or(Some(s)))
                 })
                 .ok_or(CQLError::InvalidSyntax)?;
-    
+
             let pk_parts = split_preserving_parentheses(pk_content);
-    
+
             if let Some(first_part) = pk_parts.first() {
                 if first_part.starts_with('(') {
                     // Clave de partición compuesta
@@ -181,29 +188,29 @@ impl CreateTable {
                         .split(',')
                         .map(|s| s.trim().to_string())
                         .collect::<Vec<String>>();
-    
+
                     partition_key_cols.extend(partition_content);
                 } else {
                     // Clave de partición simple
                     partition_key_cols.push(first_part.to_string());
                 }
-    
+
                 // El resto son clustering keys
                 clustering_key_cols.extend(pk_parts.iter().skip(1).map(|s| s.trim().to_string()));
             }
         }
-    
+
         // Procesar WITH CLUSTERING ORDER BY si existe
         index += 1;
-        if index + 4 < tokens.len() && 
-           tokens[index] == "WITH" && 
-           tokens[index + 1] == "CLUSTERING" && 
-           tokens[index + 2] == "ORDER" && 
-           tokens[index + 3] == "BY" {
-            
+        if index + 4 < tokens.len()
+            && tokens[index] == "WITH"
+            && tokens[index + 1] == "CLUSTERING"
+            && tokens[index + 2] == "ORDER"
+            && tokens[index + 3] == "BY"
+        {
             let clustering_order_def = &tokens[index + 4];
             let order_parts: Vec<&str> = clustering_order_def.split(',').collect();
-            
+
             for order_part in order_parts {
                 let parts: Vec<&str> = order_part.trim().split_whitespace().collect();
                 if parts.len() == 2 {
@@ -215,7 +222,7 @@ impl CreateTable {
                 }
             }
         }
-    
+
         // Actualizar las columnas con la información de clustering
         for column in &mut columns {
             if partition_key_cols.contains(&column.name) {
@@ -227,7 +234,7 @@ impl CreateTable {
                     .map_or(String::from(""), |order| order.to_string());
             }
         }
-    
+
         Ok(CreateTable {
             name: table_name,
             keyspace_used_name,
@@ -243,7 +250,7 @@ impl CreateTable {
         let mut partition_key_cols: Vec<String> = Vec::new();
         let mut clustering_key_cols: Vec<String> = Vec::new();
         let mut clustering_orders: Vec<String> = Vec::new();
-    
+
         // Recorre las columnas y arma la cadena de definición de cada una
         for col in &self.columns {
             let mut col_def = format!("{} {}", col.name, col.data_type.to_string());
@@ -251,7 +258,7 @@ impl CreateTable {
                 col_def.push_str(" NOT NULL");
             }
             columns_str.push(col_def);
-    
+
             // Identifica las columnas de la clave primaria y órdenes de clustering
             if col.is_partition_key {
                 partition_key_cols.push(col.name.clone());
@@ -262,7 +269,7 @@ impl CreateTable {
                 }
             }
         }
-    
+
         // Construye la definición de la clave primaria
         let primary_key = if !partition_key_cols.is_empty() {
             if clustering_key_cols.is_empty() {
@@ -277,34 +284,38 @@ impl CreateTable {
         } else {
             String::new()
         };
-    
+
         // Añade la definición de la Primary Key al final de la tabla
         if !primary_key.is_empty() {
             columns_str.push(primary_key);
         }
-    
+
         // Construir la declaración base
-        let if_not_exists_str = if self.if_not_exists_clause { "IF NOT EXISTS " } else { "" };
+        let if_not_exists_str = if self.if_not_exists_clause {
+            "IF NOT EXISTS "
+        } else {
+            ""
+        };
         let table_name_str = if !self.keyspace_used_name.is_empty() {
             format!("{}.{}", self.keyspace_used_name, self.name)
         } else {
             self.name.clone()
         };
-    
+
         let mut query = format!(
             "CREATE TABLE {}{} ({})",
             if_not_exists_str,
             table_name_str,
             columns_str.join(", ")
         );
-    
+
         // Añadir la cláusula WITH CLUSTERING ORDER BY si hay órdenes de clustering
         if !clustering_orders.is_empty() {
             query.push_str(" WITH CLUSTERING ORDER BY (");
             query.push_str(&clustering_orders.join(", "));
             query.push(')');
         }
-    
+
         query
     }
 
@@ -388,13 +399,13 @@ mod tests {
             "CREATE".to_string(),
             "TABLE".to_string(),
             "airports".to_string(),
-            "iata TEXT, country TEXT, PRIMARY KEY (country, iata)".to_string()
+            "iata TEXT, country TEXT, PRIMARY KEY (country, iata)".to_string(),
         ];
 
         let result = CreateTable::new_from_tokens(tokens);
 
         assert!(result.is_ok());
-        
+
         let expected_table = CreateTable {
             name: "airports".to_string(),
             keyspace_used_name: "".to_string(),
@@ -407,7 +418,7 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: true,
                     is_partition_key: false,
-                    clustering_order: String::new()
+                    clustering_order: String::new(),
                 },
                 Column {
                     name: "country".to_string(),
@@ -416,7 +427,7 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: false,
                     is_partition_key: true,
-                    clustering_order: String::new()
+                    clustering_order: String::new(),
                 },
             ],
         };
@@ -434,7 +445,7 @@ mod tests {
             "NOT".to_string(),
             "EXISTS".to_string(),
             "sky.airports".to_string(),
-            "iata TEXT, country TEXT, PRIMARY KEY (country, iata)".to_string()
+            "iata TEXT, country TEXT, PRIMARY KEY (country, iata)".to_string(),
         ];
 
         let result = CreateTable::new_from_tokens(tokens);
@@ -453,7 +464,7 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: true,
                     is_partition_key: false,
-                    clustering_order: String::new()
+                    clustering_order: String::new(),
                 },
                 Column {
                     name: "country".to_string(),
@@ -462,7 +473,7 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: false,
                     is_partition_key: true,
-                    clustering_order: String::new()
+                    clustering_order: String::new(),
                 },
             ],
         };
@@ -473,8 +484,8 @@ mod tests {
     #[test]
     fn test_create_table_with_clustering_order() {
         // Example: CREATE TABLE IF NOT EXISTS sky.airports (
-        //     iata TEXT, 
-        //     country TEXT, 
+        //     iata TEXT,
+        //     country TEXT,
         //     name TEXT,
         //     PRIMARY KEY (country, iata, name)
         // ) WITH CLUSTERING ORDER BY (iata ASC, name DESC)
@@ -490,7 +501,7 @@ mod tests {
             "CLUSTERING".to_string(),
             "ORDER".to_string(),
             "BY".to_string(),
-            "iata ASC, name DESC".to_string()
+            "iata ASC, name DESC".to_string(),
         ];
 
         let result = CreateTable::new_from_tokens(tokens);
@@ -509,7 +520,7 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: false,
                     is_partition_key: true,
-                    clustering_order: String::new()
+                    clustering_order: String::new(),
                 },
                 Column {
                     name: "iata".to_string(),
@@ -518,7 +529,7 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: true,
                     is_partition_key: false,
-                    clustering_order: "ASC".to_string()
+                    clustering_order: "ASC".to_string(),
                 },
                 Column {
                     name: "name".to_string(),
@@ -527,12 +538,11 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: true,
                     is_partition_key: false,
-                    clustering_order: "DESC".to_string()
+                    clustering_order: "DESC".to_string(),
                 },
             ],
         };
 
         assert_eq!(result.unwrap(), expected_table);
     }
-    
 }
