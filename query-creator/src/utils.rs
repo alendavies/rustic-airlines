@@ -92,3 +92,8 @@ pub fn is_set(token: &str) -> bool {
 pub fn is_values(token: &str) -> bool {
     token == "VALUES"
 }
+
+/// Returns true if the token is equal to "LIMIT"
+pub fn is_limit(token: &str) -> bool {
+    token.eq_ignore_ascii_case("LIMIT")
+}
