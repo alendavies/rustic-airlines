@@ -9,3 +9,11 @@ partitioner = { path = "../partitioner" }  # Ejemplo de cómo referenciar la lib
 query-creator = { path = "../query-creator" }  # Ejemplo de cómo referenciar la librería `partitioner`
 driver = { path = "../driver" }
 native_protocol = { path = "../native_protocol" }
+
+[dependencies.uuid]
+version = "1.11.0"
+features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+]

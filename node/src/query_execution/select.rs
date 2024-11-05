@@ -15,6 +15,7 @@ impl QueryExecution {
         internode: bool,
         mut replication: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Vec<String>, NodeError> {
         let table;
         let mut do_in_this_node = true;
@@ -22,17 +23,18 @@ impl QueryExecution {
         {
             // Get the table name and reference the node
             let table_name = select_query.table_name.clone();
-            let node = self
+            let mut node = self
                 .node_that_execute
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
 
-            if node.has_no_actual_keyspace() {
-                return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
-            }
+            let client_keyspace = node
+                .get_open_handle_query()
+                .get_keyspace_of_query(open_query_id)?
+                .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
             // Get the table and replication factor
-            table = node.get_table(table_name.clone())?;
+            table = node.get_table(table_name.clone(), client_keyspace.clone())?;
 
             // Validate the primary key and where clause
             let partition_keys = table.get_partition_keys()?;
@@ -80,6 +82,8 @@ impl QueryExecution {
                     &serialized_query,
                     true,
                     open_query_id,
+                    client_id,
+                    &client_keyspace.get_name(),
                 )?;
                 do_in_this_node = false;
             }
@@ -94,6 +98,8 @@ impl QueryExecution {
                     &serialized_select,
                     true,
                     open_query_id,
+                    client_id,
+                    &client_keyspace.get_name(),
                 )?;
             }
 
@@ -114,7 +120,8 @@ impl QueryExecution {
         }
 
         // Execute the SELECT query on this node if applicable
-        let result = self.execute_select_in_this_node(select_query, table, replication)?;
+        let result =
+            self.execute_select_in_this_node(select_query, table, replication, client_id)?;
         Ok(result)
     }
 
@@ -124,8 +131,10 @@ impl QueryExecution {
         select_query: Select,
         table: Table,
         replication: bool,
+        client_id: i32,
     ) -> Result<Vec<String>, NodeError> {
-        let (file_path, _) = self.get_file_paths(&select_query.table_name, replication)?;
+        let (file_path, _) =
+            self.get_file_paths(&select_query.table_name, replication, client_id)?;
         let file = OpenOptions::new().read(true).open(&file_path)?;
         let reader = BufReader::new(file);
         let mut results = Vec::new();
@@ -141,7 +150,6 @@ impl QueryExecution {
                 results.push(selected_columns);
             }
         }
-
         Ok(results)
     }
 
