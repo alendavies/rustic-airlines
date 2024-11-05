@@ -2,7 +2,7 @@ use super::{order_by_cql::OrderBy, where_cql::Where};
 use crate::QueryCreator;
 use crate::{
     errors::CQLError,
-    utils::{is_by, is_from, is_order, is_select, is_where},
+    utils::{is_by, is_from, is_order, is_select, is_where, is_limit},
 };
 
 /// Struct that represents the `SELECT` SQL clause.
@@ -22,6 +22,7 @@ pub struct Select {
     pub columns: Vec<String>,
     pub where_clause: Option<Where>,
     pub orderby_clause: Option<OrderBy>,
+    pub limit: Option<usize>
 }
 
 fn parse_columns<'a>(tokens: &'a [String], i: &mut usize) -> Result<Vec<&'a String>, CQLError> {
@@ -51,16 +52,17 @@ fn parse_table_name(tokens: &[String], i: &mut usize) -> Result<String, CQLError
     }
 }
 
-fn parse_where_and_orderby<'a>(
+fn parse_where_orderby_limit<'a>(
     tokens: &'a [String],
     i: &mut usize,
-) -> Result<(Vec<&'a str>, Vec<&'a str>), CQLError> {
+) -> Result<(Vec<&'a str>, Vec<&'a str>, Option<usize>), CQLError> {
     let mut where_tokens = Vec::new();
     let mut orderby_tokens = Vec::new();
+    let mut limit = None;
 
     if *i < tokens.len() {
         if is_where(&tokens[*i]) {
-            while *i < tokens.len() && !is_order(&tokens[*i]) {
+            while *i < tokens.len() && !is_order(&tokens[*i]) && !is_limit(&tokens[*i]) {
                 where_tokens.push(tokens[*i].as_str());
                 *i += 1;
             }
@@ -69,15 +71,23 @@ fn parse_where_and_orderby<'a>(
             orderby_tokens.push(tokens[*i].as_str());
             *i += 1;
             if *i < tokens.len() && is_by(&tokens[*i]) {
-                while *i < tokens.len() {
+                while *i < tokens.len() && !is_limit(&tokens[*i]) {
                     orderby_tokens.push(tokens[*i].as_str());
                     *i += 1;
                 }
             }
         }
+        if *i < tokens.len() && is_limit(&tokens[*i]) {
+            *i += 1;
+            if *i < tokens.len() {
+                limit = tokens[*i].parse::<usize>().ok(); // Attempt to parse LIMIT value
+                *i += 1;
+            }
+        }
     }
-    Ok((where_tokens, orderby_tokens))
+    Ok((where_tokens, orderby_tokens, limit))
 }
+
 
 impl Select {
     /// Creates and returns a new `Select` instance from a vector of `String` tokens.
@@ -94,9 +104,9 @@ impl Select {
         if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
         }
-
+    
         let mut i = 0;
-
+    
         let columns = parse_columns(&tokens, &mut i)?;
         let full_table_name = parse_table_name(&tokens, &mut i)?;
         
@@ -106,33 +116,34 @@ impl Select {
         } else {
             (String::new(), full_table_name.clone())
         };
-
+    
         if columns.is_empty() || table_name.is_empty() {
             return Err(CQLError::InvalidSyntax);
         }
-
-        let (where_tokens, orderby_tokens) = parse_where_and_orderby(&tokens, &mut i)?;
-
+    
+        let (where_tokens, orderby_tokens, limit) = parse_where_orderby_limit(&tokens, &mut i)?;
+    
         let where_clause = if !where_tokens.is_empty() {
             Some(Where::new_from_tokens(where_tokens)?)
         } else {
             None
         };
-
+    
         let order_by_tokens = orderby_tokens.iter().map(|s| s.to_string()).collect();
-
+    
         let orderby_clause = if !orderby_tokens.is_empty() {
             Some(OrderBy::new_from_tokens(order_by_tokens)?)
         } else {
             None
         };
-
+    
         Ok(Self {
             table_name,
             keyspace_used_name,
             columns: columns.iter().map(|c| c.to_string()).collect(),
             where_clause,
             orderby_clause,
+            limit,
         })
     }
 
@@ -231,6 +242,24 @@ mod tests {
     }
 
     #[test]
+    fn new_with_limit() {
+        let tokens = vec![
+            String::from("SELECT"),
+            String::from("col"),
+            String::from("FROM"),
+            String::from("table"),
+            String::from("Limit"),
+            String::from("10"),
+        ];
+        let select = Select::new_from_tokens(tokens).unwrap();
+        assert_eq!(select.columns, ["col"]);
+        assert_eq!(select.table_name, "table");
+        assert_eq!(select.where_clause, None);
+        assert_eq!(select.orderby_clause, None);
+        assert_eq!(select.limit.unwrap(), 10)
+    }
+
+    #[test]
     fn new_with_where() {
         let tokens = vec![
             String::from("SELECT"),
@@ -284,7 +313,7 @@ mod tests {
     }
 
     #[test]
-    fn new_with_where_orderby() {
+    fn new_with_where_orderby_limit() {
         let tokens = vec![
             String::from("SELECT"),
             String::from("col"),
@@ -297,6 +326,8 @@ mod tests {
             String::from("ORDER"),
             String::from("BY"),
             String::from("email"),
+            String::from("Limit"),
+            String::from("10"),
         ];
         let select = Select::new_from_tokens(tokens).unwrap();
         assert_eq!(select.columns, ["col"]);
@@ -320,5 +351,6 @@ mod tests {
                 order: String::new()
             }
         );
+        assert_eq!(select.limit.unwrap(), 10)
     }
 }
