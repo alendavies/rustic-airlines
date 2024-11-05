@@ -1,7 +1,6 @@
 use crate::table::Table;
 // Ordered imports
 use crate::NodeError;
-use query_creator::clauses::keyspace;
 use query_creator::clauses::table::create_table_cql::CreateTable;
 use query_creator::errors::CQLError;
 use std::fs::OpenOptions;

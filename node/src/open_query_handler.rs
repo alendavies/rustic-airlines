@@ -1,8 +1,6 @@
 use crate::errors::NodeError;
 use crate::keyspace::Keyspace;
-use crate::query_execution::update;
 use crate::table::Table;
-use query_creator::clauses::keyspace;
 use query_creator::Query;
 use std::collections::HashMap;
 use std::fmt;

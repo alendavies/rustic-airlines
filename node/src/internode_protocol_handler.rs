@@ -80,16 +80,8 @@ impl InternodeProtocolHandler {
     /// # Returns
     /// * `String` - A formatted string representing the response message, including
     ///   the query ID, status, and content of the response.
-    pub fn create_protocol_response(
-        status: &str,
-        content: &str,
-        open_query_id: i32,
-        client_id: i32,
-    ) -> String {
-        format!(
-            "RESPONSE - {} - {} - {} - {}",
-            open_query_id, status, content, client_id
-        )
+    pub fn create_protocol_response(status: &str, content: &str, open_query_id: i32) -> String {
+        format!("RESPONSE - {} - {} - {}", open_query_id, status, content)
     }
 
     /// Handles an incoming command from a node or client, distinguishing between query commands
@@ -366,7 +358,7 @@ impl InternodeProtocolHandler {
 
         let query_handler = guard_node.get_open_handle_query();
 
-        let parts: Vec<&str> = message.splitn(4, " - ").collect();
+        let parts: Vec<&str> = message.splitn(3, " - ").collect();
         if parts.len() < 3 {
             return Err(NodeError::InternodeProtocolError);
         }
@@ -376,7 +368,6 @@ impl InternodeProtocolHandler {
             .map_err(|_| NodeError::InternodeProtocolError)?;
         let status = parts[1];
         let content = parts[2];
-        let client_id = parts[3];
 
         let keyspace = query_handler.get_keyspace_of_query(open_query_id)?;
 
@@ -729,7 +720,7 @@ mod tests {
 
     #[test]
     fn test_create_protocol_response() {
-        let response = InternodeProtocolHandler::create_protocol_response("OK", "content", 1, 2);
+        let response = InternodeProtocolHandler::create_protocol_response("OK", "content", 1);
         assert_eq!(response, "RESPONSE - 1 - OK - content - 2");
     }
 

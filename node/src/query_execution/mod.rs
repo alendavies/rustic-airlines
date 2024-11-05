@@ -185,7 +185,6 @@ impl QueryExecution {
                         "OK",
                         &content?.unwrap_or("_".to_string()),
                         open_query_id,
-                        client_id,
                     ),
                     Err(_) => {
                         println!(
@@ -196,7 +195,6 @@ impl QueryExecution {
                             "ERROR",
                             &content?.unwrap_or("_".to_string()),
                             open_query_id,
-                            client_id,
                         )
                     }
                 }
