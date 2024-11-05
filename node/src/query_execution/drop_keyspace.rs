@@ -12,6 +12,7 @@ impl QueryExecution {
         drop_keyspace: DropKeyspace,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<(), NodeError> {
         // Get the name of the keyspace to delete
         let keyspace_name = drop_keyspace.get_name().clone();
@@ -21,6 +22,7 @@ impl QueryExecution {
             .node_that_execute
             .lock()
             .map_err(|_| NodeError::LockError)?;
+
         node.remove_keyspace(keyspace_name.clone())?;
 
         // Generate the folder name where the keyspace is stored
@@ -43,6 +45,8 @@ impl QueryExecution {
                 &serialized_drop_keyspace,
                 true,
                 open_query_id,
+                client_id,
+                "None",
             )?;
         }
 

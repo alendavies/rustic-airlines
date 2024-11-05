@@ -40,23 +40,26 @@ impl QueryExecution {
         internode: bool,
         mut replication: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<(), NodeError> {
         let table;
         let mut do_in_this_node = true;
+        let client_keyspace;
         {
             // Get the table name and reference the node
             let table_name = update_query.table_name.clone();
-            let node = self
+            let mut node = self
                 .node_that_execute
                 .lock()
                 .map_err(|_| NodeError::LockError)?;
 
-            if node.has_no_actual_keyspace() {
-                return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
-            }
+            client_keyspace = node
+                .get_open_handle_query()
+                .get_keyspace_of_query(open_query_id)?
+                .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
-            // Retrieve the table and replication factor
-            table = node.get_table(table_name.clone())?;
+            // Get the table and replication factor
+            table = node.get_table(table_name.clone(), client_keyspace.clone())?;
 
             // Validate primary key and where clause
             let partition_keys = table.get_partition_keys()?;
@@ -97,6 +100,8 @@ impl QueryExecution {
                     &serialized_update,
                     true,
                     open_query_id,
+                    client_id,
+                    &client_keyspace.get_name(),
                 )?;
                 do_in_this_node = false;
             }
@@ -111,6 +116,8 @@ impl QueryExecution {
                     &serialized_update,
                     true,
                     open_query_id,
+                    client_id,
+                    &client_keyspace.get_name(),
                 )?;
             }
 
@@ -131,8 +138,11 @@ impl QueryExecution {
         }
 
         // Perform the update on this node
-        let (file_path, temp_file_path) =
-            self.get_file_paths(&update_query.table_name, replication)?;
+        let (file_path, temp_file_path) = self.get_file_paths(
+            &update_query.table_name,
+            replication,
+            &client_keyspace.get_name(),
+        )?;
         if let Err(e) = self.update_in_this_node(update_query, table, &file_path, &temp_file_path) {
             let _ = std::fs::remove_file(temp_file_path); // Cleanup temp file on error
             return Err(e);
@@ -206,7 +216,6 @@ impl QueryExecution {
                         .unwrap_or(false)
                     {
                         // Si la cláusula `IF` está presente pero no se cumple, no actualizar
-                        println!("se cumple where pero if NO");
                         writeln!(temp_file, "{}", line)?;
                         return Ok(true);
                     }
@@ -223,7 +232,6 @@ impl QueryExecution {
 
                     columns[index] = new_value.clone();
                 }
-                println!("hay que actualizar, se cumple where y if");
                 writeln!(temp_file, "{}", columns.join(","))?;
                 return Ok(true);
             } else {

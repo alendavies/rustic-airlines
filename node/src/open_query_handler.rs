@@ -1,4 +1,5 @@
 use crate::errors::NodeError;
+use crate::keyspace::Keyspace;
 use crate::table::Table;
 use query_creator::Query;
 use std::collections::HashMap;
@@ -140,6 +141,7 @@ impl fmt::Display for OpenQuery {
 /// Manages multiple `OpenQuery` instances, each identified by an ID.
 pub struct OpenQueryHandler {
     queries: HashMap<i32, OpenQuery>,
+    keyspaces_queries: HashMap<i32, Option<Keyspace>>,
     next_id: i32,
 }
 
@@ -151,6 +153,7 @@ impl OpenQueryHandler {
     pub fn new() -> Self {
         Self {
             queries: HashMap::new(),
+            keyspaces_queries: HashMap::new(),
             next_id: 0,
         }
     }
@@ -170,6 +173,7 @@ impl OpenQueryHandler {
         query: Query,
         consistency_level: &str,
         table: Option<Table>,
+        keyspace: Option<Keyspace>,
     ) -> i32 {
         let new_id = self.next_id;
         self.next_id += 1;
@@ -181,6 +185,7 @@ impl OpenQueryHandler {
             table,
         );
         self.queries.insert(new_id, query);
+        self.keyspaces_queries.insert(new_id, keyspace);
         new_id
     }
 
@@ -227,7 +232,43 @@ impl OpenQueryHandler {
     /// # Parameters
     /// - `id`: The ID of the query.
     pub fn _remove_query(&mut self, id: &i32) {
+        self.keyspaces_queries.remove(id);
         self.queries.remove(id);
+    }
+
+    pub fn get_keyspace_of_query(&self, open_query_id: i32) -> Result<Option<Keyspace>, NodeError> {
+        self.keyspaces_queries
+            .get(&open_query_id)
+            .ok_or(NodeError::InternodeProtocolError)
+            .cloned()
+    }
+
+    pub fn update_table_in_keyspace(
+        &mut self,
+        keyspace_name: &str,
+        new_table: Table,
+    ) -> Result<(), NodeError> {
+        for (_, keyspace) in &mut self.keyspaces_queries {
+            if let Some(key) = keyspace {
+                if key.get_name() == keyspace_name {
+                    let mut find = false;
+                    for (i, table) in key.get_tables().iter_mut().enumerate() {
+                        if table.get_name() == new_table.clone().get_name() {
+                            key.tables[i] = new_table.clone();
+                            find = true;
+                        }
+                    }
+                    if !find {
+                        key.add_table(new_table.clone())?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_keyspace_of_query(&mut self, open_query_id: i32, keyspace: Keyspace) {
+        self.keyspaces_queries.insert(open_query_id, Some(keyspace));
     }
 
     /// Adds a response to the `OpenQuery` with the specified ID and returns it if the query is closed.
@@ -291,6 +332,7 @@ impl fmt::Debug for OpenQueryHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use query_creator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
     use query_creator::clauses::table::create_table_cql::CreateTable;
     use query_creator::Query;
     use std::net::TcpListener;
@@ -318,9 +360,11 @@ mod tests {
     fn get_dummy_query() -> Query {
         Query::Select(query_creator::clauses::select_cql::Select {
             table_name: "dummy_table".to_string(),
+            keyspace_used_name: "".to_string(),
             columns: vec!["col1".to_string(), "col2".to_string()],
             where_clause: None,
             orderby_clause: None,
+            limit: None,
         })
     }
 
@@ -329,7 +373,9 @@ mod tests {
         let stream = get_dummy_tcpstream();
         let query = get_dummy_query();
         let table = get_dummy_table();
+
         let open_query = OpenQuery::new(3, stream, query, "quorum", Some(table));
+
         assert_eq!(open_query.needed_responses, 3);
         assert_eq!(open_query.actual_responses, 0);
         assert!(open_query.responses.is_empty());
@@ -341,6 +387,7 @@ mod tests {
         let stream = get_dummy_tcpstream();
         let query = get_dummy_query();
         let mut open_query = OpenQuery::new(2, stream, query, "two", None);
+
         open_query.add_response("Response 1".to_string());
         assert_eq!(open_query.actual_responses, 1);
         assert_eq!(open_query.responses, vec!["Response 1".to_string()]);
@@ -359,6 +406,7 @@ mod tests {
         let query = get_dummy_query();
         let table = get_dummy_table();
         let mut open_query = OpenQuery::new(2, stream, query, "one", Some(table));
+
         assert!(!open_query.is_close());
 
         open_query.add_response("Response 1".to_string());
@@ -385,6 +433,7 @@ mod tests {
         let stream = get_dummy_tcpstream();
         let query = get_dummy_query();
         let mut open_query = OpenQuery::new(2, stream, query, "two", None);
+
         open_query.add_response("Response 1".to_string());
         open_query.add_response("Response 2".to_string());
 
@@ -396,17 +445,38 @@ mod tests {
     }
 
     #[test]
-    fn test_open_query_handler_create_query() {
+    fn test_open_query_handler_create_query_with_keyspace() {
         let stream = get_dummy_tcpstream();
         let query = get_dummy_query();
         let table = get_dummy_table();
+        let keyspace = Keyspace::new(CreateKeyspace {
+            name: "test_keyspace".to_string(),
+            if_not_exists_clause: true,
+            replication_class: "SimpleStrategy".to_string(),
+            replication_factor: 3,
+        });
+
         let mut handler = OpenQueryHandler::new();
-        let query_id = handler.new_open_query(3, stream, query, "quorum", Some(table));
+        let query_id = handler.new_open_query(
+            3,
+            stream,
+            query,
+            "quorum",
+            Some(table),
+            Some(keyspace.clone()),
+        );
+
         assert!(handler.queries.contains_key(&query_id));
         assert_eq!(handler.queries[&query_id].needed_responses, 3);
         assert_eq!(
             handler.queries[&query_id].consistency_level,
             ConsistencyLevel::Quorum
+        );
+
+        // Verificación de keyspace en el HashMap
+        assert_eq!(
+            handler.get_keyspace_of_query(query_id).unwrap(),
+            Some(keyspace)
         );
     }
 
@@ -415,11 +485,22 @@ mod tests {
         let stream = get_dummy_tcpstream();
         let query = get_dummy_query();
         let table = get_dummy_table();
+        let keyspace = Keyspace::new(CreateKeyspace {
+            name: "test_keyspace".to_string(),
+            if_not_exists_clause: false,
+            replication_class: "SimpleStrategy".to_string(),
+            replication_factor: 3,
+        });
+
         let mut handler = OpenQueryHandler::new();
-        let query_id = handler.new_open_query(2, stream, query, "two", Some(table));
+        let query_id = handler.new_open_query(2, stream, query, "two", Some(table), Some(keyspace));
+
         assert!(handler.queries.contains_key(&query_id));
 
         handler._remove_query(&query_id);
         assert!(!handler.queries.contains_key(&query_id));
+
+        // Verificación de que el keyspace fue removido
+        assert!(handler.get_keyspace_of_query(query_id).is_err());
     }
 }

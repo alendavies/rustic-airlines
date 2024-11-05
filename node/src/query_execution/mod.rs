@@ -86,13 +86,19 @@ impl QueryExecution {
         internode: bool,
         replication: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let mut content: Result<Option<String>, NodeError> = Ok(Some(String::from("_")));
-
         let query_result = {
             match query.clone() {
                 Query::Select(select_query) => {
-                    match self.execute_select(select_query, internode, replication, open_query_id) {
+                    match self.execute_select(
+                        select_query,
+                        internode,
+                        replication,
+                        open_query_id,
+                        client_id,
+                    ) {
                         Ok(select_querys) => {
                             content = Ok(Some(select_querys.join("/")));
                             Ok(())
@@ -104,42 +110,64 @@ impl QueryExecution {
                     }
                 }
                 Query::Insert(insert_query) => {
-                    let table_name = insert_query.into_clause.table_name.clone();
-                    let table = self.node_that_execute.lock()?.get_table(table_name)?;
-                    self.execute_insert(insert_query, table, internode, replication, open_query_id)
-                }
-                Query::Update(update_query) => {
-                    self.execute_update(update_query, internode, replication, open_query_id)
-                }
-                Query::Delete(delete_query) => {
-                    self.execute_delete(delete_query, internode, replication, open_query_id)
-                }
-                Query::CreateTable(create_table) => {
-                    if self
-                        .node_that_execute
-                        .lock()?
-                        .table_already_exist(create_table.get_name())?
+                    let table;
                     {
-                        return Err(NodeError::CQLError(CQLError::InvalidTable));
+                        let table_name = insert_query.into_clause.table_name.clone();
+                        let mut guard_node = self.node_that_execute.lock()?;
+                        let keyspace = guard_node
+                            .get_open_handle_query()
+                            .get_keyspace_of_query(open_query_id)?
+                            .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
+
+                        table = guard_node.get_table(table_name, keyspace)?;
                     }
-                    self.execute_create_table(create_table, internode, open_query_id)
+                    self.execute_insert(
+                        insert_query,
+                        table,
+                        internode,
+                        replication,
+                        open_query_id,
+                        client_id,
+                    )
+                }
+                Query::Update(update_query) => self.execute_update(
+                    update_query,
+                    internode,
+                    replication,
+                    open_query_id,
+                    client_id,
+                ),
+                Query::Delete(delete_query) => self.execute_delete(
+                    delete_query,
+                    internode,
+                    replication,
+                    open_query_id,
+                    client_id,
+                ),
+                Query::CreateTable(create_table) => {
+                    self.execute_create_table(create_table, internode, open_query_id, client_id)
                 }
                 Query::DropTable(drop_table) => {
-                    self.execute_drop_table(drop_table, internode, open_query_id)
+                    self.execute_drop_table(drop_table, internode, open_query_id, client_id)
                 }
                 Query::AlterTable(alter_table) => {
-                    self.execute_alter_table(alter_table, internode, open_query_id)
+                    self.execute_alter_table(alter_table, internode, open_query_id, client_id)
                 }
-                Query::CreateKeyspace(create_keyspace) => {
-                    self.execute_create_keyspace(create_keyspace, internode, open_query_id)
-                }
+                Query::CreateKeyspace(create_keyspace) => self.execute_create_keyspace(
+                    create_keyspace,
+                    internode,
+                    open_query_id,
+                    client_id,
+                ),
                 Query::DropKeyspace(drop_keyspace) => {
-                    self.execute_drop_keyspace(drop_keyspace, internode, open_query_id)
+                    self.execute_drop_keyspace(drop_keyspace, internode, open_query_id, client_id)
                 }
                 Query::AlterKeyspace(alter_keyspace) => {
-                    self.execute_alter_keyspace(alter_keyspace, internode, open_query_id)
+                    self.execute_alter_keyspace(alter_keyspace, internode, open_query_id, client_id)
                 }
-                Query::Use(use_cql) => self.execute_use(use_cql, internode, open_query_id),
+                Query::Use(use_cql) => {
+                    self.execute_use(use_cql, internode, open_query_id, client_id)
+                }
             }
         };
 
@@ -200,6 +228,8 @@ impl QueryExecution {
         serialized_message: &str,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
+        keyspace_name: &str,
     ) -> Result<(), NodeError> {
         // Serializa el objeto que se quiere enviar
         let message = InternodeProtocolHandler::create_protocol_message(
@@ -209,6 +239,8 @@ impl QueryExecution {
             &serialized_message,
             internode,
             false,
+            client_id,
+            keyspace_name,
         );
 
         // Bloquea el nodo para obtener el partitioner y la IP
@@ -233,6 +265,8 @@ impl QueryExecution {
         serialized_message: &str,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
+        keyspace_name: &str,
     ) -> Result<(), NodeError> {
         // Serializa el objeto que se quiere enviar
         let message = InternodeProtocolHandler::create_protocol_message(
@@ -242,6 +276,8 @@ impl QueryExecution {
             serialized_message,
             internode,
             false,
+            client_id,
+            keyspace_name,
         );
 
         // Conecta y envía el mensaje al nodo específico
@@ -253,12 +289,14 @@ impl QueryExecution {
     // Función auxiliar para enviar un mensaje a todos los nodos en el partitioner
     fn send_to_replication_nodes(
         &self,
-        local_node: MutexGuard<'_, Node>,
+        mut local_node: MutexGuard<'_, Node>,
         node_to_get_succesor: Ipv4Addr,
         header: &str,
         serialized_message: &str,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
+        keyspace_name: &str,
     ) -> Result<bool, NodeError> {
         // Serializa el objeto que se quiere enviar
         let message = InternodeProtocolHandler::create_protocol_message(
@@ -268,13 +306,17 @@ impl QueryExecution {
             &serialized_message,
             internode,
             true,
+            client_id,
+            keyspace_name,
         );
 
         // Bloquea el nodo para obtener el partitioner y la IP
         let current_ip = local_node.get_ip();
         let replication_factor = local_node
-            .get_replication_factor()
-            .ok_or(NodeError::KeyspaceError)?;
+            .get_open_handle_query()
+            .get_keyspace_of_query(open_query_id)?
+            .ok_or(NodeError::KeyspaceError)?
+            .get_replication_factor();
 
         let n_succesors = local_node
             .get_partitioner()
@@ -315,6 +357,7 @@ impl QueryExecution {
         &self,
         table_name: &str,
         replication: bool,
+        keyspace_name: &str,
     ) -> Result<(String, String), NodeError> {
         let node = self
             .node_that_execute
@@ -322,12 +365,7 @@ impl QueryExecution {
             .map_err(|_| NodeError::LockError)?;
 
         let add_str = node.get_ip_string().replace(".", "_");
-        let base_folder = format!(
-            "keyspaces_{}/{}",
-            add_str,
-            node.actual_keyspace_name()
-                .ok_or(NodeError::KeyspaceError)?
-        );
+        let base_folder = format!("keyspaces_{}/{}", add_str, keyspace_name);
 
         // Agrega la carpeta "replication" si el parámetro es verdadero
         let folder_name = if replication {

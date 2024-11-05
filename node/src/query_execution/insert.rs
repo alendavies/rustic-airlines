@@ -10,6 +10,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::Ipv4Addr;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid;
 
 use super::QueryExecution;
 
@@ -21,17 +22,18 @@ impl QueryExecution {
         internode: bool,
         mut replication: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<(), NodeError> {
-        let node = self.node_that_execute.lock()?;
+        let mut node = self.node_that_execute.lock()?;
 
         let mut do_in_this_node = true;
 
-        // Check if the keyspace exists in the node
-        if node.has_no_actual_keyspace() {
-            return Err(NodeError::CQLError(CQLError::NoActualKeyspaceError));
-        }
+        let client_keyspace = node
+            .get_open_handle_query()
+            .get_keyspace_of_query(open_query_id)?
+            .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
-        if !node.table_already_exist(table_to_insert.get_name())? {
+        if !node.table_already_exist(table_to_insert.get_name(), client_keyspace.get_name())? {
             return Err(NodeError::CQLError(CQLError::TableAlreadyExist));
         }
 
@@ -84,19 +86,21 @@ impl QueryExecution {
             insert_query.clone().into_clause.columns,
             values,
         )?;
+
+        let mut new_insert = insert_query.clone();
+        let new_values: Vec<String> = values.iter().filter(|v| !v.is_empty()).cloned().collect();
+        new_insert.values = new_values;
         self.validate_values(columns, &values)?;
 
-        // Determine the node responsible for the insert
+        // Deterclient_keyspacemine the node responsible for the insert
         let node_to_insert = node.get_partitioner().get_ip(value_to_hash.clone())?;
         let self_ip = node.get_ip().clone();
-        let keyspace_name = node
-            .actual_keyspace_name()
-            .ok_or(NodeError::KeyspaceError)?;
+        let keyspace_name = client_keyspace.get_name();
 
         // If not internode and the target IP differs, forward the insert
         if !internode {
             if node_to_insert != self_ip {
-                let serialized_insert = insert_query.serialize();
+                let serialized_insert = new_insert.serialize();
                 self.send_to_single_node(
                     node.get_ip(),
                     node_to_insert,
@@ -104,6 +108,8 @@ impl QueryExecution {
                     &serialized_insert,
                     true,
                     open_query_id,
+                    client_id,
+                    &client_keyspace.get_name(),
                 )?;
                 do_in_this_node = false; // The actual insert will be done by another node
             } else {
@@ -111,7 +117,7 @@ impl QueryExecution {
             }
 
             // Send the insert to replication nodes
-            let serialized_insert = insert_query.serialize();
+            let serialized_insert = new_insert.serialize();
             replication = self.send_to_replication_nodes(
                 node,
                 node_to_insert,
@@ -119,6 +125,8 @@ impl QueryExecution {
                 &serialized_insert,
                 true,
                 open_query_id,
+                client_id,
+                &client_keyspace.get_name(),
             )?;
             if replication {
                 self.execution_replicate_itself = true; // This node will replicate the insert
@@ -149,27 +157,28 @@ impl QueryExecution {
         specified_columns: Vec<String>,
         values: Vec<String>,
     ) -> Result<Vec<String>, NodeError> {
-        let mut complete_row = vec!["".to_string(); columns.len()]; // Crear una fila completa vacía con el tamaño de las columnas
+        let mut complete_row = vec!["".to_string(); columns.len()];
         let mut specified_keys = 0;
 
         for (i, column) in columns.iter().enumerate() {
-            // Verificar si la columna es clave de partición o clave de clustering
-            if column.is_partition_key || column.is_clustering_column {
-                // Verificar si la columna está especificada en specified_columns
-                if let Some(pos) = specified_columns.iter().position(|c| c == &column.name) {
-                    // Si está, copiar el valor correspondiente en complete_row
-                    complete_row[i] = values[pos].clone();
+            if let Some(pos) = specified_columns.iter().position(|c| c == &column.name) {
+                // Generar UUID si el valor especificado es "uuid()"
+                let value = if values[pos] == "uuid()" {
+                    uuid::Uuid::new_v4().to_string()
+                } else {
+                    values[pos].clone()
+                };
+
+                complete_row[i] = value.clone();
+
+                // Incrementar contador de claves especificadas si es clave de partición o clustering
+                if column.is_partition_key || column.is_clustering_column {
                     specified_keys += 1;
-                }
-            } else {
-                // Para columnas no clave, si están en specified_columns, copiar el valor
-                if let Some(pos) = specified_columns.iter().position(|c| c == &column.name) {
-                    complete_row[i] = values[pos].clone();
                 }
             }
         }
 
-        // Verificar si se especificaron todas las claves de partición y clustering
+        // Verificar que se hayan especificado todas las claves de partición y clustering
         let total_keys = columns
             .iter()
             .filter(|c| c.is_partition_key || c.is_clustering_column)

@@ -17,6 +17,7 @@ use crate::QueryCreator;
 #[derive(PartialEq, Debug, Clone)]
 pub struct Update {
     pub table_name: String,
+    pub keyspace_used_name: String,
     pub set_clause: Set,
     pub where_clause: Option<Where>,
     pub if_clause: Option<If>,
@@ -51,6 +52,7 @@ impl Update {
         let mut where_tokens = Vec::new();
         let mut set_tokens = Vec::new();
         let mut table_name = String::new();
+        let mut keyspace_used_name = String::new();
         let mut if_tokens = Vec::new();
 
         let mut i = 0;
@@ -61,7 +63,13 @@ impl Update {
             }
 
             if i == 0 && is_update(&tokens[i]) && i + 1 < tokens.len() {
-                table_name = tokens[i + 1].to_string();
+                let full_table_name = tokens[i + 1].to_string();
+                (keyspace_used_name, table_name) = if full_table_name.contains('.') {
+                    let parts: Vec<&str> = full_table_name.split('.').collect();
+                    (parts[0].to_string(), parts[1].to_string())
+                } else {
+                    (String::new(), full_table_name.clone())
+                };
             }
 
             if i == 2 && is_set(&tokens[i]) {
@@ -105,6 +113,7 @@ impl Update {
 
         Ok(Self {
             table_name,
+            keyspace_used_name,
             where_clause,
             set_clause,
             if_clause,
@@ -113,9 +122,16 @@ impl Update {
 
     // Serializa el struct `Update` en un string
     pub fn serialize(&self) -> String {
+
+        let table_name_str = if !self.keyspace_used_name.is_empty() {
+            format!("{}.{}", self.keyspace_used_name, self.table_name)
+        } else {
+            self.table_name.clone()
+        };
+
         let mut result = format!(
             "UPDATE {} SET {}",
-            self.table_name,
+            table_name_str,
             self.set_clause.serialize()
         );
 
@@ -181,6 +197,30 @@ mod tests {
             update,
             Update {
                 table_name: String::from("table"),
+                keyspace_used_name: String::new(),
+                set_clause: Set(vec![(String::from("nombre"), String::from("Alen"))]),
+                where_clause: None,
+                if_clause: None,
+            }
+        );
+    }
+
+    #[test]
+    fn new_with_keyspace() {
+        let tokens = vec![
+            String::from("UPDATE"),
+            String::from("keyspace.table"),
+            String::from("SET"),
+            String::from("nombre"),
+            String::from("="),
+            String::from("Alen"),
+        ];
+        let update = Update::new_from_tokens(tokens).unwrap();
+        assert_eq!(
+            update,
+            Update {
+                table_name: String::from("table"),
+                keyspace_used_name: String::from("keyspace"),
                 set_clause: Set(vec![(String::from("nombre"), String::from("Alen"))]),
                 where_clause: None,
                 if_clause: None,
@@ -207,6 +247,7 @@ mod tests {
             update,
             Update {
                 table_name: String::from("table"),
+                keyspace_used_name: String::new(),
                 set_clause: Set(vec![(String::from("nombre"), String::from("Alen"))]),
                 where_clause: Some(Where {
                     condition: Condition::Simple {
@@ -243,6 +284,7 @@ mod tests {
             update,
             Update {
                 table_name: String::from("table"),
+                keyspace_used_name: String::new(),
                 set_clause: Set(vec![(String::from("nombre"), String::from("Alen"))]),
                 where_clause: Some(Where {
                     condition: Condition::Simple {

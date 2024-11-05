@@ -71,6 +71,10 @@ impl AlterKeyspace {
         self.replication_factor
     }
 
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+
     /// Serializa la estructura `AlterKeyspace` a una consulta CQL
     pub fn serialize(&self) -> String {
         format!(
