@@ -168,9 +168,6 @@ impl Provider for Db {
         let from = NaiveDateTime::new(date, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
         let from = from.and_utc().timestamp();
 
-        let to = NaiveDateTime::new(date, NaiveTime::from_hms_opt(23, 59, 59).unwrap());
-        let to = to.and_utc().timestamp();
-
         let query = format!(
             "SELECT number, status, departure_time, arrival_time, airport, direction FROM flights WHERE airport = '{airport}' AND direction = 'departure' AND departure_time > {from}"
         );

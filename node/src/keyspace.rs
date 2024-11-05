@@ -110,7 +110,7 @@ impl Keyspace {
     pub fn get_table(&self, table_name: &str) -> Result<Table, NodeError> {
         self.tables
             .iter()
-            .find(|table| table.get_name() == table_name)
+            .find(|table| table.get_name() == table_name.to_string())
             .cloned()
             .ok_or(NodeError::CQLError(CQLError::InvalidTable))
     }
@@ -146,10 +146,11 @@ impl fmt::Debug for Keyspace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Keyspace: {} (RF: {}, RC: {})",
+            "Keyspace: {} (RF: {}, RC: {}) with Tables: {:?}",
             self.get_name(),
             self.get_replication_factor(),
-            self.get_replication_class()
+            self.get_replication_class(),
+            self.get_tables()
         )
     }
 }

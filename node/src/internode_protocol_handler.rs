@@ -54,10 +54,19 @@ impl InternodeProtocolHandler {
         structure: &str,
         internode: bool,
         replication: bool,
+        client_id: i32,
+        keyspace_name: &str,
     ) -> String {
         format!(
-            "QUERY - {} - {} - {} - {} - {} - {}",
-            id, open_query_id, query_type, structure, internode, replication
+            "QUERY - {} - {} - {} - {} - {} - {} - {} - {}",
+            id,
+            open_query_id,
+            query_type,
+            structure,
+            internode,
+            replication,
+            client_id,
+            keyspace_name
         )
     }
 
@@ -154,7 +163,6 @@ impl InternodeProtocolHandler {
                 keyspace_name,
                 content.split("/").map(|s| s.to_string()).collect(),
             )?;
-
             println!("Returning frame to client: {:?}", frame);
 
             connection.write(&frame.to_bytes()?)?;
@@ -202,9 +210,8 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
     ) -> Result<(), NodeError> {
-        let parts: Vec<&str> = message.splitn(6, " - ").collect();
-
-        if parts.len() < 6 {
+        let parts: Vec<&str> = message.splitn(8, " - ").collect();
+        if parts.len() < 7 {
             return Err(NodeError::InternodeProtocolError);
         }
 
@@ -216,7 +223,20 @@ impl InternodeProtocolHandler {
         let structure = parts[3];
         let internode = parts[4] == "true";
         let replication = parts[5] == "true";
+        let client_id: i32 = parts[6]
+            .parse()
+            .map_err(|_| NodeError::InternodeProtocolError)?;
+        let keyspace_name = parts[7];
 
+        if keyspace_name != "None" {
+            {
+                let mut guard_node = node.lock()?;
+                let k = guard_node.get_keyspace(keyspace_name)?;
+                guard_node
+                    .get_open_handle_query()
+                    .set_keyspace_of_query(open_query_id, k.ok_or(NodeError::KeyspaceError)?);
+            }
+        }
         let result: Result<Option<(i32, String)>, NodeError> = match query_type {
             "HANDSHAKE" => {
                 Self::handle_introduction_command(node, nodo_id, connections.clone(), is_seed)
@@ -227,6 +247,7 @@ impl InternodeProtocolHandler {
                 connections.clone(),
                 internode,
                 open_query_id,
+                client_id,
             ),
             "DROP_TABLE" => Self::handle_drop_table_command(
                 node,
@@ -234,6 +255,7 @@ impl InternodeProtocolHandler {
                 connections.clone(),
                 internode,
                 open_query_id,
+                client_id,
             ),
             "ALTER_TABLE" => Self::handle_alter_table_command(
                 node,
@@ -241,6 +263,7 @@ impl InternodeProtocolHandler {
                 connections.clone(),
                 internode,
                 open_query_id,
+                client_id,
             ),
             "CREATE_KEYSPACE" => Self::handle_create_keyspace_command(
                 node,
@@ -248,6 +271,7 @@ impl InternodeProtocolHandler {
                 connections.clone(),
                 internode,
                 open_query_id,
+                client_id,
             ),
             "DROP_KEYSPACE" => Self::handle_drop_keyspace_command(
                 node,
@@ -255,6 +279,7 @@ impl InternodeProtocolHandler {
                 connections.clone(),
                 internode,
                 open_query_id,
+                client_id,
             ),
             "ALTER_KEYSPACE" => Self::handle_alter_keyspace_command(
                 node,
@@ -262,6 +287,7 @@ impl InternodeProtocolHandler {
                 connections.clone(),
                 internode,
                 open_query_id,
+                client_id,
             ),
             "INSERT" => Self::handle_insert_command(
                 node,
@@ -270,6 +296,7 @@ impl InternodeProtocolHandler {
                 internode,
                 replication,
                 open_query_id,
+                client_id,
             ),
             "UPDATE" => Self::handle_update_command(
                 node,
@@ -278,6 +305,7 @@ impl InternodeProtocolHandler {
                 internode,
                 replication,
                 open_query_id,
+                client_id,
             ),
             "DELETE" => Self::handle_delete_command(
                 node,
@@ -286,6 +314,7 @@ impl InternodeProtocolHandler {
                 internode,
                 replication,
                 open_query_id,
+                client_id,
             ),
             "SELECT" => Self::handle_select_command(
                 node,
@@ -294,6 +323,7 @@ impl InternodeProtocolHandler {
                 internode,
                 replication,
                 open_query_id,
+                client_id,
             ),
             "USE" => Self::handle_use_command(
                 node,
@@ -301,6 +331,7 @@ impl InternodeProtocolHandler {
                 connections.clone(),
                 internode,
                 open_query_id,
+                client_id,
             ),
             _ => Err(NodeError::InternodeProtocolError),
         };
@@ -325,11 +356,6 @@ impl InternodeProtocolHandler {
     ) -> Result<(), NodeError> {
         let mut guard_node = node.lock()?;
 
-        let keyspace_name = guard_node
-            .actual_keyspace_name()
-            .unwrap_or("".to_string())
-            .to_string();
-
         let query_handler = guard_node.get_open_handle_query();
 
         let parts: Vec<&str> = message.splitn(3, " - ").collect();
@@ -342,6 +368,14 @@ impl InternodeProtocolHandler {
             .map_err(|_| NodeError::InternodeProtocolError)?;
         let status = parts[1];
         let content = parts[2];
+
+        let keyspace = query_handler.get_keyspace_of_query(open_query_id)?;
+
+        let keyspace_name = if let Some(value) = keyspace {
+            value.get_name()
+        } else {
+            "".to_string()
+        };
 
         match status {
             "OK" => {
@@ -444,6 +478,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         replication: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = Insert::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -451,6 +486,7 @@ impl InternodeProtocolHandler {
             internode,
             replication,
             open_query_id,
+            client_id,
         )
     }
 
@@ -461,6 +497,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = CreateTable::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -468,6 +505,7 @@ impl InternodeProtocolHandler {
             internode,
             false,
             open_query_id,
+            client_id,
         )
     }
 
@@ -478,6 +516,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = DropTable::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -485,6 +524,7 @@ impl InternodeProtocolHandler {
             internode,
             false,
             open_query_id,
+            client_id,
         )
     }
 
@@ -495,6 +535,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = AlterTable::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -502,6 +543,7 @@ impl InternodeProtocolHandler {
             internode,
             false,
             open_query_id,
+            client_id,
         )
     }
 
@@ -512,6 +554,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = CreateKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -519,6 +562,7 @@ impl InternodeProtocolHandler {
             internode,
             false,
             open_query_id,
+            client_id,
         )
     }
 
@@ -529,6 +573,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = DropKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -536,6 +581,7 @@ impl InternodeProtocolHandler {
             internode,
             false,
             open_query_id,
+            client_id,
         )
     }
 
@@ -546,6 +592,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = AlterKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -553,6 +600,7 @@ impl InternodeProtocolHandler {
             internode,
             false,
             open_query_id,
+            client_id,
         )
     }
 
@@ -564,6 +612,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         replication: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = Update::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -571,6 +620,7 @@ impl InternodeProtocolHandler {
             internode,
             replication,
             open_query_id,
+            client_id,
         )
     }
 
@@ -582,6 +632,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         replication: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = Delete::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -589,6 +640,7 @@ impl InternodeProtocolHandler {
             internode,
             replication,
             open_query_id,
+            client_id,
         )
     }
 
@@ -600,6 +652,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         replication: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = Select::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -607,6 +660,7 @@ impl InternodeProtocolHandler {
             internode,
             replication,
             open_query_id,
+            client_id,
         )
     }
 
@@ -617,6 +671,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         internode: bool,
         open_query_id: i32,
+        client_id: i32,
     ) -> Result<Option<(i32, String)>, NodeError> {
         let query = Use::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -624,6 +679,7 @@ impl InternodeProtocolHandler {
             internode,
             false,
             open_query_id,
+            client_id,
         )
     }
 }
@@ -653,17 +709,19 @@ mod tests {
             "table_structure",
             true,
             true,
+            1,
+            "a",
         );
         assert_eq!(
             message,
-            "QUERY - 127.0.0.1 - 1 - CREATE_TABLE - table_structure - true - true"
+            "QUERY - 127.0.0.1 - 1 - CREATE_TABLE - table_structure - true - true - 1 - a"
         );
     }
 
     #[test]
     fn test_create_protocol_response() {
         let response = InternodeProtocolHandler::create_protocol_response("OK", "content", 1);
-        assert_eq!(response, "RESPONSE - 1 - OK - content");
+        assert_eq!(response, "RESPONSE - 1 - OK - content - 2");
     }
 
     #[test]
