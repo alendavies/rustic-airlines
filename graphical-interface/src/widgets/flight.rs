@@ -10,6 +10,13 @@ impl WidgetFlight {
     }
 
     pub fn show(&mut self, ctx: &egui::Context) {
-        egui::Window::new(format!("Vuelo {}", self.selected_flight.number)).show(ctx, |ui| {});
+        egui::Window::new(format!("Vuelo: {}", self.selected_flight.number))
+            .resizable(false)
+            .movable(false)
+            .collapsible(false)
+            .fixed_pos([20., 20.])
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {});
+            });
     }
 }

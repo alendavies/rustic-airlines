@@ -519,7 +519,7 @@ impl Flight {
             destination_airport: Default::default(),
             fuel: Default::default(),
             height: Default::default(),
-            number: Default::default(),
+            number: String::from("AR1234"),
             origin_airport: Default::default(),
             position,
             status: Default::default(),

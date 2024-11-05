@@ -75,10 +75,10 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 ui.add(map);
 
                 // List of airports window.
-                ui.add(WidgetAirports::new(
+                /* ui.add(WidgetAirports::new(
                     &self.view_state,
                     &mut self.selection_state.borrow_mut(),
-                ));
+                )); */
 
                 // Airport window.
                 if let Some(airport) = &self.selection_state.borrow().airport {
