@@ -29,10 +29,10 @@ impl QueryExecution {
 
         // Get the table name and lock access to it
         let table_name = alter_table.get_table_name();
+
         let mut table = node
             .get_table(table_name.clone(), client_keyspace.clone())?
             .inner;
-
         // Generate the path to the table's file
         let ip_str = node.get_ip_string().replace(".", "_");
         let folder_name = format!("keyspaces_{}/{}", ip_str, client_keyspace.get_name());
@@ -65,7 +65,7 @@ impl QueryExecution {
         }
 
         // Save the updated table structure to the node
-        node.update_table(table, client_id)?;
+        node.update_table(&client_keyspace.get_name(), table)?;
 
         // Broadcast the changes to other nodes if not an internode request
         if !internode {

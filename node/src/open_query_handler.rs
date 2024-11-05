@@ -1,6 +1,8 @@
 use crate::errors::NodeError;
 use crate::keyspace::Keyspace;
+use crate::query_execution::update;
 use crate::table::Table;
+use query_creator::clauses::keyspace;
 use query_creator::Query;
 use std::collections::HashMap;
 use std::fmt;
@@ -241,6 +243,30 @@ impl OpenQueryHandler {
             .get(&open_query_id)
             .ok_or(NodeError::InternodeProtocolError)
             .cloned()
+    }
+
+    pub fn update_table_in_keyspace(
+        &mut self,
+        keyspace_name: &str,
+        new_table: Table,
+    ) -> Result<(), NodeError> {
+        for (_, keyspace) in &mut self.keyspaces_queries {
+            if let Some(key) = keyspace {
+                if key.get_name() == keyspace_name {
+                    let mut find = false;
+                    for (i, table) in key.get_tables().iter_mut().enumerate() {
+                        if table.get_name() == new_table.clone().get_name() {
+                            key.tables[i] = new_table.clone();
+                            find = true;
+                        }
+                    }
+                    if !find {
+                        key.add_table(new_table.clone())?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn set_keyspace_of_query(&mut self, open_query_id: i32, keyspace: Keyspace) {

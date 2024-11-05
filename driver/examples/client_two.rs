@@ -11,8 +11,8 @@ fn main() {
     client.startup().unwrap();
 
     let setup_queries = vec![
-        //"CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
-        //"USE test_keyspace",
+        "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
+        "USE test_keyspace",
         "CREATE TABLE simple_table (
         id INT,
         name TEXT,

@@ -48,7 +48,7 @@ pub struct Node {
     partitioner: Partitioner,
     open_query_handler: OpenQueryHandler,
     keyspaces: Vec<Keyspace>,
-    clients_keyspace: HashMap<i32, Option<Keyspace>>,
+    clients_keyspace: HashMap<i32, Option<String>>,
     last_client_id: i32,
 }
 
@@ -174,7 +174,7 @@ impl Node {
         // Recorre los clients_keyspace para encontrar y actualizar keyspaces coincidentes
         for (_, client_keyspace) in self.clients_keyspace.iter_mut() {
             if let Some(ref keyspace) = client_keyspace {
-                if keyspace.get_name() == keyspace_name {
+                if keyspace == &keyspace_name {
                     *client_keyspace = None;
                 }
             }
@@ -191,23 +191,23 @@ impl Node {
         client_id: i32,
     ) -> Result<(), NodeError> {
         // Clona la lista de keyspaces para búsqueda
-        let keyspaces = self.keyspaces.clone();
-
-        // Buscar el índice del keyspace con el nombre dado
-        let index = keyspaces
-            .iter()
-            .position(|keyspace| keyspace.get_name() == keyspace_name)
-            .ok_or(NodeError::KeyspaceError)?;
 
         // Configurar el keyspace actual del cliente usando el índice encontrado
-        self.clients_keyspace
-            .insert(client_id, Some(self.keyspaces[index].clone()));
+        self.clients_keyspace.insert(client_id, Some(keyspace_name));
 
         Ok(())
     }
 
-    fn update_keyspace(&mut self, client_id: i32, keyspace: Keyspace) {
-        self.clients_keyspace.insert(client_id, Some(keyspace));
+    fn update_keyspace(&mut self, client_id: i32, new_keyspace: Keyspace) {
+        let new_key_name = new_keyspace.clone().get_name().clone();
+        self.clients_keyspace
+            .insert(client_id, Some(new_key_name.clone()));
+
+        for (i, keyspace) in self.keyspaces.clone().iter().enumerate() {
+            if new_key_name == keyspace.get_name() {
+                self.keyspaces[i] = new_keyspace.clone();
+            }
+        }
     }
 
     fn add_table(&mut self, new_table: CreateTable, keyspace_name: &str) -> Result<(), NodeError> {
@@ -236,50 +236,71 @@ impl Node {
 
     fn remove_table(&mut self, table_name: String, client_id: i32) -> Result<(), NodeError> {
         // Obtiene el keyspace actual del cliente
-        let client_keyspace = self
+        let client_keyspace_name = self
             .clients_keyspace
             .get_mut(&client_id)
             .ok_or(NodeError::KeyspaceError)?
             .as_mut()
             .ok_or(NodeError::KeyspaceError)?;
-
+        let keyspace = self
+            .keyspaces
+            .iter_mut()
+            .find(|k| &k.get_name() == client_keyspace_name)
+            .ok_or(NodeError::KeyspaceError)?;
         // Remueve la tabla solicitada del keyspace del cliente
-        client_keyspace.remove_table(&table_name)?;
+        keyspace.remove_table(&table_name)?;
         Ok(())
     }
 
-    fn update_table(&mut self, new_table: CreateTable, client_id: i32) -> Result<(), NodeError> {
-        // Obtiene el keyspace actual del cliente
-        let client_keyspace = self
+    fn update_table(
+        &mut self,
+        keyspace_name: &str,
+        new_table: CreateTable,
+    ) -> Result<(), NodeError> {
+        // Encuentra el índice del Keyspace en el Vec
+        if let Some(index) = self
+            .keyspaces
+            .iter()
+            .position(|k| k.get_name() == keyspace_name)
+        {
+            // Obtenemos una referencia mutable al Keyspace en el índice encontrado
+            let keyspace = &mut self.keyspaces[index];
+
+            // Encuentra la posición de la tabla a actualizar en el keyspace
+            let table_index = keyspace
+                .tables
+                .iter()
+                .position(|table| table.get_name() == new_table.get_name())
+                .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
+
+            // Reemplaza la tabla existente con la nueva en el Keyspace
+            keyspace.tables[table_index] = Table::new(new_table);
+            Ok(())
+        } else {
+            // Retorna un error si el Keyspace no se encuentra
+            Err(NodeError::KeyspaceError)
+        }
+    }
+
+    fn table_already_exist(
+        &mut self,
+        table_name: String,
+        client_id: i32,
+    ) -> Result<bool, NodeError> {
+        let client_keyspace_name = self
             .clients_keyspace
             .get_mut(&client_id)
             .ok_or(NodeError::KeyspaceError)?
             .as_mut()
             .ok_or(NodeError::KeyspaceError)?;
-
-        // Encuentra la posición de la tabla a actualizar
-        let index = client_keyspace
-            .tables
-            .iter()
-            .position(|table| table.get_name() == new_table.get_name())
-            .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
-
-        // Reemplaza la tabla existente con la nueva
-        client_keyspace.tables[index] = Table::new(new_table);
-        Ok(())
-    }
-
-    fn table_already_exist(&self, table_name: String, client_id: i32) -> Result<bool, NodeError> {
-        // Obtiene el keyspace actual del cliente
-        let client_keyspace = self
-            .clients_keyspace
-            .get(&client_id)
-            .ok_or(NodeError::KeyspaceError)?
-            .as_ref()
+        let keyspace = self
+            .keyspaces
+            .iter_mut()
+            .find(|k| &k.get_name() == client_keyspace_name)
             .ok_or(NodeError::KeyspaceError)?;
 
         // Verifica si la tabla ya existe en el keyspace del cliente
-        for table in client_keyspace.get_tables() {
+        for table in keyspace.get_tables() {
             if table.get_name() == table_name {
                 return Ok(true);
             }
@@ -288,10 +309,20 @@ impl Node {
     }
 
     fn get_client_keyspace(&self, client_id: i32) -> Result<Option<Keyspace>, NodeError> {
-        self.clients_keyspace
+        let keyspace_name = self
+            .clients_keyspace
             .get(&client_id)
             .ok_or(NodeError::InternodeProtocolError)
-            .cloned()
+            .cloned()?;
+        if let Some(value) = keyspace_name {
+            Ok(self
+                .keyspaces
+                .iter()
+                .find(|k| k.get_name() == value)
+                .cloned())
+        } else {
+            Ok(None)
+        }
     }
 
     fn get_keyspace(&self, keyspace_name: &str) -> Result<Option<Keyspace>, NodeError> {
@@ -552,17 +583,6 @@ impl Node {
                             let query_consistency_level: &str = &query.get_consistency();
                             let client_stream = stream_guard.try_clone()?;
 
-                            println!(
-                                "voy a ejecutar la query del cliente numero {:?}: {:?}",
-                                client_id, query_str
-                            );
-
-                            {
-                                println!(
-                                    "el keyspace actual es {:?}",
-                                    node.lock()?.get_client_keyspace(client_id)
-                                )
-                            }
                             let result = Node::handle_query_execution(
                                 query_str,
                                 query_consistency_level,
@@ -670,8 +690,6 @@ impl Node {
             // Obtener el keyspace especificado o el actual del cliente
             let keyspace = guard_node.get_client_keyspace(client_id)?;
 
-            println!("el keyspace para esta query va a ser {:?}", keyspace);
-
             // Intentar obtener el nombre de la tabla y buscar la tabla correspondiente en el keyspace
             let table = query.get_table_name().and_then(|table_name| {
                 keyspace
@@ -679,7 +697,6 @@ impl Node {
                     .and_then(|k| guard_node.get_table(table_name, k).ok())
             });
 
-            println!("la tabla a utilizar es {:?}", table);
             // Agregar la consulta abierta
             open_query_id = guard_node.add_open_query(
                 query.clone(),
@@ -701,7 +718,10 @@ impl Node {
         if let Some((finished_responses, content)) = response {
             let mut guard_node = node.lock()?;
             // Obtener el keyspace especificado o el actual del cliente
-            let keyspace = guard_node.get_client_keyspace(client_id)?.clone();
+            let keyspace = guard_node
+                .get_open_handle_query()
+                .get_keyspace_of_query(client_id)?
+                .clone();
 
             // Intentar obtener el nombre de la tabla y buscar la tabla correspondiente en el keyspace
             let table = query.get_table_name().and_then(|table_name| {

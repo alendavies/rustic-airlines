@@ -150,7 +150,6 @@ impl QueryExecution {
                 results.push(selected_columns);
             }
         }
-
         Ok(results)
     }
 

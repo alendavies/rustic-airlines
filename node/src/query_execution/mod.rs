@@ -119,11 +119,6 @@ impl QueryExecution {
                             .get_keyspace_of_query(open_query_id)?
                             .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
-                        println!(
-                            "el keyspace donde voy a buscar la tabla es {:?}",
-                            keyspace.get_tables()
-                        );
-
                         table = guard_node.get_table(table_name, keyspace)?;
                     }
                     self.execute_insert(

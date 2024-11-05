@@ -87,7 +87,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> String {
         format!(
-            "RESPONSE - {} - {} - {}- {}",
+            "RESPONSE - {} - {} - {} - {}",
             open_query_id, status, content, client_id
         )
     }
@@ -243,10 +243,6 @@ impl InternodeProtocolHandler {
                 guard_node
                     .get_open_handle_query()
                     .set_keyspace_of_query(open_query_id, k.ok_or(NodeError::KeyspaceError)?);
-                println!(
-                    "los k de los clientes son {:?}",
-                    guard_node.clients_keyspace
-                );
             }
         }
         let result: Result<Option<(i32, String)>, NodeError> = match query_type {
@@ -370,7 +366,7 @@ impl InternodeProtocolHandler {
 
         let query_handler = guard_node.get_open_handle_query();
 
-        let parts: Vec<&str> = message.splitn(3, " - ").collect();
+        let parts: Vec<&str> = message.splitn(4, " - ").collect();
         if parts.len() < 3 {
             return Err(NodeError::InternodeProtocolError);
         }
@@ -380,6 +376,7 @@ impl InternodeProtocolHandler {
             .map_err(|_| NodeError::InternodeProtocolError)?;
         let status = parts[1];
         let content = parts[2];
+        let client_id = parts[3];
 
         let keyspace = query_handler.get_keyspace_of_query(open_query_id)?;
 

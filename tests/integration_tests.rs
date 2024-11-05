@@ -70,9 +70,14 @@ fn execute_and_verify_select(
     query: &str,
     expected_values: Vec<String>,
 ) -> bool {
-    match client.execute(query, "any") {
+    match client.execute(query, "all") {
         Ok(query_result) => match query_result {
             QueryResult::Result(Result::Rows(rows)) => {
+                println!(
+                    "se compara {:?} con {:?}",
+                    rows.rows_content, expected_values
+                );
+
                 if rows.rows_content.is_empty() {
                     return expected_values.is_empty();
                 }
@@ -94,7 +99,10 @@ fn execute_and_verify_select(
                     .iter()
                     .all(|value| actual_values.contains(value))
             }
-            _ => false, // Fails if result type is not Rows
+            a => {
+                println!("recibi {:?}", a);
+                false
+            } // Fails if result type is not Rows
         },
         Err(e) => {
             eprintln!("Error executing query: {}\nError: {:?}", query, e);
@@ -147,6 +155,16 @@ fn setup_table_queries(client: &mut CassandraClient) {
         query
     );
     println!("Table creation succeeded: {}", query);
+
+    // Create table "test_table"
+    let query = "USE test_keyspace";
+    let expected_result = QueryResult::Result(Result::SetKeyspace("".to_string()));
+    assert!(
+        execute_and_verify(client, query, expected_result),
+        "set keyspace faildes: {}",
+        query
+    );
+    println!("Set keyspace succeeded: {}", query);
 
     // Alter table "test_table" to add a new column
     let query = "ALTER TABLE test_table ADD last_name TEXT";

@@ -1,3 +1,4 @@
+use crate::table::Table;
 // Ordered imports
 use crate::NodeError;
 use query_creator::clauses::keyspace;
@@ -24,18 +25,16 @@ impl QueryExecution {
             .lock()
             .map_err(|_| NodeError::LockError)?;
 
-        println!(
-            "el client keyspace es {:?}",
-            node.get_open_handle_query()
-                .get_keyspace_of_query(open_query_id)
-        );
-
         let client_keyspace = node
             .get_open_handle_query()
             .get_keyspace_of_query(open_query_id)?
             .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
         node.add_table(create_table.clone(), &client_keyspace.get_name())?;
+        node.get_open_handle_query().update_table_in_keyspace(
+            &client_keyspace.get_name(),
+            Table::new(create_table.clone()),
+        )?;
 
         // Get the table name and column structure
         let table_name = create_table.get_name().clone();
