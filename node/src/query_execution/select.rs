@@ -155,6 +155,9 @@ impl QueryExecution {
                 results.push(selected_columns);
             }
         }
+        if let Some(limit) = select_query.limit {
+            results = results[..limit].to_vec();
+        }
         Ok(results)
     }
 

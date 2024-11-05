@@ -289,7 +289,7 @@ impl QueryExecution {
     // Función auxiliar para enviar un mensaje a todos los nodos en el partitioner
     fn send_to_replication_nodes(
         &self,
-        local_node: MutexGuard<'_, Node>,
+        mut local_node: MutexGuard<'_, Node>,
         node_to_get_succesor: Ipv4Addr,
         header: &str,
         serialized_message: &str,
@@ -313,7 +313,8 @@ impl QueryExecution {
         // Bloquea el nodo para obtener el partitioner y la IP
         let current_ip = local_node.get_ip();
         let replication_factor = local_node
-            .get_client_keyspace(client_id)?
+            .get_open_handle_query()
+            .get_keyspace_of_query(open_query_id)?
             .ok_or(NodeError::KeyspaceError)?
             .get_replication_factor();
 

@@ -11,17 +11,14 @@ fn main() {
     client.startup().unwrap();
     let queries = vec![
         "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
-        "CREATE KEYSPACE test_keyspace_dos WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
-        "CREATE KEYSPACE IF NOT EXISTS test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
-        "USE test_keyspace_dos".to_string(),
-        "CREATE TABLE test_keyspace.test_table (id INT, name TEXT, PRIMARY KEY (id, name))".to_string(),
-        "INSERT INTO test_keyspace.test_table (id, name) VALUES (1, 'Loren')".to_string(),
-        "INSERT INTO test_keyspace.test_table (id, name) VALUES (2, 'Loren')".to_string(),
-        "DELETE FROM test_keyspace.test_table WHERE id = 1".to_string(),
-        "SELECT name FROM test_keyspace.test_table WHERE id = 2".to_string(),
+        //"USE test_keyspace".to_string(),
+        "CREATE TABLE test_keyspace.test_table (id INT, name TEXT, last_name TEXT ,personal_id UUID , PRIMARY KEY (id, name))".to_string(),
+        "INSERT INTO test_keyspace.test_table (id, name ,personal_id) VALUES (1, 'Loren', uuid())".to_string(),
+        //"INSERT INTO test_keyspace.test_table (id, name ,personal_id) VALUES (2, 'Loren', uuid())".to_string(),
+        //"SELECT name FROM test_keyspace.test_table WHERE id = 2".to_string(),
     ];
 
-    // Ejecutar cada consulta en un loop
+    // Ejecutar cada consulta en un loopc
     let mut contador = 0;
     let len = queries.len();
     for query in queries {

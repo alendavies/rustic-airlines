@@ -295,7 +295,6 @@ impl Node {
         let keyspace = self
             .get_keyspace(&keyspace_name)?
             .ok_or(NodeError::KeyspaceError)?;
-
         // Verifica si la tabla ya existe en el keyspace del cliente
         for table in keyspace.get_tables() {
             if table.get_name() == table_name {
