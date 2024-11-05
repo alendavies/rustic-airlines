@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 use crate::{errors::CQLError, operator::Operator};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -109,7 +111,7 @@ impl DataType {
             DataType::Float => value.parse::<f32>().is_ok(), // Verifica si es un float válido
             DataType::Double => value.parse::<f64>().is_ok(), // Verifica si es un double válido
             DataType::Timestamp => self.is_valid_timestamp(value), // Verifica si es un timestamp válido
-            DataType::Uuid => true,                                // Verifica si es un UUID válido
+            DataType::Uuid => value.parse::<Uuid>().is_ok(),       // Verifica si es un UUID válido
                                                                     // DataType::Blob => self.is_valid_blob(value), // Verifica si es un BLOB válido (hexadecimal)
         }
     }
