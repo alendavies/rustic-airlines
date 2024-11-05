@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use egui::Context;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
@@ -15,7 +17,7 @@ const INITIAL_LON: f64 = -58.372159;
 pub struct MyApp<P: Provider> {
     tiles: Box<dyn Tiles>,
     map_memory: MapMemory,
-    selection_state: SelectionState,
+    selection_state: Rc<RefCell<SelectionState>>,
     view_state: ViewState,
     airport_widget: Option<WidgetAirport>,
     flight_widget: Option<WidgetFlight>,
@@ -35,7 +37,7 @@ impl<P: Provider> MyApp<P> {
                 egui_ctx.to_owned(),
             )),
             map_memory: initial_map_memory,
-            selection_state: SelectionState::new(),
+            selection_state: Rc::new(RefCell::new(SelectionState::new())),
             view_state: ViewState::new(),
             airport_widget: None,
             flight_widget: None,
@@ -58,10 +60,16 @@ impl<P: Provider> eframe::App for MyApp<P> {
 
                 let tiles = self.tiles.as_mut();
 
+                let airport =
+                    plugins::Airports::new(&self.view_state.airports, self.selection_state.clone());
+
+                let flight =
+                    plugins::Flights::new(&self.view_state.flights, self.selection_state.clone());
+
                 // In egui, widgets are constructed and consumed in each frame.
                 let map = Map::new(Some(tiles), &mut self.map_memory, my_position)
-                    .with_plugin(plugins::Airports::new(&self.view_state.airports))
-                    .with_plugin(plugins::Flights::new(&self.view_state.flights));
+                    .with_plugin(airport)
+                    .with_plugin(flight);
 
                 // Add the map widget.
                 ui.add(map);
@@ -69,11 +77,11 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 // List of airports window.
                 ui.add(WidgetAirports::new(
                     &self.view_state,
-                    &mut self.selection_state,
+                    &mut self.selection_state.borrow_mut(),
                 ));
 
                 // Airport window.
-                if let Some(airport) = &self.selection_state.airport {
+                if let Some(airport) = &self.selection_state.borrow().airport {
                     if let Some(widget) = &mut self.airport_widget {
                         if widget.selected_airport == *airport {
                             widget.show(ctx);
@@ -88,7 +96,7 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 }
 
                 // Flight window.
-                if let Some(flight) = &self.selection_state.flight {
+                if let Some(flight) = &self.selection_state.borrow().flight {
                     if let Some(widget) = &mut self.flight_widget {
                         if widget.selected_flight == *flight {
                             widget.show(ctx);
