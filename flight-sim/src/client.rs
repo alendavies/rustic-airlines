@@ -1,7 +1,8 @@
 ﻿use std::net::Ipv4Addr;
+use driver::{ClientError,CassandraClient};
+
 use crate::types::flight::Flight;
 use crate::types::airport::Airport;
-use crate::native_protocol::{messages::query::QueryParams, CassandraClient, ClientError, QueryResult};
 
 pub struct Client {
     cassandra_client: CassandraClient,
@@ -15,14 +16,14 @@ impl Client {
 
         cassandra_client.startup()?;
 
-        let client = Self { cassandra_client };
+        let mut client = Self { cassandra_client };
         client.setup_keyspace_and_tables()?;
 
         Ok(client)
     }
 
     /// Sets up the keyspace and required tables in Cassandra
-    fn setup_keyspace_and_tables(&self) -> Result<(), ClientError> {
+    fn setup_keyspace_and_tables(&mut self) -> Result<(), ClientError> {
         
         let create_keyspace_query = r#"
             CREATE KEYSPACE sky
@@ -31,7 +32,7 @@ impl Client {
                 'replication_factor': 3
             };
         "#;
-        self.cassandra_client.execute(create_keyspace_query)?;
+        self.cassandra_client.execute(&create_keyspace_query, "all")?;
 
         
         let create_flights_table = r#"
@@ -45,7 +46,7 @@ impl Client {
                 PRIMARY KEY (airport, direction, departure_time, arrival_time)
             )
         "#;
-        self.cassandra_client.execute(create_flights_table)?;
+        self.cassandra_client.execute(&create_flights_table, "all")?;
 
         let create_flight_info_table = r#"
             CREATE TABLE sky.flight_info (
@@ -58,7 +59,7 @@ impl Client {
                 PRIMARY KEY (number)
             )
         "#;
-        self.cassandra_client.execute(create_flight_info_table)?;
+        self.cassandra_client.execute(&create_flight_info_table, "all")?;
 
         let create_airports_table = r#"
             CREATE TABLE sky.airports (
@@ -70,7 +71,7 @@ impl Client {
                 PRIMARY KEY (country, iata)
             )
         "#;
-        self.cassandra_client.execute(create_airports_table)?;
+        self.cassandra_client.execute(&create_airports_table, "all")?;
 
         println!("Keyspace and tables created successfully.");
         Ok(())
@@ -84,7 +85,7 @@ impl Client {
             "INSERT INTO sky.airports (iata, country, name, lat, lon) VALUES ('{}', '{}', '{}', {}, {});",
             airport.iata_code, airport.country, airport.name, airport.latitude, airport.longitude
         );
-        self.cassandra_client.execute(insert_airport_query)?;
+        self.cassandra_client.execute(&insert_airport_query, "all")?;
         println!("Airport '{}' added successfully.", airport.iata_code);
         Ok(())
     }
@@ -126,9 +127,9 @@ impl Client {
         );
 
         // Ejecución de las consultas en Cassandra
-        self.cassandra_client.execute(insert_departure_query)?;
-        self.cassandra_client.execute(insert_arrival_query)?;
-        self.cassandra_client.execute(insert_flight_info_query)?;
+        self.cassandra_client.execute(&insert_departure_query, "all")?;
+        self.cassandra_client.execute(&insert_arrival_query, "all")?;
+        self.cassandra_client.execute(&insert_flight_info_query, "all")?;
 
         Ok(())
     }
@@ -146,7 +147,7 @@ impl Client {
                 flight.departure_time.and_utc().timestamp(),
                 flight.arrival_time.and_utc().timestamp(),
             );
-        self.cassandra_client.execute(update_query_status_departure)?;
+        self.cassandra_client.execute(&update_query_status_departure, "all")?;
         let update_query_status_arrival = format!(
                 "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {};",
                 flight.status.as_str(),
@@ -155,7 +156,7 @@ impl Client {
                 flight.departure_time.and_utc().timestamp(),
                 flight.arrival_time.and_utc().timestamp(),
             );
-        self.cassandra_client.execute(update_query_status_arrival)?;
+        self.cassandra_client.execute(&update_query_status_arrival, "all")?;
         let update_query_flight_info = format!(
                 "UPDATE sky.flight_info SET lat = {}, lon = {}, speed = {} WHERE number = '{}';",
                 flight.latitude,
@@ -163,12 +164,8 @@ impl Client {
                 flight.average_speed,
                 flight.flight_number
             );
-        self.cassandra_client.execute(update_query_flight_info)?;
+        self.cassandra_client.execute(&update_query_flight_info, "all")?;
         Ok(())
     }
 
-    /// Executes a custom CQL query
-    pub fn execute_query(&mut self, query: &str) -> Result<QueryResult, ClientError> {
-        self.cassandra_client.execute(query)
-    }
 }

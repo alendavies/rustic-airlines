@@ -6,6 +6,7 @@ use crate::types::flight::Flight;
 use crate::types::airport::Airport;
 
 use chrono::{NaiveDateTime, Utc};
+use driver::ClientError;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::thread;
@@ -15,6 +16,11 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::error::Error;
 
+// Limpiar pantalla (compatible con la mayoría de terminales)
+fn clean_scr(){
+    print!("\x1B[2J\x1B[1;1H");
+    io::stdout().flush().unwrap();
+}
 
 fn list_flights(
     flights: &Vec<Arc<Mutex<Flight>>>,
@@ -28,10 +34,7 @@ fn list_flights(
     let stdin = io::stdin();
 
     loop {
-        // Limpiar pantalla (compatible con la mayoría de terminales)
-        print!("\x1B[2J\x1B[1;1H");
-        io::stdout().flush().unwrap();
-
+        clean_scr();
         if flights.is_empty() {
             println!("No flights available.");
         } else {
@@ -92,7 +95,7 @@ fn simulate_flight(
         let mut flight_data = match flight.lock() {
             Ok(data) => data,
             Err(e) => {
-                eprintln!("Failed to lock flight data for simulation: {}", e);
+                eprintln!("Failed to lock flight data for simulation: {:?}", e);
                 return;
             }
         };
@@ -110,14 +113,14 @@ fn simulate_flight(
 
                 if let Ok(mut client_locked) = client.lock() {
                     if let Err(e) = client_locked.update_flight(&*flight_data) {
-                        eprintln!("Failed to update flight {}: {}", flight_data.flight_number, e);
+                        eprintln!("Failed to update flight {}: {:?}", flight_data.flight_number, e);
                     }
                 }
             }
             FlightStatus::Finished => {
                 if let Ok(mut client_locked) = client.lock() {
                     if let Err(e) = client_locked.update_flight(&*flight_data) {
-                        eprintln!("Failed to update flight {}: {}", flight_data.flight_number, e);
+                        eprintln!("Failed to update flight {}: {:?}", flight_data.flight_number, e);
                     }
                 }
                 break;
@@ -135,13 +138,13 @@ fn add_flight(
     client: Arc<Mutex<Client>>,
     current_time: Arc<Mutex<NaiveDateTime>>,
     is_listing: Arc<AtomicBool>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), ClientError> {
     let flight_arc = Arc::new(Mutex::new(flight));
     
     if let Ok(mut client_locked) = client.lock() {
-        client_locked.insert_flight(&flight_arc.lock().map_err(|e| format!("Failed to lock flight data: {}", e))?)?;
+        client_locked.insert_flight(&(*flight_arc.lock().unwrap()))?;
     } else {
-        return Err("Failed to lock client for inserting flight.".into());
+        return Err(ClientError);
     }
 
     flights.push(Arc::clone(&flight_arc));
@@ -161,11 +164,14 @@ fn add_flight(
 }
 
 fn print_help() {
+    clean_scr();
     println!("Available commands:");
     println!("  add-flight <flight_number> <origin> <destination> <departure_time[DD/MM/YY-HH:MM:SS]> <arrival_time[DD/MM/YY-HH:MM:SS]> <average_speed>");
     println!("    Add a new flight with the specified parameters.");
     println!("  add-airport <IATA_code> <country> <name> <latitude> <longitude>");
     println!("    Add a new airport with the specified parameters.");
+    println!("  list-flights <minutes>");
+    println!("    Shows the current flights.");
     println!("  time-rate <minutes>");
     println!("    Changes the simulation's elapsed time per tick.");
     println!("  exit");
@@ -174,7 +180,7 @@ fn print_help() {
     println!("    Show this help message.");
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), ClientError> {
     let pool = ThreadPool::new(4);
     let mut flights = vec![];
     let mut airports: HashMap<String, Airport> = HashMap::new();
@@ -190,7 +196,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if !is_listing.load(Ordering::SeqCst) {
             println!("\nEnter command (type '-h' or '--help' for options): ");
             let mut command = String::new();
-            io::stdin().read_line(&mut command)?;
+            io::stdin().read_line(&mut command).map_err(|_| ClientError)?;
             let args: Vec<&str> = command.trim().split_whitespace().collect();
 
             if args.is_empty() {
@@ -211,8 +217,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                         &args[3], 
                         &args[4], 
                         &args[5], 
-                        args[6].parse().map_err(|e| format!("Invalid speed: {}", e))?
-                    )?;
+                        args[6].parse().map_err(|_| ClientError)?
+                    ).map_err(|_| ClientError)?;
 
                     add_flight(
                         &pool,
@@ -234,8 +240,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                         args[1].to_string(),
                         args[2].to_string(),
                         args[3].to_string(),
-                        args[4].parse().map_err(|e| format!("Invalid latitude: {}", e))?,
-                        args[5].parse().map_err(|e| format!("Invalid longitude: {}", e))?
+                        args[4].parse().map_err(|_| ClientError)?,
+                        args[5].parse().map_err(|_| ClientError)?
                     );
 
                     airports.insert(args[1].to_string(), airport.clone());
@@ -255,7 +261,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         continue;
                     }
 
-                    let seconds: u64 = args[1].parse().map_err(|e| format!("Invalid time: {}", e))?;
+                    let seconds: u64 = args[1].parse().map_err(|_| ClientError)?;
                     if let Ok(mut rate) = time_rate.lock() {
                         *rate = Duration::from_secs(seconds);
                         println!("Time rate updated to {} seconds per tick", seconds);
