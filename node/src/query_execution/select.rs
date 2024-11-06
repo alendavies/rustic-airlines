@@ -158,7 +158,53 @@ impl QueryExecution {
         if let Some(limit) = select_query.limit {
             results = results[..limit].to_vec();
         }
+
+        if let Some(order_by) = select_query.orderby_clause {
+            self.sort_results_single_column(&mut results, &order_by.columns[0], &order_by.order)?
+        }
         Ok(results)
+    }
+
+    /// Sorts the results based on a single specified column and its ordering
+    fn sort_results_single_column(
+        &self,
+        results: &mut Vec<String>,
+        order_by_column: &str,
+        order: &str, // Either "ASC" or "DESC"
+    ) -> Result<(), NodeError> {
+        if results.len() <= 1 {
+            // No sorting needed if only header or empty results
+            return Ok(());
+        }
+
+        // Split header from the rest of the rows
+        let header = results[0].clone();
+        let rows = &mut results[1..];
+
+        // Get the index of the column specified in order_by_column
+        let header_columns: Vec<&str> = header.split(',').collect();
+        let col_index = header_columns
+            .iter()
+            .position(|&col| col == order_by_column);
+
+        if let Some(col_index) = col_index {
+            // Define sort closure based on order
+            rows.sort_by(|a, b| {
+                let a_val = a.split(',').nth(col_index).unwrap_or("");
+                let b_val = b.split(',').nth(col_index).unwrap_or("");
+                let cmp = a_val.cmp(b_val);
+
+                match order {
+                    "ASC" => cmp,
+                    "DESC" => cmp.reverse(),
+                    _ => std::cmp::Ordering::Equal, // Ignore invalid order specifiers
+                }
+            });
+        }
+
+        // Restore header
+        results[0] = header;
+        Ok(())
     }
 
     /// Checks if the line matches the WHERE clause condition
