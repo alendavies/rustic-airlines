@@ -52,6 +52,8 @@ impl QueryExecution {
                 false,
             )?;
 
+            select_query.validate_order_by_cql_conditions(&clustering_columns)?;
+
             // Ensure that the columns specified in the query exist in the table
             let complet_columns: Vec<String> =
                 table.get_columns().iter().map(|c| c.name.clone()).collect();
@@ -156,7 +158,9 @@ impl QueryExecution {
             }
         }
         if let Some(limit) = select_query.limit {
-            results = results[..limit].to_vec();
+            if limit < results.len() {
+                results = results[..limit + 1].to_vec();
+            }
         }
 
         if let Some(order_by) = select_query.orderby_clause {
