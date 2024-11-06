@@ -86,6 +86,10 @@ impl QueryExecution {
             insert_query.clone().into_clause.columns,
             values,
         )?;
+
+        let mut new_insert = insert_query.clone();
+        let new_values: Vec<String> = values.iter().filter(|v| !v.is_empty()).cloned().collect();
+        new_insert.values = new_values;
         self.validate_values(columns, &values)?;
 
         // Deterclient_keyspacemine the node responsible for the insert
@@ -96,7 +100,7 @@ impl QueryExecution {
         // If not internode and the target IP differs, forward the insert
         if !internode {
             if node_to_insert != self_ip {
-                let serialized_insert = insert_query.serialize();
+                let serialized_insert = new_insert.serialize();
                 self.send_to_single_node(
                     node.get_ip(),
                     node_to_insert,
@@ -113,7 +117,7 @@ impl QueryExecution {
             }
 
             // Send the insert to replication nodes
-            let serialized_insert = insert_query.serialize();
+            let serialized_insert = new_insert.serialize();
             replication = self.send_to_replication_nodes(
                 node,
                 node_to_insert,

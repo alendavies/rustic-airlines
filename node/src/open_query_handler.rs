@@ -364,6 +364,7 @@ mod tests {
             columns: vec!["col1".to_string(), "col2".to_string()],
             where_clause: None,
             orderby_clause: None,
+            limit: None,
         })
     }
 

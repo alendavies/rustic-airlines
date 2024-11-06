@@ -2,7 +2,7 @@ use super::{order_by_cql::OrderBy, where_cql::Where};
 use crate::QueryCreator;
 use crate::{
     errors::CQLError,
-    utils::{is_by, is_from, is_order, is_select, is_where, is_limit},
+    utils::{is_by, is_from, is_limit, is_order, is_select, is_where},
 };
 
 /// Struct that represents the `SELECT` SQL clause.
@@ -22,7 +22,7 @@ pub struct Select {
     pub columns: Vec<String>,
     pub where_clause: Option<Where>,
     pub orderby_clause: Option<OrderBy>,
-    pub limit: Option<usize>
+    pub limit: Option<usize>,
 }
 
 fn parse_columns<'a>(tokens: &'a [String], i: &mut usize) -> Result<Vec<&'a String>, CQLError> {
@@ -88,7 +88,6 @@ fn parse_where_orderby_limit<'a>(
     Ok((where_tokens, orderby_tokens, limit))
 }
 
-
 impl Select {
     /// Creates and returns a new `Select` instance from a vector of `String` tokens.
     ///
@@ -104,39 +103,39 @@ impl Select {
         if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
         }
-    
+
         let mut i = 0;
-    
+
         let columns = parse_columns(&tokens, &mut i)?;
         let full_table_name = parse_table_name(&tokens, &mut i)?;
-        
+
         let (keyspace_used_name, table_name) = if full_table_name.contains('.') {
             let parts: Vec<&str> = full_table_name.split('.').collect();
             (parts[0].to_string(), parts[1].to_string())
         } else {
             (String::new(), full_table_name.clone())
         };
-    
+
         if columns.is_empty() || table_name.is_empty() {
             return Err(CQLError::InvalidSyntax);
         }
-    
+
         let (where_tokens, orderby_tokens, limit) = parse_where_orderby_limit(&tokens, &mut i)?;
-    
+
         let where_clause = if !where_tokens.is_empty() {
             Some(Where::new_from_tokens(where_tokens)?)
         } else {
             None
         };
-    
+
         let order_by_tokens = orderby_tokens.iter().map(|s| s.to_string()).collect();
-    
+
         let orderby_clause = if !orderby_tokens.is_empty() {
             Some(OrderBy::new_from_tokens(order_by_tokens)?)
         } else {
             None
         };
-    
+
         Ok(Self {
             table_name,
             keyspace_used_name,
@@ -149,7 +148,6 @@ impl Select {
 
     /// Serializa la consulta `Select` a un `String`.
     pub fn serialize(&self) -> String {
-
         let table_name_str = if !self.keyspace_used_name.is_empty() {
             format!("{}.{}", self.keyspace_used_name, self.table_name)
         } else {
@@ -167,12 +165,39 @@ impl Select {
             result.push_str(&format!(" ORDER BY {}", orderby_clause.serialize()));
         }
 
+        // Agrega el `LIMIT` si existe
+        if let Some(limit) = &self.limit {
+            result.push_str(&format!(" LIMIT {}", limit));
+        }
         result
     }
 
     pub fn deserialize(query: &str) -> Result<Self, CQLError> {
         let tokens = QueryCreator::tokens_from_query(query);
         Self::new_from_tokens(tokens)
+    }
+
+    pub fn validate_order_by_cql_conditions(
+        &mut self,
+        clustering_columns: &Vec<String>,
+    ) -> Result<(), CQLError> {
+        if let Some(mut order_by) = self.orderby_clause.clone() {
+            if order_by.columns.len() != 1 {
+                return Err(CQLError::InvalidCondition);
+            }
+
+            if order_by.order.is_empty() {
+                order_by.order = "ASC".to_string();
+            }
+
+            if !clustering_columns.contains(&order_by.columns[0]) {
+                return Err(CQLError::InvalidColumn);
+            }
+
+            Ok(())
+        } else {
+            Ok(())
+        }
     }
 }
 

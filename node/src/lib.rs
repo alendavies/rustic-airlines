@@ -16,7 +16,7 @@ use std::thread;
 
 // Internal project libraries
 use crate::table::Table;
-use crate::utils::{connect, send_message};
+use crate::utils::connect_and_send_message;
 
 // External libraries
 use driver::server::{handle_client_request, Request};
@@ -295,7 +295,6 @@ impl Node {
         let keyspace = self
             .get_keyspace(&keyspace_name)?
             .ok_or(NodeError::KeyspaceError)?;
-
         // Verifica si la tabla ya existe en el keyspace del cliente
         for table in keyspace.get_tables() {
             if table.get_name() == table_name {
@@ -380,22 +379,23 @@ impl Node {
             self_ip = node_guard.get_ip();
 
             if !is_seed {
-                if let Ok(stream) = connect(seed_ip, INTERNODE_PORT, Arc::clone(&connections)) {
-                    let stream = Arc::new(Mutex::new(stream)); // Encapsulates in Arc<Mutex<TcpStream>>
-                    let message = InternodeProtocolHandler::create_protocol_message(
-                        &node_guard.get_ip_string(),
-                        0,
-                        "HANDSHAKE",
-                        "_",
-                        true,
-                        false,
-                        0,
-                        "None",
-                    );
-                    let mut stream_guard = stream.lock()?;
-                    send_message(&mut stream_guard, &message)?;
-                    node_guard.partitioner.add_node(seed_ip)?;
-                }
+                let message = InternodeProtocolHandler::create_protocol_message(
+                    &node_guard.get_ip_string(),
+                    0,
+                    "HANDSHAKE",
+                    "_",
+                    true,
+                    false,
+                    0,
+                    "None",
+                );
+                connect_and_send_message(
+                    seed_ip,
+                    INTERNODE_PORT,
+                    Arc::clone(&connections),
+                    &message,
+                )?;
+                node_guard.partitioner.add_node(seed_ip)?;
             }
         }
 
@@ -519,7 +519,6 @@ impl Node {
         target_ip: Ipv4Addr,
     ) -> Result<(), NodeError> {
         // First, try to reuse or establish a connection
-        let mut tcp = connect(target_ip, INTERNODE_PORT, Arc::clone(&connections))?;
 
         let message = InternodeProtocolHandler::create_protocol_message(
             &sent_ip.to_string(),
@@ -531,9 +530,12 @@ impl Node {
             0,
             "None",
         );
-
-        send_message(&mut tcp, &message)?;
-        Ok(())
+        connect_and_send_message(
+            target_ip,
+            INTERNODE_PORT,
+            Arc::clone(&connections),
+            &message,
+        )
     }
 
     // Receives packets from the client

@@ -64,15 +64,19 @@ impl OrderBy {
             order = tokens[i].to_string();
         }
 
+        if order.is_empty() {
+            order = "ASC".to_string();
+        }
+
         Ok(Self { columns, order })
     }
 
     pub fn serialize(&self) -> String {
         let columns_str = self.columns.join(", ");
         if self.order.is_empty() {
-            format!("ORDER BY {}", columns_str)
+            format!("{}", columns_str)
         } else {
-            format!("ORDER BY {} {}", columns_str, self.order)
+            format!("{} {}", columns_str, self.order)
         }
     }
 
@@ -154,7 +158,7 @@ mod tests {
             order_by,
             OrderBy {
                 columns: vec!["name".to_string()],
-                order: "".to_string(), // Defaults to ascending order if none is specified
+                order: "ASC".to_string(), // Defaults to ascending order if none is specified
             }
         );
     }
