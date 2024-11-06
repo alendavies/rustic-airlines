@@ -3,71 +3,72 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-/// Sends a message over a `TcpStream` protected by an `Arc<Mutex<TcpStream>>`.
+/// Attempts to connect to a peer and send a message over the `TcpStream`.
 ///
-/// This function locks the stream using a mutex, writes the message as bytes, appends a newline,
-/// and flushes the buffer to ensure the message is sent immediately. If any error occurs during
-/// this process, the error is captured and returned as `NodeError`.
-///
-/// # Parameters
-/// - `stream`: An `Arc<Mutex<TcpStream>>` protecting the stream for thread-safe access.
-/// - `message`: The message to send, represented as a `&str`.
-///
-/// # Returns
-/// A `Result` indicating success or failure. Returns `Ok(())` on success or `NodeError` on failure.
-///
-/// # Example
-/// ```rust
-/// let message = "Hello, node!";
-/// send_message(&stream, message)?;
-/// ```
-pub fn send_message(stream: &Arc<Mutex<TcpStream>>, message: &str) -> Result<(), NodeError> {
-    let mut stream_guard = stream.lock().map_err(|_| NodeError::LockError)?; // Lock the stream
-    if let Err(e) = stream_guard.write_all(message.as_bytes()) {
-        println!("Error sending message: {:?}. Removing connection.", e);
-        return Err(NodeError::IoError(e));
-    }
-    // Append a newline and flush the stream to ensure the message is sent immediately
-    stream_guard.write_all(b"\n").map_err(NodeError::IoError)?;
-    stream_guard.flush().map_err(NodeError::IoError)?;
-    Ok(())
-}
-
-/// Establishes a connection to a `peer_id` and `port`, and adds the connection to a shared `HashMap`.
-///
-/// This function connects to a remote peer at the specified `peer_id` and `port`. If the connection
-/// is successful, the `TcpStream` is wrapped in an `Arc<Mutex<TcpStream>>` for thread-safe access
-/// and added to the provided `connections` map. If the connection fails, the error is captured and
-/// returned as a `NodeError`.
+/// If a connection to the peer already exists, it checks the connection status and tries to send
+/// the message. If the connection is broken, it reconnects, updates the shared `HashMap`, and
+/// attempts to resend the message. Ensures thread-safe access to the stream and the connections
+/// map.
 ///
 /// # Parameters
 /// - `peer_id`: The IPv4 address of the peer to connect to.
-/// - `port`: The port number to connect on.
-/// - `connections`: An `Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>` that stores active connections.
+/// - `port`: The port number for the connection.
+/// - `connections`: A shared `HashMap` containing active connections.
+/// - `message`: The message to send as a `&str`.
 ///
 /// # Returns
-/// A `Result` containing an `Arc<Mutex<TcpStream>>` on success or `NodeError` on failure.
-///
-/// # Example
-/// ```rust
-/// let stream = connect(peer_ip, 8080, connections)?;
-/// ```
-pub fn connect(
+/// A `Result` indicating success or failure, with `Ok(())` on success or `NodeError` on failure.
+pub fn connect_and_send_message(
     peer_id: Ipv4Addr,
     port: u16,
     connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-) -> Result<Arc<Mutex<TcpStream>>, NodeError> {
+    message: &str,
+) -> Result<(), NodeError> {
     let peer_socket = SocketAddrV4::new(peer_id, port);
     let peer_addr = peer_socket.to_string();
 
-    // Connect to the peer
-    let stream = TcpStream::connect(peer_socket).map_err(NodeError::IoError)?;
-    let stream = Arc::new(Mutex::new(stream));
+    // Attempt to retrieve and use an existing connection
     {
-        // Add the new connection to the shared HashMap
-        let mut connections_guard = connections.lock().map_err(|_| NodeError::LockError)?;
-        connections_guard.insert(peer_addr.clone(), Arc::clone(&stream));
+        let connections_guard = connections.lock().map_err(|_| NodeError::LockError)?;
+        if let Some(existing_stream) = connections_guard.get(&peer_addr) {
+            // Try to acquire the lock and send the message
+            if let Ok(mut stream) = existing_stream.lock() {
+                if stream.write_all(message.as_bytes()).is_ok()
+                    && stream.write_all(b"\n").is_ok()
+                    && stream.flush().is_ok()
+                {
+                    //println!("Reutilizamos TCP ");
+                    return Ok(());
+                } else {
+                    // println!(
+                    //     "Conexión rota detectada para {:?}. Intentando reconectar...",
+                    //     peer_addr
+                    // );
+                }
+            }
+        }
     }
-    Ok(stream)
+
+    // Reconnect if no active connection exists or if the previous attempt failed
+    let stream = TcpStream::connect_timeout(&peer_socket.into(), Duration::from_secs(5))
+        .map_err(NodeError::IoError)?;
+    let stream = Arc::new(Mutex::new(stream));
+
+    // Add the new connection to the shared HashMap
+    let mut connections_guard = connections.lock().map_err(|_| NodeError::LockError)?;
+    connections_guard.insert(peer_addr.clone(), Arc::clone(&stream));
+
+    // Attempt to send the message on the new connection
+    {
+        let mut stream_guard = stream.lock().map_err(|_| NodeError::LockError)?;
+        stream_guard
+            .write_all(message.as_bytes())
+            .map_err(NodeError::IoError)?;
+        stream_guard.write_all(b"\n").map_err(NodeError::IoError)?;
+        stream_guard.flush().map_err(NodeError::IoError)?;
+    }
+
+    Ok(())
 }

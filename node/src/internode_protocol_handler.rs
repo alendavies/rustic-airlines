@@ -1,5 +1,5 @@
 use crate::open_query_handler::OpenQueryHandler;
-use crate::utils::{connect, send_message};
+use crate::utils::connect_and_send_message;
 use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
@@ -342,8 +342,7 @@ impl InternodeProtocolHandler {
             let peer_id: Ipv4Addr = nodo_id
                 .parse()
                 .map_err(|_| NodeError::InternodeProtocolError)?;
-            let stream: Arc<Mutex<TcpStream>> = connect(peer_id, INTERNODE_PORT, connections)?;
-            send_message(&stream, &value)?;
+            connect_and_send_message(peer_id, INTERNODE_PORT, connections, &value)?;
         }
         Ok(())
     }

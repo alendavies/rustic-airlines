@@ -100,8 +100,6 @@ impl Select {
     /// The `columns` should be comma-separated.
     ///
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
-        println!("los tokens son {:?}", tokens);
-
         if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
         }
