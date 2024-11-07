@@ -1,289 +1,184 @@
 mod types;
 mod client;
 
-use crate::types::flight_status::FlightStatus;
+use crate::types::sim_state::SimState;
 use crate::types::flight::Flight;
 use crate::types::airport::Airport;
-
-use chrono::{NaiveDateTime, Utc};
-use driver::ClientError;
-use std::io::{self, Write};
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
-use std::thread;
+use chrono::Utc;
 use client::Client;
-use threadpool::ThreadPool;
-use std::collections::HashMap;
-use std::time::Duration;
-use std::error::Error;
+use types::sim_error::SimError;
+use std::io::{self, Write};
 
-// Limpiar pantalla (compatible con la mayoría de terminales)
-fn clean_scr(){
+fn clean_scr() {
     print!("\x1B[2J\x1B[1;1H");
     io::stdout().flush().unwrap();
 }
 
-fn list_flights(
-    flights: &Vec<Arc<Mutex<Flight>>>,
-    is_listing: &Arc<AtomicBool>,
-    time_rate: &Arc<Mutex<Duration>>,
-    current_time: &Arc<Mutex<NaiveDateTime>>
-) {
-    is_listing.store(true, Ordering::SeqCst);
+fn add_flight(sim_state: &mut SimState) -> Result<(), SimError> {
+    let flight_number = prompt_input("Enter the flight number: ");
+    let origin = prompt_input("Enter the origin IATA code: ");
+    let destination = prompt_input("Enter the destination IATA code: ");
+    let departure_time = prompt_input("Enter the departure time (YYYY-MM-DD HH:MM:SS): ");
+    let arrival_time = prompt_input("Enter the arrival time (YYYY-MM-DD HH:MM:SS): ");
 
-    let mut input = String::new();
-    let stdin = io::stdin();
+    let avg_speed_input = prompt_input("Enter the average speed (in km/h): ");
+    let avg_speed: f64 = match avg_speed_input.parse() {
+        Ok(speed) => speed,
+        Err(_) => return Err(SimError::InvalidInput),
+    };
+
+    let flight = Flight::new_from_console(
+        &sim_state.airports(), &flight_number, &origin, &destination, &departure_time, &arrival_time, avg_speed
+    ).map_err(|_| SimError::InvalidFlight("Flight details are incorrect.".to_string()))?;
+
+    sim_state.add_flight(flight)?;
+    Ok(())
+}
+
+fn add_airport(sim_state: &mut SimState) -> Result<(), SimError> {
+    let iata_code = prompt_input("Enter the IATA code: ");
+    let country = prompt_input("Enter the country: ");
+    let name = prompt_input("Enter the airport name: ");
+    let latitude_input = prompt_input("Enter the latitude: ");
+    let latitude: f64 = match latitude_input.parse() {
+        Ok(lat) => lat,
+        Err(_) => return Err(SimError::InvalidInput),
+    };
+
+    let longitude_input = prompt_input("Enter the longitude: ");
+    let longitude: f64 = match longitude_input.parse() {
+        Ok(lon) => lon,
+        Err(_) => return Err(SimError::InvalidInput),
+    };
+
+    let airport = Airport::new(iata_code, country, name, latitude, longitude);
+    sim_state.add_airport(airport)?;
+    Ok(())
+}
+
+fn set_time_rate(sim_state: &mut SimState) -> Result<(), SimError> {
+    let minutes_input = prompt_input("Enter the time rate (in minutes): ");
+    let minutes: u64 = match minutes_input.parse() {
+        Ok(m) => m,
+        Err(_) => return Err(SimError::InvalidInput),
+    };
+    sim_state.set_time_rate(minutes);
+    Ok(())
+}
+fn main() -> Result<(), SimError> {
+    let ip = "127.0.0.1".parse().expect("Invalid IP format");
+    let client = Client::new(ip).map_err(|_| SimError::ClientError)?;
+    let mut sim_state = SimState::new(client)?;
 
     loop {
         clean_scr();
-        if flights.is_empty() {
-            println!("No flights available.");
-        } else {
-            println!("Current Time: {}", current_time.lock().unwrap().format("%Y-%m-%d %H:%M:%S"));
-            println!("\n{:<15} {:<10} {:<10} {:<15} {:<10} {:<10}", 
-                "Flight Number", "Status", "Origin", "Destination", "Latitude", "Longitude");
+        println!("Enter command (type '-h' or '--help' for options): ");
+        let mut command = String::new();
+        io::stdin().read_line(&mut command).expect("Failed to read input");
 
-            for flight in flights {
-                if let Ok(flight_data) = flight.lock() {
-                    let status = flight_data.status.as_str();
-                    println!(
-                        "{:<15} {:<10} {:<10} {:<10} {:<15.5} {:<15.5}", 
-                        flight_data.flight_number, 
-                        status, 
-                        flight_data.origin.iata_code, 
-                        flight_data.destination.iata_code, 
-                        flight_data.latitude, 
-                        flight_data.longitude
-                    );
+        let args: Vec<&str> = command.trim().split_whitespace().collect();
+        if args.is_empty() { continue; }
+
+        match args[0] {
+            "add-flight" => {
+                if let Err(_) = add_flight(&mut sim_state) {
+                    println!("{}", SimError::InvalidInput);
                 }
             }
-        }
 
-        println!("\nPress 'q' and Enter to exit list-flights mode");
-        
-        // Intentar leer input sin bloquear
-        if let Ok(n) = stdin.read_line(&mut input) {
-            if n > 0 && input.trim().to_lowercase() == "q" {
-                break;
+            "add-airport" => {
+                if let Err(_) = add_airport(&mut sim_state) {
+                    println!("{}", SimError::InvalidInput);
+                }
             }
-            input.clear();
-        }
 
-        // Actualizar current_time basado en time_rate
-        if let (Ok(mut time), Ok(rate)) = (current_time.lock(), time_rate.lock()) {
-            *time = *time + chrono::Duration::from_std(*rate).unwrap_or(chrono::Duration::seconds(1));
-        }
+            "list-flights" => sim_state.list_flights(),
 
-        thread::sleep(Duration::from_secs(1));
+            "time-rate" => {
+                if let Err(_) = set_time_rate(&mut sim_state) {
+                    println!("{}", SimError::InvalidInput);
+                }
+            }
+
+            "test-data" => {
+                if let Err(_) = add_test_data(&mut sim_state) {
+                    println!("{}", SimError::InvalidInput);
+                }
+            }
+
+            "-h" | "help" => print_help(),
+
+            "exit" => break,
+
+            _ => eprintln!("Invalid command. Use -h for help."),
+        }
     }
 
-    is_listing.store(false, Ordering::SeqCst);
-    println!("\nExited list-flights mode");
-}
-
-fn simulate_flight(
-    flight: Arc<Mutex<Flight>>, 
-    client: Arc<Mutex<Client>>, 
-    current_time: Arc<Mutex<NaiveDateTime>>,
-    is_listing: Arc<AtomicBool>
-) {
-    loop {
-        if !is_listing.load(Ordering::SeqCst) {
-            thread::sleep(Duration::from_secs(1));
-            continue;
-        }
-
-        let mut flight_data = match flight.lock() {
-            Ok(data) => data,
-            Err(e) => {
-                eprintln!("Failed to lock flight data for simulation: {:?}", e);
-                return;
-            }
-        };
-
-        let current = current_time.lock().unwrap().clone();
-
-        match flight_data.status {
-            FlightStatus::Pending => {
-                if current >= flight_data.departure_time {
-                    flight_data.status = FlightStatus::InFlight;
-                }
-            }
-            FlightStatus::InFlight | FlightStatus::Delayed => {
-                flight_data.update_position(current);
-
-                if let Ok(mut client_locked) = client.lock() {
-                    if let Err(e) = client_locked.update_flight(&*flight_data) {
-                        eprintln!("Failed to update flight {}: {:?}", flight_data.flight_number, e);
-                    }
-                }
-            }
-            FlightStatus::Finished => {
-                if let Ok(mut client_locked) = client.lock() {
-                    if let Err(e) = client_locked.update_flight(&*flight_data) {
-                        eprintln!("Failed to update flight {}: {:?}", flight_data.flight_number, e);
-                    }
-                }
-                break;
-            }
-        }
-
-        thread::sleep(Duration::from_secs(1));
-    }
-}
-
-fn add_flight(
-    pool: &ThreadPool,
-    flights: &mut Vec<Arc<Mutex<Flight>>>,
-    flight: Flight,
-    client: Arc<Mutex<Client>>,
-    current_time: Arc<Mutex<NaiveDateTime>>,
-    is_listing: Arc<AtomicBool>,
-) -> Result<(), ClientError> {
-    let flight_arc = Arc::new(Mutex::new(flight));
-    
-    if let Ok(mut client_locked) = client.lock() {
-        client_locked.insert_flight(&(*flight_arc.lock().unwrap()))?;
-    } else {
-        return Err(ClientError);
-    }
-
-    flights.push(Arc::clone(&flight_arc));
-
-    pool.execute({
-        let client = Arc::clone(&client);
-        let flight_arc = Arc::clone(&flight_arc);
-        let current_time = Arc::clone(&current_time);
-        let is_listing = Arc::clone(&is_listing);
-        move || {
-            simulate_flight(flight_arc, client, current_time, is_listing);
-        }
-    });
-
-    println!("Flight added and started simulation.");
+    sim_state.close_pool();
     Ok(())
+}
+
+fn prompt_input(prompt: &str) -> String {
+    print!("{}", prompt);
+    io::stdout().flush().unwrap();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).expect("Failed to read input");
+    input.trim().to_string() // Remove any trailing newline or extra space
 }
 
 fn print_help() {
     clean_scr();
     println!("Available commands:");
-    println!("  add-flight <flight_number> <origin> <destination> <departure_time[DD/MM/YY-HH:MM:SS]> <arrival_time[DD/MM/YY-HH:MM:SS]> <average_speed>");
-    println!("    Add a new flight with the specified parameters.");
-    println!("  add-airport <IATA_code> <country> <name> <latitude> <longitude>");
-    println!("    Add a new airport with the specified parameters.");
-    println!("  list-flights <minutes>");
-    println!("    Shows the current flights.");
-    println!("  time-rate <minutes>");
+    println!("  add-flight");
+    println!("    Adds a new flight to the simulation. You'll be prompted for each detail.");
+    println!("  add-airport");
+    println!("    Adds a new airport. You'll be prompted for each detail.");
+    println!("  list-flights");
+    println!("    Show the current flights.");
+    println!("  time-rate");
     println!("    Changes the simulation's elapsed time per tick.");
     println!("  exit");
     println!("    Closes this application.");
-    println!("  -h or help");
-    println!("    Show this help message.");
 }
 
-fn main() -> Result<(), ClientError> {
-    let pool = ThreadPool::new(4);
-    let mut flights = vec![];
-    let mut airports: HashMap<String, Airport> = HashMap::new();
 
-    let ip = "127.0.0.1".parse().expect("Invalid IP format");
-    let flight_sim_client = Arc::new(Mutex::new(Client::new(ip)?));
+fn add_test_data(sim_state: &mut SimState) -> Result<(), ClientError> {
+    // List of airports in Argentina
+    let airports = vec![
+        ("AEP", "Argentina", "Aeroparque Jorge Newbery", -34.553, -58.413),
+        ("EZE", "Argentina", "Aeropuerto Internacional Ministro Pistarini", -34.822, -58.535),
+        ("MDZ", "Argentina", "Aeropuerto El Plumerillo", -32.883, -68.845),
+        ("COR", "Argentina", "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella", -31.321, -64.213),
+        ("ROS", "Argentina", "Aeropuerto Internacional Rosario", -32.948, -60.787),
+    ];
 
-    let current_time = Arc::new(Mutex::new(Utc::now().naive_utc()));
-    let time_rate = Arc::new(Mutex::new(Duration::from_secs(1)));
-    let is_listing = Arc::new(AtomicBool::new(false));
-
-    loop {
-        if !is_listing.load(Ordering::SeqCst) {
-            println!("\nEnter command (type '-h' or '--help' for options): ");
-            let mut command = String::new();
-            io::stdin().read_line(&mut command).map_err(|_| ClientError)?;
-            let args: Vec<&str> = command.trim().split_whitespace().collect();
-
-            if args.is_empty() {
-                continue;
-            }
-
-            match args[0] {
-                "add-flight" => {
-                    if args.len() < 7 {
-                        eprintln!("Usage: add-flight <flight_number> <origin> <destination> <departure_time[DD/MM/YY-HH:MM:SS]> <arrival_time[DD/MM/YY-HH:MM:SS]> <average_speed>");
-                        continue;
-                    }
-                    
-                    let flight = Flight::new_from_console(
-                        &airports, 
-                        &args[1], 
-                        &args[2], 
-                        &args[3], 
-                        &args[4], 
-                        &args[5], 
-                        args[6].parse().map_err(|_| ClientError)?
-                    ).map_err(|_| ClientError)?;
-
-                    add_flight(
-                        &pool,
-                        &mut flights,
-                        flight,
-                        Arc::clone(&flight_sim_client),
-                        Arc::clone(&current_time),
-                        Arc::clone(&is_listing)
-                    )?;
-                }
-
-                "add-airport" => {
-                    if args.len() < 6 {
-                        eprintln!("Usage: add-airport <IATA_code> <country> <name> <latitude> <longitude>");
-                        continue;
-                    }
-                    
-                    let airport = Airport::new(
-                        args[1].to_string(),
-                        args[2].to_string(),
-                        args[3].to_string(),
-                        args[4].parse().map_err(|_| ClientError)?,
-                        args[5].parse().map_err(|_| ClientError)?
-                    );
-
-                    airports.insert(args[1].to_string(), airport.clone());
-                    
-                    if let Ok(mut client_locked) = flight_sim_client.lock() {
-                        client_locked.insert_airport(&airport)?;
-                    }
-                }
-
-                "list-flights" => {
-                    list_flights(&flights, &is_listing, &time_rate, &current_time);
-                }
-
-                "time-rate" => {
-                    if args.len() != 2 {
-                        eprintln!("Usage: time-rate <seconds>");
-                        continue;
-                    }
-
-                    let seconds: u64 = args[1].parse().map_err(|_| ClientError)?;
-                    if let Ok(mut rate) = time_rate.lock() {
-                        *rate = Duration::from_secs(seconds);
-                        println!("Time rate updated to {} seconds per tick", seconds);
-                    }
-                }
-
-                "-h" | "help" => {
-                    print_help();
-                }
-
-                "exit" => {
-                    break;
-                }
-
-                _ => {
-                    eprintln!("Invalid command. Use -h for help.");
-                }
-            }
-        }
+    // Add airports
+    for airport in airports {
+        let (iata_code, country, name, latitude, longitude) = airport;
+        let airport = Airport::new(iata_code.to_string(), country.to_string(), name.to_string(), latitude, longitude);
+        sim_state.add_airport(airport)?;
     }
 
-    pool.join();
+    // Add flights (for today)
+    let today = Utc::now().naive_utc();
+    let flight_data = vec![
+        ("AR1234", "AEP", "MDZ", today, today + chrono::Duration::hours(2), 550),
+        ("AR5678", "EZE", "ROS", today, today + chrono::Duration::hours(1), 600),
+        ("AR9101", "COR", "EZE", today, today + chrono::Duration::hours(3), 500),
+        ("AR1122", "ROS", "AEP", today, today + chrono::Duration::hours(1), 650),
+    ];
+
+    // Add flights
+    for (flight_number, origin, destination, departure_time, arrival_time, avg_speed) in flight_data {
+        let departure_str = departure_time.format("%Y-%m-%d %H:%M:%S").to_string();
+        let arrival_str = arrival_time.format("%Y-%m-%d %H:%M:%S").to_string();
+        let flight = Flight::new_from_console(
+            sim_state.airports(), flight_number, origin, destination, &departure_str, &arrival_str, avg_speed
+        ).map_err(|_| ClientError)?;
+        
+        sim_state.add_flight(flight)?;
+    }
+
+    println!("Test data added successfully!");
     Ok(())
 }
-
