@@ -10,11 +10,12 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::Ipv4Addr;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+use storage::StorageEngine;
 use uuid;
 
 use super::QueryExecution;
 
-impl QueryExecution {
+impl<T: StorageEngine> QueryExecution<T> {
     pub(crate) fn execute_insert(
         &mut self,
         insert_query: Insert,
@@ -140,7 +141,8 @@ impl QueryExecution {
 
         // If this node is responsible for the insert, execute it here
         keys_index.extend(&clustering_columns_index);
-        QueryExecution::insert_in_this_node(
+
+        Self::insert_in_this_node(
             values,
             self_ip,
             insert_query.into_clause.table_name,

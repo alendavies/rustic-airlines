@@ -2,12 +2,13 @@
 use crate::NodeError;
 use query_creator::clauses::table::drop_table_cql::DropTable;
 use query_creator::errors::CQLError;
+use storage::StorageEngine;
 
 use super::QueryExecution;
 
 /// Executes the deletion of a table. This function is public only for internal use
 /// within the library (defined as `pub(crate)`).
-impl QueryExecution {
+impl<T: StorageEngine> QueryExecution<T> {
     pub(crate) fn execute_drop_table(
         &self,
         drop_table: DropTable,

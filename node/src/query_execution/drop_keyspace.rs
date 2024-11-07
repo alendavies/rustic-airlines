@@ -1,12 +1,13 @@
 // Ordered imports
 use crate::NodeError;
 use query_creator::clauses::keyspace::drop_keyspace_cql::DropKeyspace;
+use storage::StorageEngine;
 
 use super::QueryExecution;
 
 /// Executes the deletion of a keyspace. This function is public only for internal use
 /// within the library (defined as `pub(crate)`).
-impl QueryExecution {
+impl<T: StorageEngine> QueryExecution<T> {
     pub(crate) fn execute_drop_keyspace(
         &self,
         drop_keyspace: DropKeyspace,

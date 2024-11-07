@@ -6,10 +6,11 @@ use query_creator::errors::CQLError;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
+use storage::StorageEngine;
 
 use super::QueryExecution;
 
-impl QueryExecution {
+impl<T: StorageEngine> QueryExecution<T> {
     pub(crate) fn execute_alter_table(
         &self,
         alter_table: AlterTable,

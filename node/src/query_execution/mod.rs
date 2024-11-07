@@ -25,17 +25,19 @@ use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
+use storage::StorageEngine;
 
 /// Struct for executing various database queries across nodes with support
 /// for distributed communication and replication.
-pub struct QueryExecution {
+pub struct QueryExecution<T: StorageEngine> {
     node_that_execute: Arc<Mutex<Node>>,
     connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     execution_finished_itself: bool,
     execution_replicate_itself: bool,
+    storage_engine: T,
 }
 
-impl QueryExecution {
+impl<T: StorageEngine> QueryExecution<T> {
     /// Constructs a new `QueryExecution` instance, initializing the node and
     /// connection attributes required for handling and distributing queries.
     ///
@@ -48,12 +50,14 @@ impl QueryExecution {
     pub fn new(
         node_that_execute: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-    ) -> QueryExecution {
+        storage_engine: T,
+    ) -> QueryExecution<T> {
         QueryExecution {
             node_that_execute,
             connections,
             execution_finished_itself: false,
             execution_replicate_itself: false,
+            storage_engine,
         }
     }
 

@@ -8,10 +8,11 @@ use query_creator::errors::CQLError;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
+use storage::StorageEngine;
 
 use super::QueryExecution;
 
-impl QueryExecution {
+impl<T: StorageEngine> QueryExecution<T> {
     /// Validates the types of the `SET` clause against the columns of the table
     pub(crate) fn validate_update_types(
         set_clause: Set,

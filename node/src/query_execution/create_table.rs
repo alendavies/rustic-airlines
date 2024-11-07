@@ -5,12 +5,13 @@ use query_creator::clauses::table::create_table_cql::CreateTable;
 use query_creator::errors::CQLError;
 use std::fs::OpenOptions;
 use std::io::Write;
+use storage::StorageEngine;
 
 use super::QueryExecution;
 
 /// Executes the creation of a table. This function is public only for internal use
 /// within the library (defined as `pub(crate)`).
-impl QueryExecution {
+impl<T: StorageEngine> QueryExecution<T> {
     pub(crate) fn execute_create_table(
         &self,
         create_table: CreateTable,

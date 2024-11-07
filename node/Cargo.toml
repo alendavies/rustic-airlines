@@ -5,10 +5,11 @@ edition = "2021"
 
 [dependencies]
 # Dependencias específicas para el crate `node`
-partitioner = { path = "../partitioner" }  # Ejemplo de cómo referenciar la librería `partitioner`
-query-creator = { path = "../query-creator" }  # Ejemplo de cómo referenciar la librería `partitioner`
+partitioner = { path = "../partitioner" }         # Ejemplo de cómo referenciar la librería `partitioner`
+query-creator = { path = "../query-creator" }     # Ejemplo de cómo referenciar la librería `partitioner`
 driver = { path = "../driver" }
 native_protocol = { path = "../native_protocol" }
+storage = { path = "../storage" }
 
 [dependencies.uuid]
 version = "1.11.0"
