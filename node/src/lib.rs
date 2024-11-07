@@ -21,6 +21,7 @@ use crate::utils::connect_and_send_message;
 // External libraries
 use driver::server::{handle_client_request, Request};
 use errors::NodeError;
+use gossip::Gossiper;
 use internode_protocol_handler::InternodeProtocolHandler;
 use keyspace::Keyspace;
 use native_protocol::frame::Frame;
@@ -50,6 +51,7 @@ pub struct Node {
     keyspaces: Vec<Keyspace>,
     clients_keyspace: HashMap<i32, Option<String>>,
     last_client_id: i32,
+    gossiper: Gossiper,
 }
 
 impl Node {
@@ -65,6 +67,7 @@ impl Node {
     pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>) -> Result<Node, NodeError> {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip)?;
+
         Ok(Node {
             ip,
             seeds_nodes,
@@ -73,6 +76,7 @@ impl Node {
             keyspaces: vec![],
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
+            gossiper: Gossiper::new(),
         })
     }
 
@@ -649,10 +653,12 @@ impl Node {
                     let result = internode_protocol_handler.handle_command(
                         &node,
                         &buffer.trim().to_string(),
-                        &mut stream,
                         connections.clone(),
                         is_seed,
                     );
+
+                    // acá hay que fijarse si se modificó el endpoint state y de alguna forma
+                    // avisarle al partitioner
 
                     // If there's an error handling the command, exit the loop
                     if let Err(e) = result {
