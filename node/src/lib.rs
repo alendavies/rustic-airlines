@@ -724,8 +724,7 @@ impl Node {
             client_id,
         )?;
 
-        println!("la response es {:?}", response);
-        if let Some((finished_responses, content)) = response {
+        if let Some(((finished_responses, failed_nodes), content)) = response {
             let mut guard_node = node.lock()?;
             // Obtener el keyspace especificado o el actual del cliente
             let keyspace = guard_node
@@ -754,6 +753,7 @@ impl Node {
             };
 
             let query_handler = guard_node.get_open_handle_query();
+
             for _ in [..finished_responses] {
                 InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
@@ -763,7 +763,16 @@ impl Node {
                     columns.clone(),
                 )?;
             }
+            for _ in [..failed_nodes] {
+                InternodeProtocolHandler::add_error_response_to_open_query_and_send_response_if_closed(
+                    query_handler,
+                    open_query_id,
+        
+                )?;
+            }
+            println!("retorne OK despues de cargar {:?} Oks y {:?} errores",finished_responses, failed_nodes);
         }
+
 
         Ok(())
     }

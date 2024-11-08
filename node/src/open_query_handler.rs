@@ -319,6 +319,8 @@ impl OpenQueryHandler {
             Some(query) => {
                 query.add_ok_response(response);
 
+                println!("la query es {:?}", query);
+
                 if query.is_close() {
                     println!(
                         "con {:?} OKS y {:?} ERRORS la query se cerro",
