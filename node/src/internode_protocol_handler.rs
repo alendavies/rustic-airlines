@@ -115,7 +115,6 @@ impl InternodeProtocolHandler {
         if parts.len() < 2 {
             return Err(NodeError::InternodeProtocolError);
         }
-
         match parts[0] {
             "QUERY" => {
                 self.handle_query_command(node, parts[1], connections, is_seed)?;
@@ -150,7 +149,7 @@ impl InternodeProtocolHandler {
     ///
     /// # Errors
     /// - `NodeError::OtherError` may be returned if the open query cannot be retrieved.
-    pub fn add_response_to_open_query_and_send_response_if_closed(
+    pub fn add_ok_response_to_open_query_and_send_response_if_closed(
         query_handler: &mut OpenQueryHandler,
         content: &str,
         open_query_id: i32,
@@ -158,7 +157,7 @@ impl InternodeProtocolHandler {
         columns: Vec<Column>,
     ) -> Result<(), NodeError> {
         if let Some(open_query) =
-            query_handler.add_response_and_get_if_closed(open_query_id, content.to_string())
+            query_handler.add_ok_response_and_get_if_closed(open_query_id, content.to_string())
         {
             let mut connection = open_query.get_connection();
 
@@ -189,15 +188,16 @@ impl InternodeProtocolHandler {
     ///
     /// # Errors
     /// - This function returns `NodeError` if there is a failure in sending the error response.
-    pub fn close_query_and_send_error_frame(
+    pub fn add_error_response_to_open_query_and_send_response_if_closed(
         query_handler: &mut OpenQueryHandler,
         open_query_id: i32,
     ) -> Result<(), NodeError> {
-        if let Some(open_query) = query_handler.close_query_and_get_if_closed(open_query_id) {
+        if let Some(open_query) = query_handler.add_error_response_and_get_if_closed(open_query_id)
+        {
             let mut connection = open_query.get_connection();
 
             let error_frame = Frame::Error(error::Error::ServerError(
-                "A node failed to execute the request.".to_string(),
+                "A node failed to execute the request of the coordinator.".to_string(),
             ));
 
             connection.write(&error_frame.to_bytes()?)?;
@@ -449,7 +449,7 @@ impl InternodeProtocolHandler {
             }
         };
 
-        Self::add_response_to_open_query_and_send_response_if_closed(
+        Self::add_ok_response_to_open_query_and_send_response_if_closed(
             query_handler,
             content,
             open_query_id,
@@ -460,13 +460,18 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Procesa la respuesta cuando el estado es "ERROR"
+    /// Procesa la respuesta cuando el estado es "OK"
     fn process_error_response(
         &self,
         query_handler: &mut OpenQueryHandler,
         open_query_id: i32,
     ) -> Result<(), NodeError> {
-        Self::close_query_and_send_error_frame(query_handler, open_query_id)
+        Self::add_error_response_to_open_query_and_send_response_if_closed(
+            query_handler,
+            open_query_id,
+        )?;
+
+        Ok(())
     }
 
     /// Handles the introduction command, which is used for the "HANDSHAKE" protocol.
@@ -712,87 +717,56 @@ impl InternodeProtocolHandler {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::{Node, NodeError};
-//     use std::collections::HashMap;
-//     use std::net::{TcpListener, TcpStream};
-//     use std::sync::{Arc, Mutex};
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Node, NodeError};
+    use std::collections::HashMap;
+    use std::net::TcpListener;
+    use std::sync::{Arc, Mutex};
 
-//     // // Función auxiliar para crear un nodo para pruebas
-//     // fn create_test_node() -> Arc<Mutex<Node>> {
-//     //     let ip = std::net::Ipv4Addr::new(127, 0, 0, 1);
-//     //     let seeds_nodes = vec![std::net::Ipv4Addr::new(127, 0, 0, 2)];
-//     //     let node = Node::new(ip, seeds_nodes).expect("Error creating node for test");
-//     //     Arc::new(Mutex::new(node))
-//     // }
+    // Función auxiliar para crear un nodo para pruebas
+    fn create_test_node() -> Arc<Mutex<Node>> {
+        let ip = std::net::Ipv4Addr::new(127, 0, 0, 1);
+        let seeds_nodes = vec![std::net::Ipv4Addr::new(127, 0, 0, 2)];
+        let node = Node::new(ip, seeds_nodes).expect("Error creating node for test");
+        Arc::new(Mutex::new(node))
+    }
 
-//     #[test]
-//     fn test_create_protocol_message() {
-//         let message = InternodeProtocolHandler::create_protocol_message(
-//             "127.0.0.1",
-//             1,
-//             "CREATE_TABLE",
-//             "table_structure",
-//             true,
-//             true,
-//             1,
-//             "a",
-//         );
-//         assert_eq!(
-//             message,
-//             "QUERY - 127.0.0.1 - 1 - CREATE_TABLE - table_structure - true - true - 1 - a"
-//         );
-//     }
+    #[test]
+    fn test_create_protocol_message() {
+        let message = InternodeProtocolHandler::create_protocol_message(
+            "127.0.0.1",
+            1,
+            "CREATE_TABLE",
+            "table_structure",
+            true,
+            true,
+            1,
+            "a",
+        );
+        assert_eq!(
+            message,
+            "QUERY - 127.0.0.1 - 1 - CREATE_TABLE - table_structure - true - true - 1 - a"
+        );
+    }
 
-//     #[test]
-//     fn test_create_protocol_response() {
-//         let response = InternodeProtocolHandler::create_protocol_response("OK", "content", 1);
-//         assert_eq!(response, "RESPONSE - 1 - OK - content - 2");
-//     }
+    #[test]
+    fn test_create_protocol_response() {
+        let response = InternodeProtocolHandler::create_protocol_response("OK", "content", 1);
+        assert_eq!(response, "RESPONSE - 1 - OK - content");
+    }
 
-//     // #[test]
-//     // fn test_handle_invalid_command() {
-//     //     // Crear un listener para aceptar conexiones
-//     //     let _listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+    #[test]
+    fn test_handle_invalid_command() {
+        // Crear un listener para aceptar conexiones
+        let _listener = TcpListener::bind("127.0.0.1:8080").unwrap();
 
-//     //     let node = create_test_node();
-//     //     let handler = InternodeProtocolHandler::new();
-//     //     let connections = Arc::new(Mutex::new(HashMap::new()));
+        let node = create_test_node();
+        let handler = InternodeProtocolHandler::new();
+        let connections = Arc::new(Mutex::new(HashMap::new()));
 
-//     //     // Crear un TcpStream real conectándose al listener
-//     //     let client_stream = TcpStream::connect("127.0.0.1:8080").unwrap();
-
-//     //     let result = handler.handle_command(
-//     //         &node,
-//     //         "INVALID - command",
-//     //         &mut Arc::new(Mutex::new(client_stream)),
-//     //         connections,
-//     //         false,
-//     //     );
-//     //     assert!(matches!(result, Err(NodeError::InternodeProtocolError)));
-//     // }
-
-//     // #[test]
-//     // fn test_handle_valid_command() {
-//     //     // Crear un listener para aceptar conexiones
-//     //     let _listener = TcpListener::bind("127.0.0.4:8080").unwrap();
-
-//     //     let node = create_test_node();
-//     //     let handler = InternodeProtocolHandler::new();
-//     //     let connections = Arc::new(Mutex::new(HashMap::new()));
-
-//     //     // Crear un TcpStream real conectándose al listener
-//     //     let client_stream = TcpStream::connect("127.0.0.4:8080").unwrap();
-
-//     //     let result = handler.handle_command(
-//     //         &node,
-//     //         "QUERY - 127.0.0.1 - 1 - HANDSHAKE - structure - true - true",
-//     //         &mut Arc::new(Mutex::new(client_stream)),
-//     //         connections,
-//     //         true,
-//     //     );
-//     //     assert!(result.is_ok());
-//     // }
-// }
+        let result = handler.handle_command(&node, "INVALID - command", connections, false);
+        assert!(matches!(result, Err(NodeError::InternodeProtocolError)));
+    }
+}

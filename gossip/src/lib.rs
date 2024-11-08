@@ -13,7 +13,9 @@ pub struct Gossiper {
 
 impl Gossiper {
     pub fn new() -> Self {
-        todo!()
+        Gossiper {
+            endpoints_state: HashMap::new(),
+        }
     }
 
     pub fn handle_syn(syn: Syn) -> Ack {

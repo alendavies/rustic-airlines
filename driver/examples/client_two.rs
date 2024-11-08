@@ -46,7 +46,7 @@ fn main() {
             }
             Err(e) => {
                 eprintln!("Error executing insert query for id {}: {:?}", i, e);
-                break; // Detener el bucle si hay un error
+                // Detener el bucle si hay un error
             }
         }
     }

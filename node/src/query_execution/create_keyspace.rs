@@ -15,7 +15,7 @@ impl QueryExecution {
         client_id: i32,
     ) -> Result<(), NodeError> {
         // Locks the node to ensure safe concurrent access
-
+        println!("recibi create_keyspace");
         let mut node = self
             .node_that_execute
             .lock()

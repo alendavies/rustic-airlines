@@ -621,7 +621,7 @@ impl Node {
 
     fn handle_incoming_internode_messages(
         node: Arc<Mutex<Node>>,
-        mut stream: Arc<Mutex<TcpStream>>,
+        stream: Arc<Mutex<TcpStream>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
     ) -> Result<(), NodeError> {
@@ -724,6 +724,7 @@ impl Node {
             client_id,
         )?;
 
+        println!("la response es {:?}", response);
         if let Some((finished_responses, content)) = response {
             let mut guard_node = node.lock()?;
             // Obtener el keyspace especificado o el actual del cliente
@@ -754,7 +755,7 @@ impl Node {
 
             let query_handler = guard_node.get_open_handle_query();
             for _ in [..finished_responses] {
-                InternodeProtocolHandler::add_response_to_open_query_and_send_response_if_closed(
+                InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     &content,
                     open_query_id,

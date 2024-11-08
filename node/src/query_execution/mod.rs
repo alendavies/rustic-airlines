@@ -249,7 +249,15 @@ impl QueryExecution {
         // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
         for ip in local_node.get_partitioner().get_nodes() {
             if ip != current_ip {
-                connect_and_send_message(ip, INTERNODE_PORT, self.connections.clone(), &message)?;
+                let result = connect_and_send_message(
+                    ip,
+                    INTERNODE_PORT,
+                    self.connections.clone(),
+                    &message,
+                );
+                if result.is_err() {
+                    println!("No se pudo comunicar con el nodo {:?}", ip);
+                }
             }
         }
         Ok(())
@@ -329,7 +337,15 @@ impl QueryExecution {
         // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
         for ip in n_succesors {
             if ip != current_ip {
-                connect_and_send_message(ip, INTERNODE_PORT, self.connections.clone(), &message)?;
+                let result = connect_and_send_message(
+                    ip,
+                    INTERNODE_PORT,
+                    self.connections.clone(),
+                    &message,
+                );
+                if result.is_err() {
+                    println!("no me pude comunicar con el nodo {:?}", ip);
+                }
             } else {
                 the_node_has_to_replicate = true;
             }
