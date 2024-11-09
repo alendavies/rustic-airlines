@@ -35,6 +35,7 @@ pub enum NodeError {
     InternodeProtocolError,
     /// Error related to native protocol operations.
     NativeError(NativeError),
+    GossipError,
 }
 
 impl Display for NodeError {
@@ -53,6 +54,7 @@ impl Display for NodeError {
             NodeError::OpenQueryError => write!(f, "Open Query Error"),
             NodeError::InternodeProtocolError => write!(f, "Internode Protocol Error"),
             NodeError::NativeError(e) => write!(f, "Native Protocol Error: {}", e),
+            NodeError::GossipError => write!(f, "Gossip Error"),
         }
     }
 }
