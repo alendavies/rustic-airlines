@@ -42,21 +42,28 @@ impl Flight {
         // Define the size for the plane icon
         let symbol_size = Vec2::new(30.0, 30.0);
 
-        // Calculate the rectangle where the image should be drawn
-        let rect = Rect::from_center_size(screen_position.to_pos2(), symbol_size);
-
-        let image = Image::new(include_image!(
-            r"..\..\..\graphical-interface\plane-solid.svg"
-        ))
-        .fit_to_exact_size(symbol_size)
-        .rotate(self.heading.to_radians(), Vec2::splat(0.5));
-
-        ui.put(rect, image);
-
-        let symbol_size = Vec2::new(30.0, 30.0);
         let clickable_area = Rect::from_center_size(screen_position.to_pos2(), symbol_size);
 
         let response = ui.allocate_rect(clickable_area, egui::Sense::click());
+
+        // Calculate the rectangle where the image should be drawn
+        let rect = Rect::from_center_size(screen_position.to_pos2(), symbol_size);
+
+        let image = if response.hovered() {
+            Image::new(include_image!(
+                r"..\..\..\graphical-interface\plane-solid-selected.svg"
+            ))
+        } else {
+            Image::new(include_image!(
+                r"..\..\..\graphical-interface\plane-solid.svg"
+            ))
+        };
+
+        let image = image
+            .fit_to_exact_size(symbol_size)
+            .rotate(self.heading.to_radians(), Vec2::splat(0.5));
+
+        ui.put(rect, image);
 
         if response.clicked() {
             selection_state.toggle_flight_selection(&self);
