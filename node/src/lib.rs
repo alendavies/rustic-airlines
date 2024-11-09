@@ -70,14 +70,37 @@ impl Node {
 
         Ok(Node {
             ip,
-            seeds_nodes,
+            seeds_nodes: seeds_nodes.clone(),
             partitioner,
             open_query_handler: OpenQueryHandler::new(),
             keyspaces: vec![],
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
-            gossiper: Gossiper::new(),
+            gossiper: Gossiper::new()
+                .with_endpoint_state(ip)
+                .with_seeds(seeds_nodes),
         })
+    }
+
+    /// Starts the gossip process for the node.
+    /// Opens 3 connections with 3 other nodes.
+    pub fn start_gossip(self) -> Result<(), NodeError> {
+        thread::spawn(move || loop {
+            let ips = self.gossiper.pick_ips();
+            let syn = self.gossiper.create_syn();
+
+            for ip in ips {
+                let connection = TcpStream::connect(SocketAddrV4::new(*ip, INTERNODE_PORT));
+
+                if let Ok(mut stream) = connection {
+                    stream.write(syn.as_bytes().as_slice()).unwrap();
+                }
+            }
+
+            thread::sleep(std::time::Duration::from_secs(1));
+        });
+
+        Ok(())
     }
 
     /// Adds a new open query in the node.
