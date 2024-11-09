@@ -84,10 +84,11 @@ impl Node {
 
     /// Starts the gossip process for the node.
     /// Opens 3 connections with 3 other nodes.
-    pub fn start_gossip(self) -> Result<(), NodeError> {
+    pub fn start_gossip(node: Arc<Mutex<Node>>) -> Result<(), NodeError> {
         thread::spawn(move || loop {
-            let ips = self.gossiper.pick_ips();
-            let syn = self.gossiper.create_syn();
+            let node_guard = node.lock().unwrap();
+            let ips = node_guard.gossiper.pick_ips();
+            let syn = node_guard.gossiper.create_syn();
 
             for ip in ips {
                 let connection = TcpStream::connect(SocketAddrV4::new(*ip, INTERNODE_PORT));
@@ -442,6 +443,14 @@ impl Node {
             });
         });
 
+        // Creates a thread to handle gossip
+        let node_gossip = Arc::clone(&node);
+        let handle_gossip_thread = thread::spawn(move || {
+            Self::start_gossip(node_gossip).unwrap_or_else(|err| {
+                eprintln!("Error in gossip: {:?}", err); // Or handle the error as needed
+            });
+        });
+
         // Creates a thread to handle client connections
         let client_connections_node = Arc::clone(&node);
         let client_connections = Arc::clone(&connections);
@@ -462,6 +471,9 @@ impl Node {
         handle_client_thread
             .join()
             .map_err(|_| NodeError::ClientError)?;
+        handle_gossip_thread
+            .join()
+            .map_err(|_| NodeError::GossipError)?;
 
         Ok(())
     }
