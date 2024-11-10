@@ -84,23 +84,27 @@ impl Node {
 
     /// Starts the gossip process for the node.
     /// Opens 3 connections with 3 other nodes.
-    pub fn start_gossip(node: Arc<Mutex<Node>>) -> Result<(), NodeError> {
-        thread::spawn(move || loop {
+    pub fn start_gossip(
+        node: Arc<Mutex<Node>>,
+        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+    ) -> Result<(), NodeError> {
+        let handle = thread::spawn(move || loop {
             let node_guard = node.lock().unwrap();
             let ips = node_guard.gossiper.pick_ips();
             let syn = node_guard.gossiper.create_syn();
+            let bytes = syn.as_bytes();
+
+            let message = std::str::from_utf8(bytes.as_slice()).unwrap();
 
             for ip in ips {
-                let connection = TcpStream::connect(SocketAddrV4::new(*ip, INTERNODE_PORT));
-
-                if let Ok(mut stream) = connection {
-                    stream.write(syn.as_bytes().as_slice()).unwrap();
-                }
+                let connections_clone = Arc::clone(&connections);
+                connect_and_send_message(*ip, INTERNODE_PORT, connections_clone, message).unwrap();
             }
 
             thread::sleep(std::time::Duration::from_secs(1));
         });
 
+        handle.join().unwrap();
         Ok(())
     }
 
@@ -444,11 +448,10 @@ impl Node {
         });
 
         // Creates a thread to handle gossip
+        let gossip_connections = Arc::clone(&connections);
         let node_gossip = Arc::clone(&node);
-        let handle_gossip_thread = thread::spawn(move || {
-            Self::start_gossip(node_gossip).unwrap_or_else(|err| {
-                eprintln!("Error in gossip: {:?}", err); // Or handle the error as needed
-            });
+        Self::start_gossip(node_gossip, gossip_connections).unwrap_or_else(|err| {
+            eprintln!("Error in gossip: {:?}", err); // Or handle the error as needed
         });
 
         // Creates a thread to handle client connections
@@ -471,9 +474,6 @@ impl Node {
         handle_client_thread
             .join()
             .map_err(|_| NodeError::ClientError)?;
-        handle_gossip_thread
-            .join()
-            .map_err(|_| NodeError::GossipError)?;
 
         Ok(())
     }
