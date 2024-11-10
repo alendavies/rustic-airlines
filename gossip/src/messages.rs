@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, net::Ipv4Addr};
+use std::{
+    collections::BTreeMap,
+    io::{Cursor, Read},
+    net::Ipv4Addr,
+};
 
 use crate::structures::{ApplicationState, HeartbeatState, NodeStatus};
 
@@ -88,6 +92,88 @@ impl Digest {
             generation,
             version,
         })
+    }
+}
+
+struct GossipMessage {
+    from: Ipv4Addr,
+    payload: Payload,
+}
+
+enum PayloadType {
+    Syn = 0x00,
+    Ack = 0x01,
+    Ack2 = 0x02,
+}
+
+pub enum Payload {
+    Syn(Syn),
+    Ack(Ack),
+    Ack2(Ack2),
+}
+
+impl GossipMessage {
+    // 0    8    16   24   32
+    // +----+----+----+----+
+    // |         ip        |
+    // +----+----+----+----+
+    // |type|   payload    |
+    // +----+----+----+----+
+    // |      payload      |
+    // |        ...        |
+    // +----+----+----+----+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+
+        bytes.extend_from_slice(&self.from.to_bits().to_be_bytes());
+
+        let payload_type = match &self.payload {
+            Payload::Syn(_) => PayloadType::Syn as u8,
+            Payload::Ack(_) => PayloadType::Ack as u8,
+            Payload::Ack2(_) => PayloadType::Ack2 as u8,
+        };
+
+        bytes.extend_from_slice(&payload_type.to_be_bytes());
+
+        let payload_bytes = match &self.payload {
+            Payload::Syn(syn) => syn.as_bytes(),
+            Payload::Ack(ack) => ack.as_bytes(),
+            Payload::Ack2(ack2) => ack2.as_bytes(),
+        };
+
+        bytes.extend_from_slice(&payload_bytes);
+
+        bytes
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, MessageError> {
+        let mut cursor = Cursor::new(bytes);
+
+        let mut bytes_ip = [0u8; 4];
+        cursor.read_exact(&mut bytes_ip).unwrap();
+
+        let mut bytes_type = [0u8; 1];
+        cursor.read_exact(&mut bytes_type).unwrap();
+
+        let mut bytes_payload = Vec::new();
+        cursor.read_to_end(&mut bytes_payload).unwrap();
+
+        let ip = Ipv4Addr::from_bits(u32::from_be_bytes(bytes_ip));
+
+        let payload_type = match u8::from_be_bytes(bytes_type) {
+            0x00 => PayloadType::Syn,
+            0x01 => PayloadType::Ack,
+            0x02 => PayloadType::Ack2,
+            _ => panic!(),
+        };
+
+        let payload = match payload_type {
+            PayloadType::Syn => Payload::Syn(Syn::from_bytes(&bytes_payload)?),
+            PayloadType::Ack => Payload::Ack(Ack::from_bytes(&bytes_payload)?),
+            PayloadType::Ack2 => Payload::Ack2(Ack2::from_bytes(&bytes_payload)?),
+        };
+
+        Ok(Self { from: ip, payload })
     }
 }
 
