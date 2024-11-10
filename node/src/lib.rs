@@ -98,7 +98,13 @@ impl Node {
 
             for ip in ips {
                 let connections_clone = Arc::clone(&connections);
-                connect_and_send_message(*ip, INTERNODE_PORT, connections_clone, message).unwrap();
+                connect_and_send_message(
+                    *ip,
+                    INTERNODE_PORT,
+                    connections_clone,
+                    format!("GOSSIP - {}", message).as_str(),
+                )
+                .unwrap();
             }
 
             thread::sleep(std::time::Duration::from_secs(1));
