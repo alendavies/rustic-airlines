@@ -95,9 +95,9 @@ impl Digest {
     }
 }
 
-struct GossipMessage {
-    from: Ipv4Addr,
-    payload: Payload,
+pub struct GossipMessage {
+    pub from: Ipv4Addr,
+    pub payload: Payload,
 }
 
 enum PayloadType {
