@@ -1,6 +1,7 @@
 use crate::open_query_handler::OpenQueryHandler;
 use crate::utils::connect_and_send_message;
 use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
+use gossip::messages::GossipMessage;
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -409,17 +410,43 @@ impl InternodeProtocolHandler {
     ) -> Result<(), NodeError> {
         let mut guard_node = node.lock()?;
 
-        // guard_node.gossiper;
+        let bytes = message.as_bytes();
+
+        let gossip_message =
+            GossipMessage::from_bytes(bytes).map_err(|_| NodeError::GossipError)?;
+
+        match gossip_message.payload {
+            gossip::messages::Payload::Syn(syn) => {
+                let ack = guard_node.gossiper.handle_syn(syn);
+                let bytes = ack.as_bytes();
+
+                let message = std::str::from_utf8(bytes.as_slice()).unwrap();
+                connect_and_send_message(
+                    gossip_message.from,
+                    INTERNODE_PORT,
+                    connections,
+                    format!("GOSSIP - {}", message).as_str(),
+                )?;
+            }
+            gossip::messages::Payload::Ack(ack) => {
+                let ack2 = guard_node.gossiper.handle_ack(ack);
+                let bytes = ack2.as_bytes();
+
+                let message = std::str::from_utf8(bytes.as_slice()).unwrap();
+                connect_and_send_message(
+                    gossip_message.from,
+                    INTERNODE_PORT,
+                    connections,
+                    format!("GOSSIP - {}", message).as_str(),
+                )?;
+            }
+            gossip::messages::Payload::Ack2(ack2) => {
+                guard_node.gossiper.handle_ack2(ack2);
+            }
+        };
 
         // TODO
-        // acá tendríamos acceso a node.gossiper y node.partitioner
-        // 1. deserializar el msj
-        // 2. mandar el mensaje que corresponda
-        // 3. actualizar el node.endpoints_state según corresponda
-        // 4. informarle al partitioner según corresponda
-        // listo
-
-        // connect_and_send_message(peer_id, port, connections, message);
+        // informar al partitioner que un nodo se ha unido
 
         Ok(())
     }
