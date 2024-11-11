@@ -2,7 +2,7 @@ use egui_extras::{Column, TableBuilder};
 
 use crate::db::{Airport, Flight, MockProvider, Provider};
 
-use super::View;
+use super::{flights_table::FlightType, View, WidgetFlightsTable};
 
 #[derive(PartialEq)]
 enum Tabs {
@@ -11,7 +11,84 @@ enum Tabs {
     Arrivals,
 }
 
-struct WidgetDepartures {
+pub struct WidgetAirport {
+    pub selected_airport: Airport,
+    widget_departures: WidgetFlightsTable,
+    widget_arrivals: WidgetFlightsTable,
+    open_tab: Tabs,
+}
+
+impl WidgetAirport {
+    pub fn new(selected_airport: Airport) -> Self {
+        let iata_code = selected_airport.iata.clone();
+        Self {
+            selected_airport,
+            open_tab: Tabs::Info,
+            widget_arrivals: WidgetFlightsTable::new(iata_code.clone(), FlightType::Arrival),
+            widget_departures: WidgetFlightsTable::new(iata_code, FlightType::Departure),
+        }
+    }
+}
+
+impl WidgetAirport {
+    pub fn show(&mut self, ctx: &egui::Context) {
+        egui::Window::new(format!("Aeropuerto {}", self.selected_airport.name))
+            .resizable(false)  
+            .collapsible(false)
+            .movable(true)    // Allow dragging
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.open_tab, Tabs::Info, "Info");
+                    ui.selectable_value(&mut self.open_tab, Tabs::Departures, "Departures");
+                    ui.selectable_value(&mut self.open_tab, Tabs::Arrivals, "Arrivals");
+                });
+
+                match self.open_tab {
+                    Tabs::Info => ui.vertical(|ui| {
+                        ui.label(format!("Código IATA: {}", self.selected_airport.iata));
+                        ui.label(format!("Nombre: {}", self.selected_airport.name));
+                    }),
+                    Tabs::Departures => ui.vertical(|ui| {
+                        self.widget_departures.ui(ui);
+                    }),
+                    Tabs::Arrivals => ui.vertical(|ui| {
+                        self.widget_arrivals.ui(ui);
+                    }),
+                }
+            });
+    }
+
+    // fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+    //     let response = ui.allocate_response(egui::vec2(0., 0.), egui::Sense::hover());
+
+    //     egui::Window::new(format!(
+    //         "Aeropuerto {}",
+    //         self.selected_airport
+    //             .as_ref()
+    //             .and_then(|x| Some(x.name.clone()))
+    //             .unwrap_or_default()
+    //     ))
+    //     .resizable(false)
+    //     .collapsible(false)
+    //     .movable(false)
+    //     .fixed_pos([20., 150.])
+    //     // .open(&mut self.selected_airport.is_some())
+    //     .open(&mut self.window_open)
+    //     .show(ui.ctx(), |ui| {
+    //         // egui::ScrollArea::vertical().show(ui, |ui| {
+    //         ui.horizontal(|ui| {
+    //             ui.selectable_value(&mut self.open_tab, Tabs::Info, "Info");
+    //             ui.selectable_value(&mut self.open_tab, Tabs::Departures, "Departures");
+    //             ui.selectable_value(&mut self.open_tab, Tabs::Arrivals, "Arrivals");
+    //         });
+    //         // });
+    //     });
+
+    //     response
+    // }
+}
+
+/* struct WidgetDepartures {
     airport: String,
     selected_date: chrono::NaiveDate,
     departures: Option<Vec<Flight>>,
@@ -161,83 +238,6 @@ impl View for WidgetArrivals {
             }
         });
     }
-}
+} */
 
-pub struct WidgetAirport {
-    pub selected_airport: Airport,
-    widget_departures: WidgetDepartures,
-    widget_arrivals: WidgetArrivals,
-    open_tab: Tabs,
-}
 
-impl WidgetAirport {
-    pub fn new(selected_airport: Airport) -> Self {
-        Self {
-            // TODO: should actually receive a reference to the airport
-            selected_airport: selected_airport.clone(),
-            open_tab: Tabs::Info,
-            widget_arrivals: WidgetArrivals::new(selected_airport.iata.clone()),
-            widget_departures: WidgetDepartures::new(selected_airport.iata.clone()),
-        }
-    }
-}
-
-impl WidgetAirport {
-    pub fn show(&mut self, ctx: &egui::Context) {
-        egui::Window::new(format!("Aeropuerto {}", self.selected_airport.name))
-            .resizable(false)
-            .collapsible(false)
-            .movable(false)
-            // TODO: find the way to make the widgets fill the space one after the other
-            .fixed_pos([20., 600.])
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.open_tab, Tabs::Info, "Info");
-                    ui.selectable_value(&mut self.open_tab, Tabs::Departures, "Departures");
-                    ui.selectable_value(&mut self.open_tab, Tabs::Arrivals, "Arrivals");
-                });
-
-                match self.open_tab {
-                    Tabs::Info => ui.vertical(|ui| {
-                        ui.label(format!("Código IATA: {}", self.selected_airport.iata));
-                        ui.label(format!("Nombre: {}", self.selected_airport.name));
-                    }),
-                    Tabs::Departures => ui.vertical(|ui| {
-                        self.widget_departures.ui(ui);
-                    }),
-                    Tabs::Arrivals => ui.vertical(|ui| {
-                        self.widget_arrivals.ui(ui);
-                    }),
-                }
-            });
-    }
-
-    // fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-    //     let response = ui.allocate_response(egui::vec2(0., 0.), egui::Sense::hover());
-
-    //     egui::Window::new(format!(
-    //         "Aeropuerto {}",
-    //         self.selected_airport
-    //             .as_ref()
-    //             .and_then(|x| Some(x.name.clone()))
-    //             .unwrap_or_default()
-    //     ))
-    //     .resizable(false)
-    //     .collapsible(false)
-    //     .movable(false)
-    //     .fixed_pos([20., 150.])
-    //     // .open(&mut self.selected_airport.is_some())
-    //     .open(&mut self.window_open)
-    //     .show(ui.ctx(), |ui| {
-    //         // egui::ScrollArea::vertical().show(ui, |ui| {
-    //         ui.horizontal(|ui| {
-    //             ui.selectable_value(&mut self.open_tab, Tabs::Info, "Info");
-    //             ui.selectable_value(&mut self.open_tab, Tabs::Departures, "Departures");
-    //             ui.selectable_value(&mut self.open_tab, Tabs::Arrivals, "Arrivals");
-    //         });
-    //         // });
-    //     });
-
-    //     response
-    // }
-}

@@ -1,4 +1,4 @@
-use std::{fs::File, net::Ipv4Addr, path::Path, str::FromStr};
+use std::{env, fs::File, net::Ipv4Addr, path::Path, str::FromStr};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use csv::ReaderBuilder;
@@ -34,6 +34,7 @@ struct CsvAirport {
     iata_code: String,
     latitude_deg: f64,
     longitude_deg: f64,
+    iso_country: String
 }
 
 pub struct MockProvider;
@@ -44,11 +45,29 @@ impl Provider for MockProvider {
     }
 
     fn get_departure_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError> {
-        todo!()
+        let flights = vec![
+            Flight::new(Position::from_lat_lon(-30., -60.), 0.),
+            Flight::new(Position::from_lat_lon(-45., -65.), 90.),
+            Flight::new(Position::from_lat_lon(-40., -70.), 270.),
+            Flight::new(Position::from_lat_lon(-35., -65.), 45.),
+            Flight::new(Position::from_lat_lon(-25., -55.), 290.),
+            Flight::new(Position::from_lat_lon(-30., -75.), 340.),
+        ];
+
+        Ok(flights)
     }
 
     fn get_arrival_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError> {
-        todo!()
+        let flights = vec![
+            Flight::new(Position::from_lat_lon(-30., -60.), 0.),
+            Flight::new(Position::from_lat_lon(-45., -65.), 90.),
+            Flight::new(Position::from_lat_lon(-40., -70.), 270.),
+            Flight::new(Position::from_lat_lon(-35., -65.), 45.),
+            Flight::new(Position::from_lat_lon(-25., -55.), 290.),
+            Flight::new(Position::from_lat_lon(-30., -75.), 340.),
+        ];
+
+        Ok(flights)
     }
 
     fn get_flight_info(number: &str) -> Result<FlightInfo, DBError> {
@@ -69,7 +88,8 @@ impl Provider for MockProvider {
     }
 
     fn get_airports() -> Result<Vec<Airport>, DBError> {
-        let path = Path::new(r"graphical-interface\airports_ar.csv");
+        let current_dir = env::current_dir().unwrap();
+        let path = current_dir.join("airports_ar.csv");
         let file = File::open(path).unwrap();
 
         let mut rdr = ReaderBuilder::new().has_headers(true).from_reader(file);
@@ -86,7 +106,7 @@ impl Provider for MockProvider {
             .map(|raw| {
                 let pos = Position::from_lat_lon(raw.latitude_deg, raw.longitude_deg);
 
-                Airport::new(raw.name.clone(), raw.iata_code.clone(), pos)
+                Airport::new(raw.name.clone(), raw.iata_code.clone(), pos, raw.iso_country.clone())
             })
             .collect();
 
@@ -484,14 +504,16 @@ pub struct Airport {
     pub name: String,
     pub iata: String,
     pub position: Position,
+    pub country: String
 }
 
 impl Airport {
-    pub fn new(name: String, iata: String, position: Position) -> Self {
+    pub fn new(name: String, iata: String, position: Position, country: String) -> Self {
         Self {
             name,
             iata,
             position,
+            country
         }
     }
 }
@@ -525,7 +547,7 @@ impl Flight {
             origin_airport: Default::default(),
             position,
             heading,
-            status: Default::default(),
+            status: String::from("Departing"),
             speed: Default::default(),
         }
     }
