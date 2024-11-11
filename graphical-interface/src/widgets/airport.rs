@@ -6,7 +6,6 @@ use super::{flights_table::FlightType, View, WidgetFlightsTable};
 
 #[derive(PartialEq)]
 enum Tabs {
-    Info,
     Departures,
     Arrivals,
 }
@@ -23,7 +22,7 @@ impl WidgetAirport {
         let iata_code = selected_airport.iata.clone();
         Self {
             selected_airport,
-            open_tab: Tabs::Info,
+            open_tab: Tabs::Departures,
             widget_arrivals: WidgetFlightsTable::new(iata_code.clone(), FlightType::Arrival),
             widget_departures: WidgetFlightsTable::new(iata_code, FlightType::Departure),
         }
@@ -31,33 +30,63 @@ impl WidgetAirport {
 }
 
 impl WidgetAirport {
+    
     pub fn show(&mut self, ctx: &egui::Context) {
         egui::Window::new(format!("Aeropuerto {}", self.selected_airport.name))
-            .resizable(false)  
-            .collapsible(false)
-            .movable(true)    // Allow dragging
+            .resizable(false)
+            .collapsible(true)
+            .fixed_pos([20.0, 20.0])
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.open_tab, Tabs::Info, "Info");
-                    ui.selectable_value(&mut self.open_tab, Tabs::Departures, "Departures");
-                    ui.selectable_value(&mut self.open_tab, Tabs::Arrivals, "Arrivals");
+                ui.add_space(10.0); // Espacio superior
+    
+                // Información del aeropuerto
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!("Código IATA: {}", self.selected_airport.iata))
+                            .size(16.0)
+                            .color(egui::Color32::WHITE),
+                    );
+                    ui.label(
+                        egui::RichText::new(format!("País: {}", self.selected_airport.country))
+                            .size(16.0)
+                            .color(egui::Color32::WHITE),
+                    );
                 });
-
+    
+                ui.add_space(15.0); // Separador entre la información y el selector
+    
+                // Selector y contenido de vuelos
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("Información de vuelos en:")
+                            .size(18.0)
+                            .strong()
+                            .color(egui::Color32::WHITE),
+                    );
+                    egui::ComboBox::from_label("")
+                        .selected_text(match self.open_tab {
+                            Tabs::Departures => "Salida",
+                            Tabs::Arrivals => "Llegada",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.open_tab, Tabs::Departures, "Salidas");
+                            ui.selectable_value(&mut self.open_tab, Tabs::Arrivals, "Llegadas");
+                        });
+                });
+    
+                ui.add_space(10.0); // Espacio entre el selector y la tabla
+    
+                // Mostrar tabla centrada
                 match self.open_tab {
-                    Tabs::Info => ui.vertical(|ui| {
-                        ui.label(format!("Código IATA: {}", self.selected_airport.iata));
-                        ui.label(format!("Nombre: {}", self.selected_airport.name));
-                    }),
-                    Tabs::Departures => ui.vertical(|ui| {
+                    Tabs::Departures => ui.vertical_centered(|ui| {
                         self.widget_departures.ui(ui);
                     }),
-                    Tabs::Arrivals => ui.vertical(|ui| {
+                    Tabs::Arrivals => ui.vertical_centered(|ui| {
                         self.widget_arrivals.ui(ui);
                     }),
                 }
             });
     }
-
     // fn ui(self, ui: &mut egui::Ui) -> egui::Response {
     //     let response = ui.allocate_response(egui::vec2(0., 0.), egui::Sense::hover());
 

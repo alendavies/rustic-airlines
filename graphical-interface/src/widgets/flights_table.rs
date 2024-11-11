@@ -38,41 +38,76 @@ impl View for WidgetFlightsTable {
             self.fetch_flights();
         }
 
-        ui.vertical(|ui| {
-            let date_response = ui.add(egui_extras::DatePickerButton::new(&mut self.selected_date));
+        ui.vertical_centered(|ui| {
+            // Etiqueta de Fecha con espacio adicional
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("Fecha:")
+                        .size(16.0)
+                        .strong()
+                        .color(egui::Color32::WHITE),
+                );
+                let date_response = ui.add(egui_extras::DatePickerButton::new(&mut self.selected_date));
+                
+                if date_response.changed() {
+                    self.fetch_flights();
+                }
+            });
 
-            if date_response.changed() {
-                self.fetch_flights();
-            }
+            ui.add_space(10.0); // Espacio entre la fecha y la tabla
 
+            // Tabla de vuelos con estilo mejorado
             if let Some(flights) = &self.flights {
-                TableBuilder::new(ui)
-                    .column(Column::auto())
-                    .column(Column::remainder())
-                    .sense(egui::Sense::click())
-                    .header(20., |mut header| {
-                        header.col(|ui| {
-                            ui.strong("Vuelo");
-                        });
-                        header.col(|ui| {
-                            ui.strong("Estado");
-                        });
-                    })
-                    .body(|mut body| {
-                        for flight in flights {
-                            body.row(18., |mut row| {
-                                row.col(|ui| {
-                                    ui.label(&flight.number);
-                                });
-                                row.col(|ui| {
-                                    ui.label(&flight.status);
-                                });
+                ui.group(|ui| {
+
+                    TableBuilder::new(ui)
+                        .striped(true) // Alterna colores en filas
+                        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                        .column(Column::remainder().at_least(100.0))
+                        .column(Column::remainder().at_least(100.0))
+                        .header(25.0, |mut header| {
+                            header.col(|ui| {
+                                ui.strong(
+                                    egui::RichText::new("Vuelo")
+                                        .color(egui::Color32::YELLOW)
+                                        .size(16.0),
+                                );
                             });
-                        }
-                    });
+                            header.col(|ui| {
+                                ui.strong(
+                                    egui::RichText::new("Estado")
+                                        .color(egui::Color32::YELLOW)
+                                        .size(16.0),
+                                );
+                            });
+                        })
+                        .body(|mut body| {
+                            for flight in flights {
+                                body.row(20.0, |mut row| {
+                                    row.col(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(&flight.number)
+                                                .color(egui::Color32::WHITE)
+                                                .size(14.0),
+                                        );
+                                    });
+                                    row.col(|ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                egui::RichText::new(&flight.status)
+                                                    .color(egui::Color32::WHITE)
+                                                    .size(14.0),
+                                            );
+                                        });
+                                    });
+                                });
+                            }
+                        });
+                });
             } else {
                 ui.label("No hay vuelos.");
             }
         });
     }
 }
+
