@@ -96,20 +96,20 @@ impl Node {
 
                 let ips = node_guard.gossiper.pick_ips(node_guard.get_ip());
                 let syn = node_guard.gossiper.create_syn(node_guard.ip);
-            let bytes = syn.as_bytes();
+                let bytes = syn.as_bytes();
 
-            let message = std::str::from_utf8(bytes.as_slice()).unwrap();
+                let message = std::str::from_utf8(bytes.as_slice()).unwrap();
 
-            for ip in ips {
-                let connections_clone = Arc::clone(&connections);
-                connect_and_send_message(
-                    *ip,
-                    INTERNODE_PORT,
-                    connections_clone,
-                    format!("GOSSIP - {}", message).as_str(),
-                )
-                .unwrap();
-            }
+                for ip in ips {
+                    let connections_clone = Arc::clone(&connections);
+                    connect_and_send_message(
+                        *ip,
+                        INTERNODE_PORT,
+                        connections_clone,
+                        format!("GOSSIP - {}", message).as_str(),
+                    )
+                    .unwrap();
+                }
             }
 
             thread::sleep(std::time::Duration::from_secs(1));
