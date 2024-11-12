@@ -754,7 +754,8 @@ impl Node {
 
             let query_handler = guard_node.get_open_handle_query();
 
-            for _ in [..finished_responses] {
+            println!("la query antes de recibir respuestas de otros nodos cargo {:?} oks y {:?} errores", finished_responses, failed_nodes);
+            for _ in 0..finished_responses {
                 InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     &content,
@@ -763,7 +764,8 @@ impl Node {
                     columns.clone(),
                 )?;
             }
-            for _ in [..failed_nodes] {
+            for i in 0..failed_nodes {
+                println!("cargando el error numero {:?} de {:?}", i, failed_nodes);
                 InternodeProtocolHandler::add_error_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     open_query_id,

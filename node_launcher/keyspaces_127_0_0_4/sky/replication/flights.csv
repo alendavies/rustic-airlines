@@ -1,0 +1,9 @@
+number,status,departure_time,arrival_time,airport,direction
+AR003,on time,1730073698,46741883131,COR,arrival
+AR004,on time,1730073698,46741889943,MDZ,departure
+AR012,delayed,1730131500,1730190000,COR,departure
+AR012,delayed,1730131500,1730190000,MDZ,arrival
+AR015,on time,1730073800,1730133200,MDZ,departure
+AR019,delayed,1730133900,1730191400,COR,departure
+AR020,on time,1730074200,1730134000,MDZ,departure
+AR022,on time,1730134200,1730191800,COR,arrival

@@ -118,6 +118,24 @@ impl OpenQuery {
     /// # Returns
     /// `true` if the query is closed (i.e., all responses have been received), `false` otherwise.
     fn is_close(&self) -> bool {
+        println!("tengo {:?} oks", self.ok_responses);
+        println!(
+            "se alcanzo el consistency level: {:?}",
+            self.consistency_level
+                .is_query_ready(self.ok_responses as usize, self.needed_responses as usize)
+        );
+
+        println!(
+            "tengo {:?} errores y ya no puede llegar: {:?}",
+            self.error_responses,
+            !self.can_still_achieve_required_ok(
+                self.needed_responses,
+                self.ok_responses,
+                self.error_responses,
+                self.consistency_level
+                    .required_oks(self.needed_responses as usize) as i32,
+            )
+        );
         self.consistency_level
             .is_query_ready(self.ok_responses as usize, self.needed_responses as usize)
             || !self.can_still_achieve_required_ok(
@@ -136,8 +154,26 @@ impl OpenQuery {
         error_responses: i32,
         required_ok: i32,
     ) -> bool {
-        let max_possible_oks = total_responses - error_responses;
-        ok_responses + max_possible_oks >= required_ok
+        let remaining_responses = total_responses - (ok_responses + error_responses);
+        let potential_total_oks = ok_responses + remaining_responses;
+        println!(
+            "la cantidad totaeles de rtas que puede tener es {:?}",
+            total_responses
+        );
+        println!(
+            "tengo {:?} oks y {:?} errores",
+            ok_responses, error_responses
+        );
+        println!(
+            "es decir que me quedan {:?} rrespuestas",
+            remaining_responses
+        );
+        println!(
+            "y como yo necesito {:?} oks, entonces la puedo dar por cerrada?? = {:?}",
+            required_ok,
+            remaining_responses >= required_ok
+        );
+        remaining_responses >= required_ok
     }
 
     /// Gets the TCP connection associated with this query.
@@ -319,7 +355,11 @@ impl OpenQueryHandler {
             Some(query) => {
                 query.add_ok_response(response);
 
-                println!("la query es {:?}", query);
+                println!(
+                    "voy {:?} de {:?} respuestas",
+                    query.ok_responses + query.error_responses,
+                    query.needed_responses
+                );
 
                 if query.is_close() {
                     println!(

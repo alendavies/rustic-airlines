@@ -25,7 +25,7 @@ fn main() {
     let mut contador = 0;
     let len = queries.len();
     for query in queries {
-        match client.execute(&query, "two") {
+        match client.execute(&query, "quorum") {
             Ok(query_result) => {
                 match query_result {
                     driver::QueryResult::Result(_) => {

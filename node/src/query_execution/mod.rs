@@ -207,17 +207,13 @@ impl QueryExecution {
                         (false, false) => 0,
                     };
 
-                    if how_many_internode_query_has_finish > 0 {
-                        return Ok(Some((
-                            (
-                                how_many_internode_query_has_finish,
-                                self.how_many_nodes_failed,
-                            ),
-                            content?.unwrap_or("_".to_string()),
-                        )));
-                    } else {
-                        Ok(None)
-                    }
+                    return Ok(Some((
+                        (
+                            how_many_internode_query_has_finish,
+                            self.how_many_nodes_failed,
+                        ),
+                        content?.unwrap_or("_".to_string()),
+                    )));
                 }
 
                 Err(e) => return Err(e),
@@ -347,6 +343,7 @@ impl QueryExecution {
         // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
         for ip in n_succesors {
             if ip != current_ip {
+                println!("voy a replicar en {:?}", ip);
                 let result = connect_and_send_message(
                     ip,
                     INTERNODE_PORT,

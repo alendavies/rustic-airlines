@@ -115,7 +115,6 @@ impl InternodeProtocolHandler {
         if parts.len() < 2 {
             return Err(NodeError::InternodeProtocolError);
         }
-        println!("RECIBI {:?}", parts);
         match parts[0] {
             "QUERY" => {
                 self.handle_query_command(node, parts[1], connections, is_seed)?;
@@ -160,8 +159,9 @@ impl InternodeProtocolHandler {
         if let Some(open_query) =
             query_handler.add_ok_response_and_get_if_closed(open_query_id, content.to_string())
         {
+            println!("antes de obtener la conexcion del cliente");
             let mut connection = open_query.get_connection();
-
+            println!("despues de obtener la conexcion del cliente");
             let frame = open_query.get_query().create_client_response(
                 columns,
                 keyspace_name,
@@ -434,23 +434,24 @@ impl InternodeProtocolHandler {
         open_query_id: i32,
         keyspace_name: String,
     ) -> Result<(), NodeError> {
-        let open_query;
+        // Obtener la consulta abierta
 
-        if let Some(value) = query_handler.get_query_mut(&open_query_id) {
-            open_query = value;
-        } else {
-            // Si es `None`, retorna `Ok(())`.
-            return Ok(());
-        }
-        println!("la open query es {:?}", open_query);
-        let columns = {
-            if let Some(table) = open_query.get_table() {
-                table.get_columns()
+        let columns;
+        {
+            let open_query = if let Some(value) = query_handler.get_query_mut(&open_query_id) {
+                value
             } else {
-                vec![]
-            }
-        };
+                // Si es `None`, retorna `Ok(())`.
+                return Ok(());
+            };
 
+            // Copiar los valores necesarios para evitar el uso de `open_query` posteriormente
+            columns = open_query
+                .get_table()
+                .map_or_else(Vec::new, |table| table.get_columns());
+        }
+
+        // Llamar a la función con los valores copiados, sin `open_query` en uso
         Self::add_ok_response_to_open_query_and_send_response_if_closed(
             query_handler,
             content,
