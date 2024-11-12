@@ -1,4 +1,4 @@
-use messages::{Ack, Ack2, Digest, Syn};
+use messages::{Ack, Ack2, Digest, GossipMessage, Syn};
 use rand::{seq::IteratorRandom, thread_rng};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -35,6 +35,14 @@ impl Gossiper {
         }
     }
 
+    pub fn heartbeat(&mut self, ip: Ipv4Addr) {
+        self.endpoints_state
+            .get_mut(&ip)
+            .unwrap()
+            .heartbeat_state
+            .inc_version();
+    }
+
     pub fn with_endpoint_state(mut self, ip: Ipv4Addr) -> Self {
         self.endpoints_state.insert(ip, EndpointState::default());
         self
@@ -48,13 +56,17 @@ impl Gossiper {
         self
     }
 
-    pub fn pick_ips(&self) -> Vec<&Ipv4Addr> {
+    pub fn pick_ips(&self, exclude: Ipv4Addr) -> Vec<&Ipv4Addr> {
         let mut rng = thread_rng();
-        let ips: Vec<&Ipv4Addr> = self.endpoints_state.keys().choose_multiple(&mut rng, 3);
+        let ips: Vec<&Ipv4Addr> = self
+            .endpoints_state
+            .keys()
+            .filter(|&key| *key != exclude)
+            .choose_multiple(&mut rng, 3);
         ips
     }
 
-    pub fn create_syn(&self) -> Syn {
+    pub fn create_syn(&self, from: Ipv4Addr) -> GossipMessage {
         let digests: Vec<Digest> = self
             .endpoints_state
             .iter()
@@ -63,7 +75,10 @@ impl Gossiper {
 
         let syn = Syn::new(digests);
 
-        syn
+        GossipMessage {
+            from,
+            payload: messages::Payload::Syn(syn),
+        }
     }
 
     pub fn handle_syn(&self, syn: Syn) -> Ack {
@@ -191,7 +206,9 @@ impl Gossiper {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::{net::IpAddr, str::FromStr};
+
+    use messages::Payload;
 
     use crate::structures::{ApplicationState, NodeStatus};
 
@@ -841,5 +858,27 @@ mod tests {
             gossiper_server.endpoints_state,
             gossiper_client.endpoints_state
         );
+    }
+
+    #[test]
+    fn string_as_bytes() {
+        let syn = Syn {
+            digests: vec![
+                Digest::new(Ipv4Addr::new(127, 0, 0, 1), 1, 15),
+                Digest::new(Ipv4Addr::new(127, 0, 0, 2), 10, 15),
+                Digest::new(Ipv4Addr::new(127, 0, 0, 3), 3, 15),
+            ],
+        };
+
+        let gossip_msg = GossipMessage {
+            from: Ipv4Addr::new(127, 0, 0, 1),
+            payload: Payload::Syn(syn),
+        };
+
+        let syn_bytes = gossip_msg.as_bytes();
+        let string = format!("{}", std::str::from_utf8(syn_bytes.as_slice()).unwrap());
+        let string_bytes = string.as_bytes();
+
+        assert_eq!(syn_bytes, string_bytes);
     }
 }

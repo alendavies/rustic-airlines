@@ -89,9 +89,13 @@ impl Node {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
         let handle = thread::spawn(move || loop {
-            let node_guard = node.lock().unwrap();
-            let ips = node_guard.gossiper.pick_ips();
-            let syn = node_guard.gossiper.create_syn();
+            {
+                let mut node_guard = node.lock().unwrap();
+                let ip = node_guard.ip;
+                node_guard.gossiper.heartbeat(ip);
+
+                let ips = node_guard.gossiper.pick_ips(node_guard.get_ip());
+                let syn = node_guard.gossiper.create_syn(node_guard.ip);
             let bytes = syn.as_bytes();
 
             let message = std::str::from_utf8(bytes.as_slice()).unwrap();
@@ -105,6 +109,7 @@ impl Node {
                     format!("GOSSIP - {}", message).as_str(),
                 )
                 .unwrap();
+            }
             }
 
             thread::sleep(std::time::Duration::from_secs(1));
@@ -416,25 +421,25 @@ impl Node {
             seed_ip = node_guard.seeds_nodes[0];
             self_ip = node_guard.get_ip();
 
-            if !is_seed {
-                let message = InternodeProtocolHandler::create_protocol_message(
-                    &node_guard.get_ip_string(),
-                    0,
-                    "HANDSHAKE",
-                    "_",
-                    true,
-                    false,
-                    0,
-                    "None",
-                );
-                connect_and_send_message(
-                    seed_ip,
-                    INTERNODE_PORT,
-                    Arc::clone(&connections),
-                    &message,
-                )?;
-                node_guard.partitioner.add_node(seed_ip)?;
-            }
+            // if !is_seed {
+            //     let message = InternodeProtocolHandler::create_protocol_message(
+            //         &node_guard.get_ip_string(),
+            //         0,
+            //         "HANDSHAKE",
+            //         "_",
+            //         true,
+            //         false,
+            //         0,
+            //         "None",
+            //     );
+            //     connect_and_send_message(
+            //         seed_ip,
+            //         INTERNODE_PORT,
+            //         Arc::clone(&connections),
+            //         &message,
+            //     )?;
+            //     node_guard.partitioner.add_node(seed_ip)?;
+            // }
         }
 
         // Creates a thread to handle node connections

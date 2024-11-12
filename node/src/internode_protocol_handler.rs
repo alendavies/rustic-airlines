@@ -106,33 +106,37 @@ impl InternodeProtocolHandler {
     pub fn handle_command(
         &self,
         node: &Arc<Mutex<Node>>,
-        message: &str,
+        message: &[u8],
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
     ) -> Result<(), NodeError> {
-        let cleaned_message = message.trim_end();
-        let parts: Vec<&str> = cleaned_message.splitn(2, " - ").collect();
+        // let cleaned_message = message.trim_end();
+        // let parts: Vec<&str> = cleaned_message.splitn(2, " - ").collect();
 
-        if parts.len() < 2 {
-            return Err(NodeError::InternodeProtocolError);
-        }
+        // if parts.len() < 2 {
+        //     return Err(NodeError::InternodeProtocolError);
+        // }
 
-        match parts[0] {
-            "QUERY" => {
-                self.handle_query_command(node, parts[1], connections, is_seed)?;
-                Ok(())
-            }
-            "RESPONSE" => {
-                self.handle_response_command(node, parts[1])?;
-                Ok(())
-            }
+        self.handle_gossip_command(node, message, connections)?;
 
-            "GOSSIP" => {
-                self.handle_gossip_command(node, parts[1], connections)?;
-                Ok(())
-            }
-            _ => Err(NodeError::InternodeProtocolError),
-        }
+        Ok(())
+
+        // match parts[0] {
+        //     "QUERY" => {
+        //         self.handle_query_command(node, parts[1], connections, is_seed)?;
+        //         Ok(())
+        //     }
+        //     "RESPONSE" => {
+        //         self.handle_response_command(node, parts[1])?;
+        //         Ok(())
+        //     }
+        //     "GOSSIP" => {
+        //         dbg!("hola");
+        //         self.handle_gossip_command(node, parts[1], connections)?;
+        //         Ok(())
+        //     }
+        //     _ => Err(NodeError::InternodeProtocolError),
+        // }
     }
 
     /// Adds a response to an open query and, if all expected responses have been received,
@@ -405,20 +409,29 @@ impl InternodeProtocolHandler {
     fn handle_gossip_command(
         &self,
         node: &Arc<Mutex<Node>>,
-        message: &str,
+        message: &[u8],
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
         let mut guard_node = node.lock()?;
 
-        let bytes = message.as_bytes();
+        // let bytes = message.as_bytes();
+        let bytes = message;
+        dbg!(&bytes);
+        dbg!(&bytes.len());
 
-        let gossip_message =
-            GossipMessage::from_bytes(bytes).map_err(|_| NodeError::GossipError)?;
+        let gossip_message = GossipMessage::from_bytes(bytes).unwrap();
+        // .map_err(|_| NodeError::GossipError)?;
+
+        dbg!(&gossip_message);
 
         match gossip_message.payload {
             gossip::messages::Payload::Syn(syn) => {
                 let ack = guard_node.gossiper.handle_syn(syn);
-                let bytes = ack.as_bytes();
+                let msg = GossipMessage {
+                    from: guard_node.ip,
+                    payload: gossip::messages::Payload::Ack(ack),
+                };
+                let bytes = msg.as_bytes();
 
                 let message = std::str::from_utf8(bytes.as_slice()).unwrap();
                 connect_and_send_message(
@@ -426,11 +439,16 @@ impl InternodeProtocolHandler {
                     INTERNODE_PORT,
                     connections,
                     format!("GOSSIP - {}", message).as_str(),
-                )?;
+                )
+                .unwrap();
             }
             gossip::messages::Payload::Ack(ack) => {
                 let ack2 = guard_node.gossiper.handle_ack(ack);
-                let bytes = ack2.as_bytes();
+                let msg = GossipMessage {
+                    from: guard_node.ip,
+                    payload: gossip::messages::Payload::Ack2(ack2),
+                };
+                let bytes = msg.as_bytes();
 
                 let message = std::str::from_utf8(bytes.as_slice()).unwrap();
                 connect_and_send_message(
@@ -438,7 +456,8 @@ impl InternodeProtocolHandler {
                     INTERNODE_PORT,
                     connections,
                     format!("GOSSIP - {}", message).as_str(),
-                )?;
+                )
+                .unwrap();
             }
             gossip::messages::Payload::Ack2(ack2) => {
                 guard_node.gossiper.handle_ack2(ack2);

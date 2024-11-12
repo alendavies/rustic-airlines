@@ -95,17 +95,20 @@ impl Digest {
     }
 }
 
+#[derive(Debug)]
 pub struct GossipMessage {
     pub from: Ipv4Addr,
     pub payload: Payload,
 }
 
+#[derive(Debug)]
 enum PayloadType {
     Syn = 0x00,
     Ack = 0x01,
     Ack2 = 0x02,
 }
 
+#[derive(Debug)]
 pub enum Payload {
     Syn(Syn),
     Ack(Ack),
@@ -160,6 +163,8 @@ impl GossipMessage {
 
         let ip = Ipv4Addr::from_bits(u32::from_be_bytes(bytes_ip));
 
+        dbg!(&ip);
+
         let payload_type = match u8::from_be_bytes(bytes_type) {
             0x00 => PayloadType::Syn,
             0x01 => PayloadType::Ack,
@@ -167,11 +172,15 @@ impl GossipMessage {
             _ => panic!(),
         };
 
+        dbg!(&payload_type);
+
         let payload = match payload_type {
             PayloadType::Syn => Payload::Syn(Syn::from_bytes(&bytes_payload)?),
             PayloadType::Ack => Payload::Ack(Ack::from_bytes(&bytes_payload)?),
             PayloadType::Ack2 => Payload::Ack2(Ack2::from_bytes(&bytes_payload)?),
         };
+
+        dbg!(&payload);
 
         Ok(Self { from: ip, payload })
     }
