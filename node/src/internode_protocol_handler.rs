@@ -106,37 +106,33 @@ impl InternodeProtocolHandler {
     pub fn handle_command(
         &self,
         node: &Arc<Mutex<Node>>,
-        message: &[u8],
+        message: &str,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
     ) -> Result<(), NodeError> {
-        // let cleaned_message = message.trim_end();
-        // let parts: Vec<&str> = cleaned_message.splitn(2, " - ").collect();
+        let cleaned_message = message.trim_end();
+        let parts: Vec<&str> = cleaned_message.splitn(2, " - ").collect();
 
-        // if parts.len() < 2 {
-        //     return Err(NodeError::InternodeProtocolError);
-        // }
+        if parts.len() < 2 {
+            return Err(NodeError::InternodeProtocolError);
+        }
 
-        self.handle_gossip_command(node, message, connections)?;
+        match parts[0] {
+            "QUERY" => {
+                self.handle_query_command(node, parts[1], connections, is_seed)?;
+                Ok(())
+            }
+            "RESPONSE" => {
+                self.handle_response_command(node, parts[1])?;
+                Ok(())
+            }
 
-        Ok(())
-
-        // match parts[0] {
-        //     "QUERY" => {
-        //         self.handle_query_command(node, parts[1], connections, is_seed)?;
-        //         Ok(())
-        //     }
-        //     "RESPONSE" => {
-        //         self.handle_response_command(node, parts[1])?;
-        //         Ok(())
-        //     }
-        //     "GOSSIP" => {
-        //         dbg!("hola");
-        //         self.handle_gossip_command(node, parts[1], connections)?;
-        //         Ok(())
-        //     }
-        //     _ => Err(NodeError::InternodeProtocolError),
-        // }
+            "GOSSIP" => {
+                self.handle_gossip_command(node, parts[1], connections)?;
+                Ok(())
+            }
+            _ => Err(NodeError::InternodeProtocolError),
+        }
     }
 
     /// Adds a response to an open query and, if all expected responses have been received,
@@ -409,20 +405,15 @@ impl InternodeProtocolHandler {
     fn handle_gossip_command(
         &self,
         node: &Arc<Mutex<Node>>,
-        message: &[u8],
+        message: &str,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
         let mut guard_node = node.lock()?;
 
-        // let bytes = message.as_bytes();
-        let bytes = message;
-        dbg!(&bytes);
-        dbg!(&bytes.len());
+        let bytes = message.as_bytes();
 
-        let gossip_message = GossipMessage::from_bytes(bytes).unwrap();
-        // .map_err(|_| NodeError::GossipError)?;
-
-        dbg!(&gossip_message);
+        let gossip_message =
+            GossipMessage::from_bytes(bytes).map_err(|_| NodeError::GossipError)?;
 
         match gossip_message.payload {
             gossip::messages::Payload::Syn(syn) => {
