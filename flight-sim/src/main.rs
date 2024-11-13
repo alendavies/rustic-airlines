@@ -142,7 +142,7 @@ fn print_help() {
 }
 
 
-fn add_test_data(sim_state: &mut SimState) -> Result<(), ClientError> {
+fn add_test_data(sim_state: &mut SimState) -> Result<(), SimError> {
     // List of airports in Argentina
     let airports = vec![
         ("AEP", "Argentina", "Aeroparque Jorge Newbery", -34.553, -58.413),
@@ -162,10 +162,10 @@ fn add_test_data(sim_state: &mut SimState) -> Result<(), ClientError> {
     // Add flights (for today)
     let today = Utc::now().naive_utc();
     let flight_data = vec![
-        ("AR1234", "AEP", "MDZ", today, today + chrono::Duration::hours(2), 550),
-        ("AR5678", "EZE", "ROS", today, today + chrono::Duration::hours(1), 600),
-        ("AR9101", "COR", "EZE", today, today + chrono::Duration::hours(3), 500),
-        ("AR1122", "ROS", "AEP", today, today + chrono::Duration::hours(1), 650),
+        ("AR1234", "AEP", "MDZ", today, today + chrono::Duration::hours(2), 550.0),
+        ("AR5678", "EZE", "ROS", today, today + chrono::Duration::hours(1), 600.0),
+        ("AR9101", "COR", "EZE", today, today + chrono::Duration::hours(3), 500.0),
+        ("AR1122", "ROS", "AEP", today, today + chrono::Duration::hours(1), 650.0),
     ];
 
     // Add flights
@@ -174,7 +174,7 @@ fn add_test_data(sim_state: &mut SimState) -> Result<(), ClientError> {
         let arrival_str = arrival_time.format("%Y-%m-%d %H:%M:%S").to_string();
         let flight = Flight::new_from_console(
             sim_state.airports(), flight_number, origin, destination, &departure_str, &arrival_str, avg_speed
-        ).map_err(|_| ClientError)?;
+        ).map_err(|_| SimError::Other("Error".to_string()))?;
         
         sim_state.add_flight(flight)?;
     }

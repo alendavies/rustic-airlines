@@ -50,13 +50,12 @@ impl Client {
 
         let create_flight_info_table = r#"
             CREATE TABLE sky.flight_info (
-                number TEXT,
+                number TEXT PRIMARY KEY,
                 lat DOUBLE,
                 lon DOUBLE,
                 fuel DOUBLE,
                 height INT,
-                speed INT,
-                PRIMARY KEY (number)
+                speed INT
             )
         "#;
         self.cassandra_client.execute(&create_flight_info_table, "all")?;
