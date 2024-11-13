@@ -27,7 +27,7 @@ impl InternodeMessage {
     // |        ...        |
     // |      content      |
     // +----+----+----+----+
-    pub fn as_bytes(&self) -> Result<Vec<u8>, InternodeMessageError> {
+    pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
 
         let opcode = match self {
@@ -45,7 +45,7 @@ impl InternodeMessage {
         bytes.push(opcode);
         bytes.extend_from_slice(body_bytes);
 
-        Ok(bytes)
+        bytes
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, InternodeMessageError> {
@@ -62,7 +62,7 @@ impl InternodeMessage {
             0x01 => Self::Query(String::from_utf8(body_bytes).unwrap()),
             0x02 => Self::Response(String::from_utf8(body_bytes).unwrap()),
             // 0x03 => Self::Gossip(GossipMessage::from_bytes(&body_bytes).unwrap()),
-            _ => panic!("Invalid opcode for internode frame."),
+            _ => return Err(InternodeMessageError),
         };
 
         Ok(content)
@@ -77,7 +77,7 @@ mod tests {
     fn test_query_to_bytes() {
         let query = "SELECT * FROM something";
         let msg = InternodeMessage::Query(query.to_string());
-        let bytes = msg.as_bytes().unwrap();
+        let bytes = msg.as_bytes();
 
         assert_eq!(bytes, [vec![0x01], query.as_bytes().to_vec()].concat());
     }
@@ -95,7 +95,7 @@ mod tests {
     fn test_response_to_bytes() {
         let response = "DATA DATA DATA";
         let msg = InternodeMessage::Response(response.to_string());
-        let bytes = msg.as_bytes().unwrap();
+        let bytes = msg.as_bytes();
 
         assert_eq!(bytes, [vec![0x02], response.as_bytes().to_vec()].concat());
     }

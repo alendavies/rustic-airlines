@@ -1,4 +1,5 @@
 use crate::internode_protocol_handler::InternodeProtocolHandler;
+use crate::messages::InternodeMessage;
 use crate::table::Table;
 use crate::utils::connect_and_send_message;
 use crate::NodeError;
@@ -249,7 +250,12 @@ impl QueryExecution {
         // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
         for ip in local_node.get_partitioner().get_nodes() {
             if ip != current_ip {
-                connect_and_send_message(ip, INTERNODE_PORT, self.connections.clone(), &message)?;
+                connect_and_send_message(
+                    ip,
+                    INTERNODE_PORT,
+                    self.connections.clone(),
+                    InternodeMessage::Query(message.clone()),
+                )?;
             }
         }
         Ok(())
@@ -284,7 +290,7 @@ impl QueryExecution {
             target_ip,
             INTERNODE_PORT,
             self.connections.clone(),
-            &message,
+            InternodeMessage::Query(message),
         )?;
         Ok(())
     }
@@ -329,7 +335,12 @@ impl QueryExecution {
         // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
         for ip in n_succesors {
             if ip != current_ip {
-                connect_and_send_message(ip, INTERNODE_PORT, self.connections.clone(), &message)?;
+                connect_and_send_message(
+                    ip,
+                    INTERNODE_PORT,
+                    self.connections.clone(),
+                    InternodeMessage::Query(message.clone()),
+                )?;
             } else {
                 the_node_has_to_replicate = true;
             }

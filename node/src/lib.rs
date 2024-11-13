@@ -24,6 +24,7 @@ use driver::server::{handle_client_request, Request};
 use errors::NodeError;
 use internode_protocol_handler::InternodeProtocolHandler;
 use keyspace::Keyspace;
+use messages::InternodeMessage;
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -394,7 +395,7 @@ impl Node {
                     seed_ip,
                     INTERNODE_PORT,
                     Arc::clone(&connections),
-                    &message,
+                    InternodeMessage::Query(message),
                 )?;
                 node_guard.partitioner.add_node(seed_ip)?;
             }
@@ -535,7 +536,7 @@ impl Node {
             target_ip,
             INTERNODE_PORT,
             Arc::clone(&connections),
-            &message,
+            InternodeMessage::Query(message),
         )
     }
 
@@ -632,14 +633,14 @@ impl Node {
 
         loop {
             // Clean the buffer
-            let mut buffer = String::new();
+            let mut buffer = [0u8; 2048];
 
             // Execute initial inserts if necessary
 
             // Self::execute_querys(&node, connections.clone())?;
 
             // Try to read a line
-            let bytes_read = reader.read_line(&mut buffer);
+            let bytes_read = reader.read(&mut buffer);
             match bytes_read {
                 Ok(0) => {
                     // Connection closed
@@ -649,7 +650,7 @@ impl Node {
                     // Process the command with the protocol, passing the buffer and the necessary parameters
                     let result = internode_protocol_handler.handle_command(
                         &node,
-                        &buffer.trim().to_string(),
+                        &buffer,
                         &mut stream,
                         connections.clone(),
                         is_seed,
