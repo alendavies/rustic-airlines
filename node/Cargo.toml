@@ -9,6 +9,7 @@ partitioner = { path = "../partitioner" }  # Ejemplo de cómo referenciar la lib
 query-creator = { path = "../query-creator" }  # Ejemplo de cómo referenciar la librería `partitioner`
 driver = { path = "../driver" }
 native_protocol = { path = "../native_protocol" }
+gossip = { path = "../gossip" }
 
 [dependencies.uuid]
 version = "1.11.0"

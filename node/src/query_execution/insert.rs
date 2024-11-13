@@ -24,6 +24,8 @@ impl QueryExecution {
         open_query_id: i32,
         client_id: i32,
     ) -> Result<(), NodeError> {
+        let mut failed_nodes = 0;
+        let mut internode_failed_nodes = 0;
         let mut node = self.node_that_execute.lock()?;
 
         let mut do_in_this_node = true;
@@ -101,7 +103,8 @@ impl QueryExecution {
         if !internode {
             if node_to_insert != self_ip {
                 let serialized_insert = new_insert.serialize();
-                self.send_to_single_node(
+                println!("el nodo que inserta es el {:?}", node_to_insert);
+                failed_nodes = self.send_to_single_node(
                     node.get_ip(),
                     node_to_insert,
                     "INSERT",
@@ -118,7 +121,7 @@ impl QueryExecution {
 
             // Send the insert to replication nodes
             let serialized_insert = new_insert.serialize();
-            replication = self.send_to_replication_nodes(
+            (internode_failed_nodes, replication) = self.send_to_replication_nodes(
                 node,
                 node_to_insert,
                 "INSERT",
@@ -132,6 +135,9 @@ impl QueryExecution {
                 self.execution_replicate_itself = true; // This node will replicate the insert
             }
         }
+
+        failed_nodes += internode_failed_nodes;
+        self.how_many_nodes_failed = failed_nodes;
 
         // If the node itself is the target and no further replication is required, finish here
         if !do_in_this_node && !replication {

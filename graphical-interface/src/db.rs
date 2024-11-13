@@ -69,6 +69,7 @@ impl Provider for MockProvider {
     }
 
     fn get_airports() -> Result<Vec<Airport>, DBError> {
+
         let path = Path::new(r"graphical-interface\airports_ar.csv");
         let file = File::open(path).unwrap();
 
