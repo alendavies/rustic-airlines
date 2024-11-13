@@ -19,6 +19,7 @@ pub mod use_cql;
 use query_creator::errors::CQLError;
 use query_creator::Query;
 use std::collections::HashMap;
+use std::env;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::Write;
@@ -29,15 +30,15 @@ use storage::StorageEngine;
 
 /// Struct for executing various database queries across nodes with support
 /// for distributed communication and replication.
-pub struct QueryExecution<T: StorageEngine> {
+pub struct QueryExecution {
     node_that_execute: Arc<Mutex<Node>>,
     connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     execution_finished_itself: bool,
     execution_replicate_itself: bool,
-    storage_engine: T,
+    storage_engine: StorageEngine,
 }
 
-impl<T: StorageEngine> QueryExecution<T> {
+impl QueryExecution {
     /// Constructs a new `QueryExecution` instance, initializing the node and
     /// connection attributes required for handling and distributing queries.
     ///
@@ -50,15 +51,18 @@ impl<T: StorageEngine> QueryExecution<T> {
     pub fn new(
         node_that_execute: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-        storage_engine: T,
-    ) -> QueryExecution<T> {
-        QueryExecution {
+    ) -> Result<QueryExecution, NodeError> {
+        let ip = { node_that_execute.lock()?.get_ip_string() };
+        Ok(QueryExecution {
             node_that_execute,
             connections,
             execution_finished_itself: false,
             execution_replicate_itself: false,
-            storage_engine,
-        }
+            storage_engine: StorageEngine::new(
+                env::current_dir().expect("Failed to get current directory"),
+                ip,
+            ),
+        })
     }
 
     /// Executes a database query by determining the query type and applying the necessary operations

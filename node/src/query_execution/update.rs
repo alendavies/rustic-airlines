@@ -12,7 +12,7 @@ use storage::StorageEngine;
 
 use super::QueryExecution;
 
-impl<T: StorageEngine> QueryExecution<T> {
+impl QueryExecution {
     /// Validates the types of the `SET` clause against the columns of the table
     pub(crate) fn validate_update_types(
         set_clause: Set,

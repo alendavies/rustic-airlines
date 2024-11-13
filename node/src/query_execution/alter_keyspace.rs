@@ -1,13 +1,12 @@
 // Ordered imports
 use crate::NodeError;
 use query_creator::clauses::keyspace::alter_keyspace_cql::AlterKeyspace;
-use storage::StorageEngine;
 
 use super::QueryExecution;
 
 /// Executes the alteration of a keyspace. This function is public only for internal use
 /// within the library (defined as `pub(crate)`).
-impl<T: StorageEngine> QueryExecution<T> {
+impl QueryExecution {
     pub(crate) fn execute_alter_keyspace(
         &self,
         alter_keyspace: AlterKeyspace,

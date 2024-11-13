@@ -5,7 +5,7 @@ use storage::StorageEngine;
 
 use super::QueryExecution;
 
-impl<T: StorageEngine> QueryExecution<T> {
+impl QueryExecution {
     pub(crate) fn execute_use(
         &self,
         use_keyspace: Use,

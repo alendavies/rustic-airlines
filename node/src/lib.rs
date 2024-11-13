@@ -710,7 +710,7 @@ impl Node {
             )?;
         }
 
-        let response = QueryExecution::new(node.clone(), connections.clone()).execute(
+        let response = QueryExecution::new(node.clone(), connections.clone())?.execute(
             query.clone(),
             false,
             false,

@@ -6,11 +6,10 @@ use query_creator::clauses::delete_cql::Delete;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::io::{BufRead, BufReader};
-use storage::StorageEngine;
 
 use super::QueryExecution;
 
-impl<T: StorageEngine> QueryExecution<T> {
+impl QueryExecution {
     pub(crate) fn execute_delete(
         &mut self,
         delete_query: Delete,

@@ -9,7 +9,7 @@ use storage::StorageEngine;
 
 use super::QueryExecution;
 
-impl<T: StorageEngine> QueryExecution<T> {
+impl QueryExecution {
     pub(crate) fn execute_select(
         &mut self,
         mut select_query: Select,

@@ -15,7 +15,7 @@ use uuid;
 
 use super::QueryExecution;
 
-impl<T: StorageEngine> QueryExecution<T> {
+impl QueryExecution {
     pub(crate) fn execute_insert(
         &mut self,
         insert_query: Insert,

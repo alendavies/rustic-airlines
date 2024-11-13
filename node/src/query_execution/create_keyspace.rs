@@ -1,13 +1,12 @@
 // Ordered imports
 use crate::NodeError;
 use query_creator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
-use storage::StorageEngine;
 
 use super::QueryExecution;
 
 /// Executes the creation of a keyspace. This function is public only for internal use
 /// within the library (defined as `pub(crate)`).
-impl<T: StorageEngine> QueryExecution<T> {
+impl QueryExecution {
     pub(crate) fn execute_create_keyspace(
         &self,
         create_keyspace: CreateKeyspace,
@@ -35,16 +34,7 @@ impl<T: StorageEngine> QueryExecution<T> {
         if has_to_create {
             // Get the keyspace name
             let keyspace_name = create_keyspace.get_name().clone();
-
-            // Generate the folder name where the keyspace will be stored
-            let ip_str = node.get_ip_string().to_string().replace(".", "_");
-            let folder_name = format!("keyspaces_{}", ip_str);
-
-            // Create the keyspace folder if it doesn't exist
-            let keyspace_path = format!("{}/{}", folder_name, keyspace_name);
-            if let Err(e) = std::fs::create_dir_all(&keyspace_path) {
-                return Err(NodeError::IoError(e));
-            }
+            self.storage_engine.create_keyspace(&keyspace_name)?;
         }
 
         // If this is not an internode operation, communicate the creation to other nodes
