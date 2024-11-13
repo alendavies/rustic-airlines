@@ -29,6 +29,7 @@ fn main() {
 
     // Insertar 100,000 registros en la tabla simple
     let total_inserts = 100_000;
+
     for i in 100_000..=total_inserts + 100000 {
         //thread::sleep(Duration::from_millis(500));
         let name = format!("name_{}", i); // Generar un nombre único para cada registro

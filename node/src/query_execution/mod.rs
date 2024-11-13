@@ -255,7 +255,6 @@ impl QueryExecution {
                     &message,
                 );
                 if result.is_err() {
-                    println!("No se pudo comunicar con el nodo {:?}", ip);
                     failed_nodes += 1;
                 }
             }
@@ -294,7 +293,6 @@ impl QueryExecution {
         );
 
         if result.is_err() {
-            println!("No se pudo comunicar con el nodo {:?}", target_ip);
             return Ok(1);
         }
 
@@ -343,7 +341,6 @@ impl QueryExecution {
         // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
         for ip in n_succesors {
             if ip != current_ip {
-                println!("voy a replicar en {:?}", ip);
                 let result = connect_and_send_message(
                     ip,
                     INTERNODE_PORT,
@@ -351,7 +348,6 @@ impl QueryExecution {
                     &message,
                 );
                 if result.is_err() {
-                    println!("No se pudo comunicar con el nodo {:?}", ip);
                     failed_nodes += 1;
                 }
             } else {

@@ -159,9 +159,7 @@ impl InternodeProtocolHandler {
         if let Some(open_query) =
             query_handler.add_ok_response_and_get_if_closed(open_query_id, content.to_string())
         {
-            println!("antes de obtener la conexcion del cliente");
             let mut connection = open_query.get_connection();
-            println!("despues de obtener la conexcion del cliente");
             let frame = open_query.get_query().create_client_response(
                 columns,
                 keyspace_name,
@@ -171,6 +169,8 @@ impl InternodeProtocolHandler {
             println!("Returning frame to client: {:?}", frame);
 
             connection.write(&frame.to_bytes()?)?;
+            connection.flush()?;
+
             Ok(())
         } else {
             Ok(())
@@ -201,7 +201,10 @@ impl InternodeProtocolHandler {
                 "A node failed to execute the request of the coordinator.".to_string(),
             ));
 
+            println!("Returning frame to client: {:?}", error_frame);
+
             connection.write(&error_frame.to_bytes()?)?;
+            connection.flush()?;
             Ok(())
         } else {
             Ok(())

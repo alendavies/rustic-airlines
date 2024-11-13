@@ -11,7 +11,7 @@ fn main() {
     client.startup().unwrap();
 
     let setup_queries = vec![
-        "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
+        "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 7}",
         "USE test_keyspace",
         "CREATE TABLE simple_table (
             id INT,
@@ -21,7 +21,7 @@ fn main() {
     ];
 
     for query in setup_queries {
-        match client.execute(query, "quorum") {
+        match client.execute(query, "any") {
             Ok(_) => println!("Setup query executed: {}", query),
             Err(e) => eprintln!("Error executing setup query: {}\nError: {:?}", query, e),
         }
@@ -36,7 +36,7 @@ fn main() {
             i, name
         );
 
-        match client.execute(&insert_query, "quorum") {
+        match client.execute(&insert_query, "any") {
             Ok(frame) => {
                 println!(
                     "la query {:?} dio OK y el frame es {:?}",

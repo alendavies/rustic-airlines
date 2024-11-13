@@ -88,6 +88,7 @@ impl CassandraClient {
         self.stream.read(&mut result).map_err(|_| ClientError)?;
         // dbg!(&String::from_utf8(result.to_vec()).unwrap());
         let result = Frame::from_bytes(&result).map_err(|_| ClientError)?;
+        println!("recibi el frame {:?}", result);
         Ok(result)
     }
 }

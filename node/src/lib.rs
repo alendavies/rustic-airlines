@@ -576,7 +576,7 @@ impl Node {
                     let query = handle_client_request(&buffer);
                     match query {
                         Request::Startup => {
-                            // let mut stream_guard = stream.lock()?;
+                            // let mut stream_guard = stream.println!("el keyspace es {}")lock()?;
                             stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
                             stream_guard.flush()?;
                         }
@@ -725,13 +725,15 @@ impl Node {
         )?;
 
         if let Some(((finished_responses, failed_nodes), content)) = response {
+
             let mut guard_node = node.lock()?;
             // Obtener el keyspace especificado o el actual del cliente
+            
             let keyspace = guard_node
                 .get_open_handle_query()
-                .get_keyspace_of_query(client_id)?
+                .get_keyspace_of_query(open_query_id)?
                 .clone();
-
+       
             // Intentar obtener el nombre de la tabla y buscar la tabla correspondiente en el keyspace
             let table = query.get_table_name().and_then(|table_name| {
                 keyspace
@@ -751,10 +753,9 @@ impl Node {
             } else {
                 "".to_string()
             };
-
+            
             let query_handler = guard_node.get_open_handle_query();
 
-            println!("la query antes de recibir respuestas de otros nodos cargo {:?} oks y {:?} errores", finished_responses, failed_nodes);
             for _ in 0..finished_responses {
                 InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
@@ -764,15 +765,13 @@ impl Node {
                     columns.clone(),
                 )?;
             }
-            for i in 0..failed_nodes {
-                println!("cargando el error numero {:?} de {:?}", i, failed_nodes);
+            for _ in 0..failed_nodes {
                 InternodeProtocolHandler::add_error_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     open_query_id,
         
                 )?;
             }
-            println!("retorne OK despues de cargar {:?} Oks y {:?} errores",finished_responses, failed_nodes);
         }
 
 
