@@ -538,17 +538,17 @@ pub struct Flight {
 impl Flight {
     pub fn new(position: Position, heading: f32) -> Self {
         Self {
-            arrival_time: Default::default(),
-            departure_time: Default::default(),
-            destination_airport: Default::default(),
+            arrival_time: 1731486006,
+            departure_time: 1731473166,
+            destination_airport: String::from("EZE"),
             fuel: Default::default(),
-            height: Default::default(),
+            height: 9550.0,
             number: String::from("AR1234"),
-            origin_airport: Default::default(),
+            origin_airport: String::from("AEZ"),
             position,
             heading,
             status: String::from("Departing"),
-            speed: Default::default(),
+            speed: 880,
         }
     }
 }
