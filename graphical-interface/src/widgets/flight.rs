@@ -1,4 +1,4 @@
-use chrono::{NaiveDateTime, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use egui::{Color32, RichText};
 
 use crate::db::Flight;
@@ -12,13 +12,19 @@ impl WidgetFlight {
         Self { selected_flight }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) {
+    pub fn show(&mut self, ctx: &egui::Context) -> bool {
+        let mut open = true;
+        let screen_width = ctx.screen_rect().width();
+
         egui::Window::new(format!("Flight: {}", self.selected_flight.number))
             .resizable(false)
             .movable(false)
             .collapsible(true)
-            .fixed_pos([20., 20.])
+            .open(&mut open) 
+            .fixed_pos([screen_width - 385., 20.])
             .show(ctx, |ui| {
+                ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE); // Forzar color de texto blanco
+                ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(30); // Fondo oscuro
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.label(
                         RichText::new(format!("Flight: {}", self.selected_flight.number))
@@ -106,5 +112,7 @@ impl WidgetFlight {
                     ui.add_space(10.0);
                 });
             });
+
+        open
     }
 }

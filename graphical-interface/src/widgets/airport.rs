@@ -1,6 +1,4 @@
-use egui_extras::{Column, TableBuilder};
-
-use crate::db::{Airport, Flight, MockProvider, Provider};
+use crate::db::Airport;
 
 use super::{flights_table::FlightType, View, WidgetFlightsTable};
 
@@ -31,25 +29,28 @@ impl WidgetAirport {
 
 impl WidgetAirport {
     
-    pub fn show(&mut self, ctx: &egui::Context) {
+    pub fn show(&mut self, ctx: &egui::Context) -> bool {
+        let mut open = true; // Variable para manejar si la ventana sigue abierta
+    
         egui::Window::new(format!("Aeropuerto {}", self.selected_airport.name))
             .resizable(false)
             .collapsible(true)
+            .open(&mut open) // Habilita la cruz para cerrar la ventana
             .fixed_pos([20.0, 20.0])
             .show(ctx, |ui| {
                 ui.add_space(10.0); // Espacio superior
     
                 // Información del aeropuerto
+                ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE); // Forzar color de texto blanco
+                ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(30); // Fondo oscuro
                 ui.vertical(|ui| {
                     ui.label(
                         egui::RichText::new(format!("Código IATA: {}", self.selected_airport.iata))
-                            .size(16.0)
-                            .color(egui::Color32::WHITE),
+                            .size(16.0),
                     );
                     ui.label(
                         egui::RichText::new(format!("País: {}", self.selected_airport.country))
-                            .size(16.0)
-                            .color(egui::Color32::WHITE),
+                            .size(16.0),
                     );
                 });
     
@@ -60,8 +61,7 @@ impl WidgetAirport {
                     ui.label(
                         egui::RichText::new("Información de vuelos en:")
                             .size(18.0)
-                            .strong()
-                            .color(egui::Color32::WHITE),
+                            .strong(),
                     );
                     egui::ComboBox::from_label("")
                         .selected_text(match self.open_tab {
@@ -86,7 +86,10 @@ impl WidgetAirport {
                     }),
                 }
             });
+    
+        open // Retorna si la ventana sigue abierta o no
     }
+    
     // fn ui(self, ui: &mut egui::Ui) -> egui::Response {
     //     let response = ui.allocate_response(egui::vec2(0., 0.), egui::Sense::hover());
 
