@@ -2,6 +2,7 @@
 mod errors;
 mod internode_protocol_handler;
 mod keyspace;
+mod messages;
 mod open_query_handler;
 mod query_execution;
 mod table;
