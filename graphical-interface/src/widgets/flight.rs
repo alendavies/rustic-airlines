@@ -16,7 +16,7 @@ impl WidgetFlight {
         egui::Window::new(format!("Flight: {}", self.selected_flight.number))
             .resizable(false)
             .movable(false)
-            .collapsible(false)
+            .collapsible(true)
             .fixed_pos([20., 20.])
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
