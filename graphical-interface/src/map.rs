@@ -1,6 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use egui::Context;
+use egui_extras::install_image_loaders;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
 use crate::{
@@ -26,6 +27,7 @@ pub struct MyApp<P: Provider> {
 
 impl<P: Provider> MyApp<P> {
     pub fn new(egui_ctx: Context, db: P) -> Self {
+        install_image_loaders(&egui_ctx);
         let mut initial_map_memory = MapMemory::default();
         // zoom inicial para mostrar argentina y uruguay
         initial_map_memory.set_zoom(5.).unwrap();
