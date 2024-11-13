@@ -1,2 +1,7 @@
-id,name,last_name,personal_id
-1,Loren,,99384513-e972-4d09-b7b4-9a7d9bf8c717
+id,name,last_name,age
+1,Loren,Smith,24
+1,Alice,Johnson,30
+1,Nau,Brown,45
+1,Lib,Brown,45
+1,AA,Brown,45
+1,CCC,Brown,45

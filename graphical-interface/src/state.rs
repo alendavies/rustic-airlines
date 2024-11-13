@@ -1,5 +1,5 @@
 use crate::{
-    db::{Airport, Db, Flight, MockProvider, Provider},
+    db::{Airport, Flight, MockProvider, Provider},
     widgets::WidgetAirport,
 };
 
@@ -33,14 +33,22 @@ impl SelectionState {
 
     /// If the provided flight is already selected, it will be deselected.
     /// Otherwise, it will be selected.
-    pub fn toggle_selected_flight(&self, flight: &Flight) {
-        todo!()
+    pub fn toggle_flight_selection(&mut self, flight: &Flight) {
+        if let Some(selected_flight) = &self.flight {
+            if *selected_flight == *flight {
+                self.flight = None;
+            } else {
+                self.flight = Some(flight.clone());
+            }
+        } else {
+            self.flight = Some(flight.clone());
+        }
     }
 }
 
 /// Tracks the flights and airports to display.
 pub struct ViewState {
-    // pub flights: Vec<Flight>,
+    pub flights: Vec<Flight>,
     pub airports: Vec<Airport>,
 }
 
@@ -48,7 +56,7 @@ impl ViewState {
     pub fn new() -> Self {
         Self {
             // TODO: pass a parameter?
-            // flights: MockProvider::get_flights().unwrap(),
+            flights: MockProvider::get_flights().unwrap(),
             airports: MockProvider::get_airports().unwrap(),
         }
     }

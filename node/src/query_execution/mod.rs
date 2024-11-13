@@ -1,6 +1,6 @@
 use crate::internode_protocol_handler::InternodeProtocolHandler;
 use crate::table::Table;
-use crate::utils::{connect, send_message};
+use crate::utils::connect_and_send_message;
 use crate::NodeError;
 use crate::{Node, INTERNODE_PORT};
 use query_creator::clauses::types::column::Column;
@@ -249,8 +249,7 @@ impl QueryExecution {
         // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
         for ip in local_node.get_partitioner().get_nodes() {
             if ip != current_ip {
-                let stream = connect(ip, INTERNODE_PORT, self.connections.clone())?;
-                send_message(&stream, &message)?;
+                connect_and_send_message(ip, INTERNODE_PORT, self.connections.clone(), &message)?;
             }
         }
         Ok(())
@@ -281,8 +280,12 @@ impl QueryExecution {
         );
 
         // Conecta y envía el mensaje al nodo específico
-        let stream = connect(target_ip, INTERNODE_PORT, self.connections.clone())?;
-        send_message(&stream, &message)?;
+        connect_and_send_message(
+            target_ip,
+            INTERNODE_PORT,
+            self.connections.clone(),
+            &message,
+        )?;
         Ok(())
     }
 
@@ -326,8 +329,7 @@ impl QueryExecution {
         // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
         for ip in n_succesors {
             if ip != current_ip {
-                let stream = connect(ip, INTERNODE_PORT, self.connections.clone())?;
-                send_message(&stream, &message)?;
+                connect_and_send_message(ip, INTERNODE_PORT, self.connections.clone(), &message)?;
             } else {
                 the_node_has_to_replicate = true;
             }

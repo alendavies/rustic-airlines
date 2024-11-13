@@ -1,6 +1,6 @@
 use egui_extras::{Column, TableBuilder};
 
-use crate::db::{Airport, Db, Flight, Provider};
+use crate::db::{Airport, Flight, MockProvider, Provider};
 
 use super::View;
 
@@ -30,8 +30,9 @@ impl WidgetDepartures {
 impl View for WidgetDepartures {
     fn ui(&mut self, ui: &mut egui::Ui) {
         if self.departures.is_none() {
-            self.departures =
-                Some(Db::get_departure_flights(&self.airport, self.selected_date).unwrap());
+            self.departures = Some(
+                MockProvider::get_departure_flights(&self.airport, self.selected_date).unwrap(),
+            );
         }
 
         ui.vertical(|ui| {
@@ -40,12 +41,9 @@ impl View for WidgetDepartures {
             if date_response.changed() {
                 // TODO: find a way to do it async, with promises or something:
                 // https://github.com/emilk/egui/blob/5b846b4554fe47269affb43efef2cad8710a8a47/crates/egui_demo_app/src/apps/http_app.rs
-                self.departures =
-                    Some(Db::get_departure_flights(&self.airport, self.selected_date).unwrap());
-                // self.departures = Some(db::get_departures_mock(
-                //     self.airport.clone(),
-                //     self.selected_date,
-                // ));
+                self.departures = Some(
+                    MockProvider::get_departure_flights(&self.airport, self.selected_date).unwrap(),
+                );
             }
 
             if let Some(flights) = &self.departures {
@@ -120,15 +118,16 @@ impl View for WidgetArrivals {
     fn ui(&mut self, ui: &mut egui::Ui) {
         if self.arrivals.is_none() {
             self.arrivals =
-                Some(Db::get_departure_flights(&self.airport, self.selected_date).unwrap());
+                Some(MockProvider::get_arrival_flights(&self.airport, self.selected_date).unwrap());
         }
 
         ui.vertical(|ui| {
             let date_response = ui.add(egui_extras::DatePickerButton::new(&mut self.selected_date));
 
             if date_response.changed() {
-                self.arrivals =
-                    Some(Db::get_arrival_flights(&self.airport, self.selected_date).unwrap());
+                self.arrivals = Some(
+                    MockProvider::get_arrival_flights(&self.airport, self.selected_date).unwrap(),
+                );
             }
 
             if let Some(flights) = &self.arrivals {
@@ -174,6 +173,7 @@ pub struct WidgetAirport {
 impl WidgetAirport {
     pub fn new(selected_airport: Airport) -> Self {
         Self {
+            // TODO: should actually receive a reference to the airport
             selected_airport: selected_airport.clone(),
             open_tab: Tabs::Info,
             widget_arrivals: WidgetArrivals::new(selected_airport.iata.clone()),
@@ -189,7 +189,7 @@ impl WidgetAirport {
             .collapsible(false)
             .movable(false)
             // TODO: find the way to make the widgets fill the space one after the other
-            .fixed_pos([20., 400.])
+            .fixed_pos([20., 600.])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.open_tab, Tabs::Info, "Info");

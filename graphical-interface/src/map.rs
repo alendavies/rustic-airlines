@@ -1,11 +1,14 @@
+use std::{cell::RefCell, rc::Rc};
+
 use egui::Context;
+use egui_extras::install_image_loaders;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
 use crate::{
     db::{MockProvider, Provider},
     plugins,
     state::{SelectionState, ViewState},
-    widgets::{WidgetAirport, WidgetAirports},
+    widgets::{WidgetAirport, WidgetAirports, WidgetFlight},
     windows,
 };
 
@@ -15,14 +18,16 @@ const INITIAL_LON: f64 = -58.372159;
 pub struct MyApp<P: Provider> {
     tiles: Box<dyn Tiles>,
     map_memory: MapMemory,
-    selection_state: SelectionState,
+    selection_state: Rc<RefCell<SelectionState>>,
     view_state: ViewState,
     airport_widget: Option<WidgetAirport>,
+    flight_widget: Option<WidgetFlight>,
     db: P,
 }
 
 impl<P: Provider> MyApp<P> {
     pub fn new(egui_ctx: Context, db: P) -> Self {
+        install_image_loaders(&egui_ctx);
         let mut initial_map_memory = MapMemory::default();
         // zoom inicial para mostrar argentina y uruguay
         initial_map_memory.set_zoom(5.).unwrap();
@@ -34,9 +39,10 @@ impl<P: Provider> MyApp<P> {
                 egui_ctx.to_owned(),
             )),
             map_memory: initial_map_memory,
-            selection_state: SelectionState::new(),
+            selection_state: Rc::new(RefCell::new(SelectionState::new())),
             view_state: ViewState::new(),
             airport_widget: None,
+            flight_widget: None,
             db,
         }
     }
@@ -56,22 +62,54 @@ impl<P: Provider> eframe::App for MyApp<P> {
 
                 let tiles = self.tiles.as_mut();
 
+                let airport =
+                    plugins::Airports::new(&self.view_state.airports, self.selection_state.clone());
+
+                let flight =
+                    plugins::Flights::new(&self.view_state.flights, self.selection_state.clone());
+
                 // In egui, widgets are constructed and consumed in each frame.
                 let map = Map::new(Some(tiles), &mut self.map_memory, my_position)
-                    .with_plugin(plugins::Airports::new(&self.view_state.airports));
+                    .with_plugin(airport)
+                    .with_plugin(flight);
 
                 // Add the map widget.
                 ui.add(map);
 
-                // Add the airport pins in the map.
-                ui.add(WidgetAirports::new(
+                // List of airports window.
+                /* ui.add(WidgetAirports::new(
                     &self.view_state,
-                    &mut self.selection_state,
-                ));
+                    &mut self.selection_state.borrow_mut(),
+                )); */
 
-                // Add the selected airport window, if there any.
-                if let Some(widget) = &mut self.airport_widget {
-                    widget.show(ctx);
+                // Airport window.
+                if let Some(airport) = &self.selection_state.borrow().airport {
+                    if let Some(widget) = &mut self.airport_widget {
+                        if widget.selected_airport == *airport {
+                            widget.show(ctx);
+                        } else {
+                            self.airport_widget = None;
+                        }
+                    } else {
+                        self.airport_widget = Some(WidgetAirport::new(airport.clone()));
+                    }
+                } else {
+                    self.airport_widget = None;
+                }
+
+                // Flight window.
+                if let Some(flight) = &self.selection_state.borrow().flight {
+                    if let Some(widget) = &mut self.flight_widget {
+                        if widget.selected_flight == *flight {
+                            widget.show(ctx);
+                        } else {
+                            self.flight_widget = None;
+                        }
+                    } else {
+                        self.flight_widget = Some(WidgetFlight::new(flight.clone()));
+                    }
+                } else {
+                    self.flight_widget = None;
                 }
 
                 // Draw utility windows.
