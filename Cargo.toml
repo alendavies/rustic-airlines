@@ -12,7 +12,8 @@ members = [
     "native_protocol",
     "graphical-interface",
     "node_launcher",
-	"flight-sim"
+    "gossip",
+    "flight-sim"
 ]
 
 [dev-dependencies]
