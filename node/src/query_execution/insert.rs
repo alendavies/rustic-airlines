@@ -103,7 +103,6 @@ impl QueryExecution {
         if !internode {
             if node_to_insert != self_ip {
                 let serialized_insert = new_insert.serialize();
-                println!("el nodo que inserta es el {:?}", node_to_insert);
                 failed_nodes = self.send_to_single_node(
                     node.get_ip(),
                     node_to_insert,
