@@ -11,11 +11,11 @@ fn main() {
     let mut client = CassandraClient::connect(ip).unwrap();
     client.startup().unwrap();
     let queries = vec![
-        // "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
-        // "CREATE TABLE test_keyspace.test_table (id INT PRIMARY KEY, name TEXT, last_name TEXT, age INT)".to_string(),
-        // "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'John', 'Doe', 30)".to_string(),
-        // "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (2, 'Jane', 'Smith', 25)".to_string(),
-        // "UPDATE test_keyspace.test_table SET age = 31 WHERE id = 1".to_string(),
+        "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
+        "CREATE TABLE test_keyspace.test_table (id INT PRIMARY KEY, name TEXT, last_name TEXT, age INT)".to_string(),
+        "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'John', 'Doe', 30)".to_string(),
+        "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (2, 'Jane', 'Smith', 25)".to_string(),
+        "UPDATE test_keyspace.test_table SET age = 31 WHERE id = 1".to_string(),
         "SELECT * FROM test_keyspace.test_table WHERE id = 1".to_string(),
     ];
 
