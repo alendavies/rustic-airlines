@@ -50,13 +50,9 @@ impl Flight {
         let rect = Rect::from_center_size(screen_position.to_pos2(), symbol_size);
 
         let image = if response.hovered() {
-            Image::new(include_image!(
-                r"..\..\..\graphical-interface\plane-solid-selected.svg"
-            ))
+            Image::new(include_image!(r"../../plane-solid-selected.svg"))
         } else {
-            Image::new(include_image!(
-                r"..\..\..\graphical-interface\plane-solid.svg"
-            ))
+            Image::new(include_image!(r"../../plane-solid.svg"))
         };
 
         let image = image

@@ -390,7 +390,6 @@ impl InternodeProtocolHandler {
                 self.process_ok_response(query_handler, content, open_query_id, keyspace_name)?;
             }
             "ERROR" => {
-                println!("Recibi un error");
                 // Aquí puedes agregar la lógica para manejar el caso "ERROR".
                 // Por ejemplo, puedes retornar un error específico o realizar otra acción.
                 self.process_error_response(query_handler, open_query_id)?;
