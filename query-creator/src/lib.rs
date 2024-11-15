@@ -485,9 +485,9 @@ impl QueryCreator {
                 } else {
                     index += 1;
                 }
-            } else if char.is_alphabetic() || char == '_' {
+            } else if char.is_alphabetic() || char == '_' || char == '@' {
                 index = Self::process_alphabetic(&string, index, &mut current, &mut tokens);
-            } else if char.is_numeric() {
+            } else if char.is_numeric() || char == '-' {
                 index = Self::process_numeric(&string, index, &mut current, &mut tokens);
             } else if char == '\'' {
                 index = Self::process_quotes(&string, index, &mut current, &mut tokens);
@@ -513,7 +513,7 @@ impl QueryCreator {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
 
-            if char.is_alphabetic() || char == '_' || char == '@' || char == '.' {
+            if char.is_alphabetic() || char == '_' || char == '@' || char == '.' || char == '-' {
                 current.push(char);
                 index += 1;
             } else {
@@ -533,7 +533,7 @@ impl QueryCreator {
     ) -> usize {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            if char.is_numeric() {
+            if char.is_numeric() || char == '-' {
                 current.push(char);
                 index += 1;
             } else {
