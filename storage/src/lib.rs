@@ -1,6 +1,6 @@
 use query_creator::clauses::{delete_cql::Delete, select_cql::Select, update_cql::Update};
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::fs::{self, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
 pub mod errors;
@@ -162,27 +162,48 @@ impl StorageEngine {
         Ok(())
     }
 
-    /// Adds a column to `table` in `keyspace`, filling with NULL for existing records.
+    fn get_keyspace_path(&self, keyspace: &str) -> PathBuf {
+        let ip_str = self.ip.replace(".", "_");
+        let keyspace_folder = format!("keyspaces_of_{}", ip_str);
+        self.root.join(&keyspace_folder).join(keyspace)
+    }
+
     pub fn add_column_to_table(
         &self,
         keyspace: &str,
         table: &str,
         column: &str,
     ) -> Result<(), StorageEngineError> {
+        let keyspace_path = self.get_keyspace_path(keyspace);
+        let file_path = keyspace_path.join(format!("{}.csv", table));
+        let replica_path = keyspace_path
+            .join("replication")
+            .join(format!("{}.csv", table));
+
+        Self::add_column_to_file(file_path.to_str().unwrap(), column)?;
+        Self::add_column_to_file(replica_path.to_str().unwrap(), column)?;
+
         Ok(())
     }
 
-    /// Removes the column `column` from `table` in `keyspace`.
     pub fn remove_column_from_table(
         &self,
         keyspace: &str,
         table: &str,
         column: &str,
     ) -> Result<(), StorageEngineError> {
+        let keyspace_path = self.get_keyspace_path(keyspace);
+        let file_path = keyspace_path.join(format!("{}.csv", table));
+        let replica_path = keyspace_path
+            .join("replication")
+            .join(format!("{}.csv", table));
+
+        Self::remove_column_from_file(file_path.to_str().unwrap(), column)?;
+        Self::remove_column_from_file(replica_path.to_str().unwrap(), column)?;
+
         Ok(())
     }
 
-    /// Renames the column `column` to `new_column` in `table` in `keyspace`.
     pub fn rename_column_from_table(
         &self,
         keyspace: &str,
@@ -190,7 +211,107 @@ impl StorageEngine {
         column: &str,
         new_column: &str,
     ) -> Result<(), StorageEngineError> {
+        let keyspace_path = self.get_keyspace_path(keyspace);
+        let file_path = keyspace_path.join(format!("{}.csv", table));
+        let replica_path = keyspace_path
+            .join("replication")
+            .join(format!("{}.csv", table));
+
+        Self::rename_column_in_file(file_path.to_str().unwrap(), column, new_column)?;
+        Self::rename_column_in_file(replica_path.to_str().unwrap(), column, new_column)?;
+
         Ok(())
+    }
+
+    pub(crate) fn add_column_to_file(
+        file_path: &str,
+        column_name: &str,
+    ) -> Result<(), StorageEngineError> {
+        let temp_path = format!("{}.temp", file_path);
+        let mut temp_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&temp_path)?;
+
+        let file = OpenOptions::new().read(true).open(file_path)?;
+        let reader = BufReader::new(file);
+        let mut first_line = true;
+
+        for line in reader.lines() {
+            let mut line = line?;
+            if first_line {
+                line.push_str(&format!(",{}", column_name));
+                first_line = false;
+            } else {
+                line.push_str(","); // Append an empty cell for the new column in each row
+            }
+            writeln!(temp_file, "{}", line)?;
+        }
+
+        fs::rename(temp_path, file_path).map_err(|_| StorageEngineError::IoError)
+    }
+
+    pub(crate) fn remove_column_from_file(
+        file_path: &str,
+        column_name: &str,
+    ) -> Result<(), StorageEngineError> {
+        let temp_path = format!("{}.temp", file_path);
+        let mut temp_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&temp_path)?;
+
+        let file = OpenOptions::new().read(true).open(file_path)?;
+        let reader = BufReader::new(file);
+        let mut col_index: Option<usize> = None;
+
+        for line in reader.lines() {
+            let line = line?;
+            let cells: Vec<&str> = line.split(',').collect();
+
+            if col_index.is_none() {
+                col_index = cells.iter().position(|&col| col == column_name);
+                if col_index.is_none() {
+                    return Err(StorageEngineError::UnsupportedOperation);
+                }
+            }
+
+            let filtered_line: Vec<&str> = cells
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| Some(i) != col_index)
+                .map(|(_, &cell)| cell)
+                .collect();
+
+            writeln!(temp_file, "{}", filtered_line.join(","))?;
+        }
+
+        fs::rename(temp_path, file_path).map_err(|_| StorageEngineError::IoError)
+    }
+
+    pub(crate) fn rename_column_in_file(
+        file_path: &str,
+        old_name: &str,
+        new_name: &str,
+    ) -> Result<(), StorageEngineError> {
+        let temp_path = format!("{}.temp", file_path);
+        let mut temp_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&temp_path)?;
+
+        let file = OpenOptions::new().read(true).open(file_path)?;
+        let reader = BufReader::new(file);
+
+        for (i, line) in reader.lines().enumerate() {
+            let mut line = line?;
+            if i == 0 {
+                line = line.replace(old_name, new_name); // Rename in the header
+            }
+            writeln!(temp_file, "{}", line)?;
+        }
+
+        fs::rename(temp_path, file_path).map_err(|_| StorageEngineError::IoError)
     }
 
     /// Inserts the values `values` into `table` in `keyspace`.
