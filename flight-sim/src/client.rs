@@ -138,7 +138,6 @@ impl Client {
         &mut self,
         flight: &Flight
     ) -> Result<(), ClientError> {
-        println!("{:?}", flight);
         let update_query_status_departure = format!(
                 "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {};",
                 flight.status.as_str(),
@@ -163,8 +162,8 @@ impl Client {
                 flight.latitude,
                 flight.longitude,
                 flight.average_speed,
-                flight.flight_number,
-                flight.altitude
+                flight.altitude,
+                flight.flight_number
             );
         self.cassandra_client.execute(&update_query_flight_info, "all")?;
 
