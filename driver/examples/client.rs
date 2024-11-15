@@ -10,20 +10,17 @@ fn main() {
     let mut client = CassandraClient::connect(ip).unwrap();
     client.startup().unwrap();
     let queries = vec![
-        "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}".to_string(),
-        "CREATE TABLE test_keyspace.test_table (id INT, name TEXT, last_name TEXT, age INT, PRIMARY KEY (id, name))".to_string(),
-        // "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Loren', 'Smith', 24)".to_string(),
-        // "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (2, 'Alice', 'Johnson', 30)".to_string(),
-        // "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (3, 'Nau', 'Brown', 45)".to_string(),
-        // "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (4, 'Lib', 'Brown', 45)".to_string(),
-        // "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (5, 'AA', 'Brown', 45)".to_string(),
-        // "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (6, 'CCC', 'Brown', 45)".to_string(),
-        // "SELECT last_name, name FROM test_keyspace.test_table WHERE id = 1 ORDER BY name LIMIT 5".to_string(),
-        // Queries for column modifications
-        "ALTER TABLE test_keyspace.test_table ADD middle_name TEXT".to_string(),
-        "ALTER TABLE test_keyspace.test_table DROP age".to_string(),
-        "ALTER TABLE test_keyspace.test_table RENAME last_name TO surname".to_string(),
-    ];
+    "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
+    "CREATE TABLE test_keyspace.test_table (id INT, name TEXT, last_name INT, age INT, PRIMARY KEY (id, name, last_name)) WITH CLUSTERING ORDER BY (name ASC, last_name DESC)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 100, 24)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 200, 30)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 150, 45)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 250, 45)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 50, 45)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 175, 45)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 300, 50)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 25, 60)".to_string(),
+];
 
     // Ejecutar cada consulta en un loopc
     let mut contador = 0;

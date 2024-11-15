@@ -1,1 +1,9 @@
-id,name,surname,middle_name
+id,name,last_name,age
+1,TestName,100,24
+1,TestName,150,45
+1,TestName,175,45
+1,TestName,200,30
+1,TestName,25,60
+1,TestName,250,45
+1,TestName,300,50
+1,TestName,50,45

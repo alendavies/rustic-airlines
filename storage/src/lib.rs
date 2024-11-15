@@ -1,7 +1,9 @@
+use query_creator::clauses::types::column::Column;
 use query_creator::clauses::{delete_cql::Delete, select_cql::Select, update_cql::Update};
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod errors;
 
@@ -314,13 +316,124 @@ impl StorageEngine {
         fs::rename(temp_path, file_path).map_err(|_| StorageEngineError::IoError)
     }
 
-    /// Inserts the values `values` into `table` in `keyspace`.
     pub fn insert(
         &self,
         keyspace: &str,
         table: &str,
         values: Vec<&str>,
+        columns: Vec<Column>,
+        clustering_columns_in_order: Vec<String>,
+        is_replication: bool,
+        if_not_exist: bool,
     ) -> Result<(), StorageEngineError> {
+        let base_folder_path = self.get_keyspace_path(keyspace);
+
+        let folder_path = if is_replication {
+            base_folder_path.join("replication")
+        } else {
+            base_folder_path
+        };
+
+        if !folder_path.exists() {
+            fs::create_dir_all(&folder_path)
+                .map_err(|_| StorageEngineError::DirectoryCreationFailed)?;
+        }
+
+        let file_path = folder_path.join(format!("{}.csv", table));
+        let temp_file_path = folder_path.join(format!(
+            "{}.tmp",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|_| StorageEngineError::TempFileCreationFailed)?
+                .as_nanos()
+        ));
+
+        let mut temp_file =
+            File::create(&temp_file_path).map_err(|_| StorageEngineError::IoError)?;
+
+        let partition_key_indices: Vec<usize> = columns
+            .iter()
+            .enumerate()
+            .filter(|(_, col)| col.is_partition_key)
+            .map(|(idx, _)| idx)
+            .collect();
+
+        let clustering_key_indices: Vec<(usize, String)> = clustering_columns_in_order
+            .iter()
+            .filter_map(|col_name| {
+                columns
+                    .iter()
+                    .position(|col| col.name == *col_name && col.is_clustering_column)
+                    .map(|idx| (idx, columns[idx].get_clustering_order()))
+            })
+            .collect();
+        let mut key_exists = false;
+        let mut inserted = false;
+
+        if let Ok(file) = OpenOptions::new().read(true).open(&file_path) {
+            let reader = BufReader::new(file);
+            for line in reader.lines() {
+                let line = line.map_err(|_| StorageEngineError::IoError)?;
+                let row: Vec<&str> = line.split(',').collect();
+
+                let partition_keys_match = partition_key_indices
+                    .iter()
+                    .all(|&idx| row.get(idx) == values.get(idx).map(|v| v));
+
+                if partition_keys_match {
+                    let clustering_comparison = clustering_key_indices
+                        .iter()
+                        .map(|&(idx, ref order)| {
+                            let row_value = row.get(idx).unwrap_or(&"");
+                            let insert_value = values.get(idx).unwrap_or(&"");
+
+                            let comparison = row_value.cmp(insert_value);
+
+                            // Apply the order logic
+                            match order.as_str() {
+                                "ASC" => comparison,
+                                "DESC" => comparison.reverse(),
+                                _ => std::cmp::Ordering::Equal,
+                            }
+                        })
+                        .find(|&cmp| cmp != std::cmp::Ordering::Equal)
+                        .unwrap_or(std::cmp::Ordering::Equal);
+
+                    match clustering_comparison {
+                        std::cmp::Ordering::Equal => {
+                            key_exists = true;
+                            if if_not_exist {
+                                writeln!(temp_file, "{}", line)
+                                    .map_err(|_| StorageEngineError::IoError)?;
+                                continue;
+                            } else {
+                                writeln!(temp_file, "{}", values.join(","))
+                                    .map_err(|_| StorageEngineError::IoError)?;
+                                inserted = true;
+                                continue;
+                            }
+                        }
+                        std::cmp::Ordering::Less => {
+                            if !inserted {
+                                writeln!(temp_file, "{}", values.join(","))
+                                    .map_err(|_| StorageEngineError::IoError)?;
+                                inserted = true;
+                            }
+                        }
+                        std::cmp::Ordering::Greater => {}
+                    }
+                }
+
+                writeln!(temp_file, "{}", line).map_err(|_| StorageEngineError::IoError)?;
+            }
+        }
+
+        if !key_exists && !inserted {
+            writeln!(temp_file, "{}", values.join(",")).map_err(|_| StorageEngineError::IoError)?;
+        }
+
+        fs::rename(&temp_file_path, &file_path).map_err(|_| StorageEngineError::IoError)?;
+
         Ok(())
     }
 

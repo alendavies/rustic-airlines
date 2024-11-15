@@ -56,6 +56,10 @@ impl QueryExecution {
         if !internode {
             // Serialize the `CreateTable` structure
             let serialized_create_table = create_table.serialize();
+            println!(
+                "la query para mandar a los otros nodos es {:?}",
+                serialized_create_table
+            );
             self.send_to_other_nodes(
                 node,
                 "CREATE_TABLE",

@@ -399,6 +399,7 @@ impl QueryCreator {
             }
             "CREATE" => match tokens[1].as_str() {
                 "TABLE" => {
+                    println!("los tokens en la ejecucion de la query son {:?}", tokens);
                     let create_table = CreateTable::new_from_tokens(tokens)?;
                     Ok(Query::CreateTable(create_table))
                 }

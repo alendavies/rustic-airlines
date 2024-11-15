@@ -105,6 +105,10 @@ impl Table {
             Ok(clustering_columns)
         }
     }
+
+    pub fn get_clustering_column_in_order(&self) -> Vec<String> {
+        self.inner.get_clustering_column_in_order()
+    }
 }
 
 /// Implements `fmt::Debug` for `Table` to provide human-readable information for debugging.
