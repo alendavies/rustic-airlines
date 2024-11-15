@@ -87,9 +87,8 @@ impl Provider for MockProvider {
         Ok(flights)
     }
 
-    fn get_airports() -> Result<Vec<Airport>, DBError> {
-        let current_dir = env::current_dir().unwrap();
-        let path = current_dir.join("airports_ar.csv");
+    fn get_airports() -> Result<Vec<Airport>, DBError> {      
+        let path = Path::new("airports_ar.csv");
         let file = File::open(path).unwrap();
 
         let mut rdr = ReaderBuilder::new().has_headers(true).from_reader(file);

@@ -1,5 +1,5 @@
 use driver::CassandraClient;
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{net::Ipv4Addr, str::FromStr, thread, time::Duration};
 
 fn main() {
     // Dirección IP del servidor Cassandra
@@ -11,17 +11,17 @@ fn main() {
     client.startup().unwrap();
 
     let setup_queries = vec![
-        "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
+        "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 7}",
         "USE test_keyspace",
         "CREATE TABLE simple_table (
-        id INT,
-        name TEXT,
-        PRIMARY KEY (id, name)
-    )",
+            id INT,
+            name TEXT,
+            PRIMARY KEY (id, name)
+        )",
     ];
 
     for query in setup_queries {
-        match client.execute(query, "all") {
+        match client.execute(query, "any") {
             Ok(_) => println!("Setup query executed: {}", query),
             Err(e) => eprintln!("Error executing setup query: {}\nError: {:?}", query, e),
         }
@@ -30,23 +30,28 @@ fn main() {
     // Insertar 100,000 registros en la tabla simple
     let total_inserts = 100_000;
     for i in 1..=total_inserts {
-        //thread::sleep(Duration::from_millis(500));
         let name = format!("name_{}", i); // Generar un nombre único para cada registro
         let insert_query = format!(
             "INSERT INTO simple_table (id, name) VALUES ({}, '{}')",
             i, name
         );
 
-        println!("{:?}", insert_query);
-        match client.execute(&insert_query, "all") {
-            Ok(_) => {
+        match client.execute(&insert_query, "any") {
+            Ok(frame) => {
+                println!(
+                    "la query {:?} dio OK y el frame es {:?}",
+                    insert_query, frame
+                );
                 if i % 1000 == 0 {
-                    println!("Inserted {} records successfully", i);
+                    println!("Inserted records successfully con frame");
+                    // Pausar por 4 segundos cada 1,000 registros insertados
+                    thread::sleep(Duration::from_secs(4));
                 }
             }
             Err(e) => {
                 eprintln!("Error executing insert query for id {}: {:?}", i, e);
-                break; // Detener el bucle si hay un error
+                // Detener el bucle si hay un error
+                break;
             }
         }
     }
