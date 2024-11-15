@@ -533,7 +533,7 @@ impl QueryCreator {
     ) -> usize {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            if char.is_numeric() || char == '-' {
+            if char.is_numeric() || char == '-' || char == '.' {
                 current.push(char);
                 index += 1;
             } else {
