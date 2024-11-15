@@ -15,11 +15,12 @@ fn clean_scr() {
 }
 
 fn add_flight(sim_state: &mut SimState) -> Result<(), SimError> {
+    clean_scr();
     let flight_number = prompt_input("Enter the flight number: ");
     let origin = prompt_input("Enter the origin IATA code: ");
     let destination = prompt_input("Enter the destination IATA code: ");
-    let departure_time = prompt_input("Enter the departure time (YYYY-MM-DD HH:MM:SS): ");
-    let arrival_time = prompt_input("Enter the arrival time (YYYY-MM-DD HH:MM:SS): ");
+    let departure_time = prompt_input("Enter the departure time (DD-MM-YYYY HH:MM:SS): ");
+    let arrival_time = prompt_input("Enter the arrival time (DD-MM-YYYY HH:MM:SS): ");
 
     let avg_speed_input = prompt_input("Enter the average speed (in km/h): ");
     let avg_speed: f64 = match avg_speed_input.parse() {
@@ -36,6 +37,7 @@ fn add_flight(sim_state: &mut SimState) -> Result<(), SimError> {
 }
 
 fn add_airport(sim_state: &mut SimState) -> Result<(), SimError> {
+    clean_scr();
     let iata_code = prompt_input("Enter the IATA code: ");
     let country = prompt_input("Enter the country: ");
     let name = prompt_input("Enter the airport name: ");
@@ -71,7 +73,6 @@ fn main() -> Result<(), SimError> {
     let mut sim_state = SimState::new(client)?;
 
     loop {
-        clean_scr();
         println!("Enter command (type '-h' or '--help' for options): ");
         let mut command = String::new();
         io::stdin().read_line(&mut command).expect("Failed to read input");
@@ -95,12 +96,14 @@ fn main() -> Result<(), SimError> {
             "list-flights" => sim_state.list_flights(),
 
             "time-rate" => {
+                clean_scr();
                 if let Err(_) = set_time_rate(&mut sim_state) {
                     println!("{}", SimError::InvalidInput);
                 }
             }
 
             "test-data" => {
+                clean_scr();
                 if let Err(_) = add_test_data(&mut sim_state) {
                     println!("{}", SimError::InvalidInput);
                 }
@@ -170,8 +173,8 @@ fn add_test_data(sim_state: &mut SimState) -> Result<(), SimError> {
 
     // Add flights
     for (flight_number, origin, destination, departure_time, arrival_time, avg_speed) in flight_data {
-        let departure_str = departure_time.format("%Y-%m-%d %H:%M:%S").to_string();
-        let arrival_str = arrival_time.format("%Y-%m-%d %H:%M:%S").to_string();
+        let departure_str = departure_time.format("%d-%m-%Y %H:%M:%S").to_string();
+        let arrival_str = arrival_time.format("%d-%m-%Y %H:%M:%S").to_string();
         let flight = Flight::new_from_console(
             sim_state.airports(), flight_number, origin, destination, &departure_str, &arrival_str, avg_speed
         ).map_err(|_| SimError::Other("Error".to_string()))?;

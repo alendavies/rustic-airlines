@@ -1,7 +1,6 @@
 ﻿use crate::types::airport::Airport;
 use crate::types::flight_status::FlightStatus;
 use std::collections::HashMap;
-use std::error::Error;
 use chrono::NaiveDateTime;
 use std::f64::consts::PI;
 
@@ -133,7 +132,7 @@ impl Flight {
 }
 
 fn parse_datetime(datetime_str: &str) -> Result<NaiveDateTime, SimError> {
-    let format = "%d/%m/%y-%H:%M:%S"; // The expected format for the date input
+    let format = "%d-%m-%Y %H:%M:%S"; // The expected format for the date input
     NaiveDateTime::parse_from_str(datetime_str, format)
         .map_err(|_| SimError::InvalidDateFormat(datetime_str.to_string()))
 }

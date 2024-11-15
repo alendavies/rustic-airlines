@@ -55,7 +55,7 @@ impl Client {
                 lon DOUBLE,
                 fuel DOUBLE,
                 height INT,
-                speed INT
+                speed DOUBLE
             )
         "#;
         self.cassandra_client.execute(&create_flight_info_table, "all")?;
@@ -95,8 +95,7 @@ impl Client {
     ) -> Result<(), ClientError> {
         // Inserción en la tabla flights para el origen (DEPARTURE)
         let insert_departure_query = format!(
-            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction) \
-             VALUES ('{}', '{}', {}, {}, '{}', 'DEPARTURE');",
+            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, '{}', 'DEPARTURE');",
             flight.flight_number,
             flight.status.as_str(),
             flight.departure_time.and_utc().timestamp(),
@@ -106,17 +105,17 @@ impl Client {
 
         // Inserción en la tabla flights para el destino (ARRIVAL)
         let insert_arrival_query = format!(
-            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction) \
-             VALUES ('{}', '{}', null, toTimestamp(now()), '{}', 'ARRIVAL');",
+            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, '{}', 'ARRIVAL');",
             flight.flight_number,
             flight.status.as_str(),
+            flight.departure_time.and_utc().timestamp(),
+            flight.arrival_time.and_utc().timestamp(),
             flight.destination.iata_code,
         );
 
         // Inserción en la tabla flight_info con la información del vuelo
         let insert_flight_info_query = format!(
-            "INSERT INTO sky.flight_info (number, lat, lon, fuel, alt, speed) \
-             VALUES ('{}', {}, {}, {}, {}, {});",
+            "INSERT INTO sky.flight_info (number, lat, lon, fuel, height, speed) VALUES ('{}', {}, {}, {}, {}, {});",
             flight.flight_number,
             flight.latitude,
             flight.longitude,
@@ -130,6 +129,8 @@ impl Client {
         self.cassandra_client.execute(&insert_arrival_query, "all")?;
         self.cassandra_client.execute(&insert_flight_info_query, "all")?;
 
+        println!("Flight '{}' added successfully.", flight.flight_number);
+
         Ok(())
     }
 
@@ -137,7 +138,7 @@ impl Client {
         &mut self,
         flight: &Flight
     ) -> Result<(), ClientError> {
-        
+        println!("{:?}", flight);
         let update_query_status_departure = format!(
                 "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {};",
                 flight.status.as_str(),
@@ -147,6 +148,7 @@ impl Client {
                 flight.arrival_time.and_utc().timestamp(),
             );
         self.cassandra_client.execute(&update_query_status_departure, "all")?;
+
         let update_query_status_arrival = format!(
                 "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {};",
                 flight.status.as_str(),
@@ -157,13 +159,15 @@ impl Client {
             );
         self.cassandra_client.execute(&update_query_status_arrival, "all")?;
         let update_query_flight_info = format!(
-                "UPDATE sky.flight_info SET lat = {}, lon = {}, speed = {} WHERE number = '{}';",
+                "UPDATE sky.flight_info SET lat = {}, lon = {}, speed = {}, height = {} WHERE number = '{}';",
                 flight.latitude,
                 flight.longitude,
                 flight.average_speed,
-                flight.flight_number
+                flight.flight_number,
+                flight.altitude
             );
         self.cassandra_client.execute(&update_query_flight_info, "all")?;
+
         Ok(())
     }
 

@@ -2,8 +2,9 @@ use crate::client::Client;
 use crate::types::{flight::Flight, airport::Airport, flight_status::FlightStatus};
 use chrono::{NaiveDateTime, Utc};
 use std::collections::HashMap;
+use std::io::Read;
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
-use std::thread;
+use std::{io, thread};
 use std::time::Duration;
 use threadpool::ThreadPool;
 
@@ -52,18 +53,27 @@ impl SimState {
 
     pub fn list_flights(&self) {
         self.is_listing.store(true, Ordering::SeqCst);
+        println!("Press 'q' and Enter to exit list-flights mode");
+    
         loop {
+            // Mostrar los vuelos
             self.display_flights();
-
-            if self.is_listing.load(Ordering::SeqCst) == false {
-                break;
+    
+            // Verificar si se ha presionado 'q' para salir
+            let mut buffer = [0; 1];
+            if io::stdin().read(&mut buffer).is_ok() {
+                if buffer[0] == b'q' {
+                    self.is_listing.store(false, Ordering::SeqCst);
+                    break;
+                }
             }
-
-            // Update the current time based on the time rate
+    
+            // Actualizar el tiempo actual en base a la tasa de tiempo
             if let (Ok(mut time), Ok(rate)) = (self.current_time.lock(), self.time_rate.lock()) {
                 *time += chrono::Duration::from_std(*rate).unwrap_or(chrono::Duration::seconds(60));
             }
-
+    
+            // Esperar un segundo antes de la siguiente actualización
             thread::sleep(Duration::from_secs(1));
         }
     }
@@ -88,7 +98,7 @@ impl SimState {
         if self.flights.is_empty() {
             println!("No flights available.");
         } else {
-            println!("Current Time: {}", self.current_time.lock().unwrap().format("%Y-%m-%d %H:%M:%S"));
+            println!("Current Time: {}", self.current_time.lock().unwrap().format("%d-%m-%Y %H:%M:%S"));
             println!("\n{:<15} {:<10} {:<10} {:<15} {:<10} {:<10}", 
                 "Flight Number", "Status", "Origin", "Destination", "Latitude", "Longitude");
 
