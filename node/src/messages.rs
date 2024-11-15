@@ -11,13 +11,14 @@ pub trait Serializable {
         Self: Sized;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Opcode {
     Query = 0x01,
     Response = 0x02,
     // Gossip = 0x03,
 }
 
+#[derive(Debug, PartialEq)]
 struct InternodeHeader {
     opcode: Opcode,
     ip: Ipv4Addr,
@@ -74,6 +75,7 @@ pub enum InternodeMessageContent {
     Response(InternodeResponse),
 }
 
+#[derive(Debug, PartialEq)]
 pub struct InternodeMessage {
     from: Ipv4Addr,
     content: InternodeMessageContent,
@@ -531,45 +533,334 @@ mod tests {
             timestamp: 1,
         };
 
-        let bytes = query.as_bytes();
+        let query_bytes = query.as_bytes();
 
-        let mut expected_bytes = Vec::new();
-        expected_bytes.extend(query.query_string.len().to_be_bytes());
-        expected_bytes.extend(query.query_string.as_bytes());
-        expected_bytes.extend(query.open_query_id.to_be_bytes());
-        expected_bytes.extend(query.client_id.to_be_bytes());
-        expected_bytes.push(query.replication as u8);
-        expected_bytes.extend(query.keyspace_name.len().to_be_bytes());
-        expected_bytes.extend(query.keyspace_name.as_bytes());
-        expected_bytes.extend(query.timestamp.to_be_bytes());
+        let mut bytes = Vec::new();
 
-        assert_eq!(bytes, expected_bytes);
+        bytes.extend(query.open_query_id.to_be_bytes());
+        bytes.extend(query.client_id.to_be_bytes());
+        bytes.extend(query.timestamp.to_be_bytes());
+
+        bytes.push(query.replication as u8);
+
+        let keyspace_name_len = query.keyspace_name.len() as u32;
+        bytes.extend(&keyspace_name_len.to_be_bytes());
+        bytes.extend(query.keyspace_name.as_bytes());
+
+        let query_string_len = query.query_string.len() as u32;
+        bytes.extend(&query_string_len.to_be_bytes());
+        bytes.extend(query.query_string.as_bytes());
+
+        assert_eq!(query_bytes, bytes);
     }
 
-    // #[test]
-    // fn test_query_from_bytes() {
-    //     let query = "SELECT * FROM something";
-    //     let bytes = [vec![0x01], query.as_bytes().to_vec()].concat();
-    //     let msg = InternodeMessage::from_bytes(&bytes).unwrap();
+    #[test]
+    fn test_query_from_bytes() {
+        let query = InternodeQuery {
+            query_string: "SELECT * FROM something".to_string(),
+            open_query_id: 1,
+            client_id: 1,
+            replication: false,
+            keyspace_name: "keyspace".to_string(),
+            timestamp: 1,
+        };
 
-    //     assert_eq!(msg, InternodeMessage::Query(query.to_string()));
-    // }
+        let query_bytes = query.as_bytes();
 
-    // #[test]
-    // fn test_response_to_bytes() {
-    //     let response = "DATA DATA DATA";
-    //     let msg = InternodeMessage::Response(response.to_string());
-    //     let bytes = msg.as_bytes();
+        let parsed_query = InternodeQuery::from_bytes(&query_bytes).unwrap();
 
-    //     assert_eq!(bytes, [vec![0x02], response.as_bytes().to_vec()].concat());
-    // }
+        assert_eq!(parsed_query, query);
+    }
 
-    // #[test]
-    // fn test_response_from_bytes() {
-    //     let response = "DATA DATA DATA";
-    //     let bytes = [vec![0x02], response.as_bytes().to_vec()].concat();
-    //     let msg = InternodeMessage::from_bytes(&bytes).unwrap();
+    #[test]
+    fn test_response_to_bytes() {
+        let response = InternodeResponse {
+            open_query_id: 1,
+            status: InternodeResponseStatus::Ok,
+            content: Some(InternodeResponseContent {
+                columns: vec!["column1".to_string(), "column2".to_string()],
+                select_columns: vec!["column1".to_string(), "column2".to_string()],
+                values: vec![vec!["value1".to_string(), "value2".to_string()]],
+            }),
+        };
 
-    //     assert_eq!(msg, InternodeMessage::Response(response.to_string()));
-    // }
+        let response_bytes = response.as_bytes();
+
+        let mut bytes = Vec::new();
+
+        bytes.extend(response.open_query_id.to_be_bytes());
+
+        let status_byte = match response.status {
+            InternodeResponseStatus::Ok => 0x00,
+            InternodeResponseStatus::Error => 0x01,
+        };
+        bytes.push(status_byte);
+
+        let content_bytes = if let Some(content) = response.content {
+            Some(content.as_bytes())
+        } else {
+            None
+        };
+
+        if let Some(c_bytes) = content_bytes {
+            bytes.extend((c_bytes.len() as u16).to_be_bytes());
+            bytes.extend(&c_bytes);
+        } else {
+            bytes.push(0);
+        }
+
+        assert_eq!(response_bytes, bytes);
+    }
+
+    #[test]
+    fn test_response_from_bytes() {
+        let response = InternodeResponse {
+            open_query_id: 1,
+            status: InternodeResponseStatus::Ok,
+            content: Some(InternodeResponseContent {
+                columns: vec!["column1".to_string(), "column2".to_string()],
+                select_columns: vec!["column1".to_string(), "column2".to_string()],
+                values: vec![vec!["value1".to_string(), "value2".to_string()]],
+            }),
+        };
+
+        let response_bytes = response.as_bytes();
+
+        let parsed_response = InternodeResponse::from_bytes(&response_bytes).unwrap();
+
+        assert_eq!(parsed_response, response);
+    }
+
+    #[test]
+    fn test_message_to_bytes_query() {
+        let query = InternodeQuery {
+            query_string: "SELECT * FROM something".to_string(),
+            open_query_id: 1,
+            client_id: 1,
+            replication: false,
+            keyspace_name: "keyspace".to_string(),
+            timestamp: 1,
+        };
+
+        let query_bytes = query.as_bytes();
+
+        let message = InternodeMessage {
+            from: Ipv4Addr::new(127, 0, 0, 1),
+            content: InternodeMessageContent::Query(query),
+        };
+
+        let message_bytes = message.as_bytes();
+
+        let mut bytes = Vec::new();
+
+        let header = InternodeHeader {
+            opcode: Opcode::Query,
+            ip: Ipv4Addr::new(127, 0, 0, 1),
+        };
+
+        bytes.extend_from_slice(&header.as_bytes());
+        bytes.extend_from_slice(&query_bytes);
+
+        assert_eq!(message_bytes, bytes);
+    }
+
+    #[test]
+    fn test_message_from_bytes_query() {
+        let query = InternodeQuery {
+            query_string: "SELECT * FROM something".to_string(),
+            open_query_id: 1,
+            client_id: 1,
+            replication: false,
+            keyspace_name: "keyspace".to_string(),
+            timestamp: 1,
+        };
+
+        let message = InternodeMessage {
+            from: Ipv4Addr::new(127, 0, 0, 1),
+            content: InternodeMessageContent::Query(query),
+        };
+
+        let message_bytes = message.as_bytes();
+
+        let parsed_message = InternodeMessage::from_bytes(&message_bytes).unwrap();
+
+        assert_eq!(parsed_message, message);
+    }
+
+    #[test]
+    fn test_message_to_bytes_response() {
+        let response = InternodeResponse {
+            open_query_id: 1,
+            status: InternodeResponseStatus::Ok,
+            content: Some(InternodeResponseContent {
+                columns: vec!["column1".to_string(), "column2".to_string()],
+                select_columns: vec!["column1".to_string(), "column2".to_string()],
+                values: vec![vec!["value1".to_string(), "value2".to_string()]],
+            }),
+        };
+
+        let response_bytes = response.as_bytes();
+
+        let message = InternodeMessage {
+            from: Ipv4Addr::new(127, 0, 0, 1),
+            content: InternodeMessageContent::Response(response),
+        };
+
+        let message_bytes = message.as_bytes();
+
+        let mut bytes = Vec::new();
+
+        let header = InternodeHeader {
+            opcode: Opcode::Response,
+            ip: Ipv4Addr::new(127, 0, 0, 1),
+        };
+
+        bytes.extend_from_slice(&header.as_bytes());
+        bytes.extend_from_slice(&response_bytes);
+
+        assert_eq!(message_bytes, bytes);
+    }
+
+    #[test]
+    fn test_message_from_bytes_response() {
+        let response = InternodeResponse {
+            open_query_id: 1,
+            status: InternodeResponseStatus::Ok,
+            content: Some(InternodeResponseContent {
+                columns: vec!["column1".to_string(), "column2".to_string()],
+                select_columns: vec!["column1".to_string(), "column2".to_string()],
+                values: vec![vec!["value1".to_string(), "value2".to_string()]],
+            }),
+        };
+
+        let message = InternodeMessage {
+            from: Ipv4Addr::new(127, 0, 0, 1),
+            content: InternodeMessageContent::Response(response),
+        };
+
+        let message_bytes = message.as_bytes();
+
+        let parsed_message = InternodeMessage::from_bytes(&message_bytes).unwrap();
+
+        assert_eq!(parsed_message, message);
+    }
+
+    #[test]
+    fn test_message_from_bytes_error() {
+        let message_bytes = vec![0, 0, 0, 0, 0];
+
+        let parsed_message = InternodeMessage::from_bytes(&message_bytes);
+
+        assert!(parsed_message.is_err());
+    }
+
+    #[test]
+    fn test_header_to_bytes() {
+        let header = InternodeHeader {
+            opcode: Opcode::Query,
+            ip: Ipv4Addr::new(127, 0, 0, 1),
+        };
+
+        let header_bytes = header.as_bytes();
+
+        let mut bytes = Vec::new();
+
+        bytes.extend_from_slice(&header.ip.octets());
+        bytes.push(header.opcode as u8);
+
+        assert_eq!(header_bytes, bytes);
+    }
+
+    #[test]
+    fn test_header_from_bytes() {
+        let header = InternodeHeader {
+            opcode: Opcode::Query,
+            ip: Ipv4Addr::new(127, 0, 0, 1),
+        };
+
+        let header_bytes = header.as_bytes();
+
+        let parsed_header = InternodeHeader::from_bytes(&header_bytes).unwrap();
+
+        assert_eq!(parsed_header, header);
+    }
+
+    #[test]
+    fn test_header_from_bytes_error() {
+        let header_bytes = vec![0, 0, 0, 0, 0];
+
+        let parsed_header = InternodeHeader::from_bytes(&header_bytes);
+
+        assert!(parsed_header.is_err());
+    }
+
+    #[test]
+    fn test_content_to_bytes() {
+        let content = InternodeResponseContent {
+            columns: vec!["column1".to_string(), "column2".to_string()],
+            select_columns: vec!["column1".to_string(), "column2".to_string()],
+            values: vec![vec!["value1".to_string(), "value2".to_string()]],
+        };
+
+        let content_bytes = content.as_bytes();
+
+        let mut bytes = Vec::new();
+
+        let columns_len = content.columns.len() as u32;
+        bytes.extend(&columns_len.to_be_bytes());
+
+        for column in &content.columns {
+            let column_len = column.len() as u32;
+            bytes.extend(&column_len.to_be_bytes());
+            bytes.extend(column.as_bytes());
+        }
+
+        let select_columns_len = content.select_columns.len() as u32;
+        bytes.extend(&select_columns_len.to_be_bytes());
+
+        for select_column in &content.select_columns {
+            let select_column_len = select_column.len() as u32;
+            bytes.extend(&select_column_len.to_be_bytes());
+            bytes.extend(select_column.as_bytes());
+        }
+
+        let values_len = content.values.len() as u32;
+        bytes.extend(&values_len.to_be_bytes());
+
+        for value in &content.values {
+            let value_len = value.len() as u32;
+            bytes.extend(&value_len.to_be_bytes());
+            for value_part in value {
+                let value_part_len = value_part.len() as u32;
+                bytes.extend(&value_part_len.to_be_bytes());
+                bytes.extend(value_part.as_bytes());
+            }
+        }
+
+        assert_eq!(content_bytes, bytes);
+    }
+
+    #[test]
+    fn test_content_from_bytes() {
+        let content = InternodeResponseContent {
+            columns: vec!["column1".to_string(), "column2".to_string()],
+            select_columns: vec!["column1".to_string(), "column2".to_string()],
+            values: vec![vec!["value1".to_string(), "value2".to_string()]],
+        };
+
+        let content_bytes = content.as_bytes();
+
+        let parsed_content = InternodeResponseContent::from_bytes(&content_bytes).unwrap();
+
+        assert_eq!(parsed_content, content);
+    }
+
+    #[test]
+    fn test_content_from_bytes_error() {
+        let content_bytes = vec![0, 0, 0, 0, 0];
+
+        let parsed_content = InternodeResponseContent::from_bytes(&content_bytes);
+
+        assert!(parsed_content.is_err());
+    }
 }
