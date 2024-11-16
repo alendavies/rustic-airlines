@@ -3,7 +3,7 @@ use std::{
     net::Ipv4Addr,
 };
 
-pub trait Serializable {
+pub trait InternodeSerializable {
     fn as_bytes(&self) -> Vec<u8>;
 
     fn from_bytes(bytes: &[u8]) -> Result<Self, InternodeMessageError>
@@ -24,7 +24,7 @@ struct InternodeHeader {
     ip: Ipv4Addr,
 }
 
-impl Serializable for InternodeHeader {
+impl InternodeSerializable for InternodeHeader {
     /// 0    8    16   24   32
     /// +----+----+----+----+
     /// |         ip        |
@@ -81,6 +81,12 @@ pub struct InternodeMessage {
     pub content: InternodeMessageContent,
 }
 
+impl InternodeMessage {
+    pub fn new(from: Ipv4Addr, content: InternodeMessageContent) -> Self {
+        Self { from, content }
+    }
+}
+
 /// A query sent by a coordinator node to other nodes.
 #[derive(Debug, PartialEq)]
 pub struct InternodeQuery {
@@ -99,7 +105,7 @@ pub struct InternodeQuery {
     pub timestamp: i64,
 }
 
-impl Serializable for InternodeQuery {
+impl InternodeSerializable for InternodeQuery {
     // 0    8    16   24   32
     // +----+----+----+----+
     // |   open_query_id   |
@@ -209,20 +215,20 @@ impl Serializable for InternodeQuery {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum InternodeResponseStatus {
     Ok = 0x00,
     Error = 0x01,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct InternodeResponseContent {
     pub columns: Vec<String>,
     pub select_columns: Vec<String>,
     pub values: Vec<Vec<String>>,
 }
 
-impl Serializable for InternodeResponseContent {
+impl InternodeSerializable for InternodeResponseContent {
     // TODO: chequear la serialización del content
     fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
@@ -356,7 +362,7 @@ impl Serializable for InternodeResponseContent {
 }
 
 /// A response sent by a node in response of a coordinator query.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct InternodeResponse {
     /// The `id` of the query to be identified by the open queries handler.
     pub open_query_id: u32,
@@ -366,7 +372,21 @@ pub struct InternodeResponse {
     pub content: Option<InternodeResponseContent>,
 }
 
-impl Serializable for InternodeResponse {
+impl InternodeResponse {
+    pub fn new(
+        open_query_id: u32,
+        status: InternodeResponseStatus,
+        content: Option<InternodeResponseContent>,
+    ) -> Self {
+        Self {
+            open_query_id,
+            status,
+            content,
+        }
+    }
+}
+
+impl InternodeSerializable for InternodeResponse {
     // 0    8    16   24   32
     // +----+----+----+----+
     // |   open_query_id   |
@@ -458,7 +478,7 @@ impl Serializable for InternodeResponse {
 #[derive(Debug)]
 pub struct InternodeMessageError;
 
-impl Serializable for InternodeMessage {
+impl InternodeSerializable for InternodeMessage {
     // 0    8    16   24   32
     // +----+----+----+----+
     // |       header      |

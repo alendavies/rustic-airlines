@@ -1,5 +1,5 @@
 use crate::errors::NodeError;
-use crate::messages::InternodeMessage;
+use crate::messages::{InternodeMessage, InternodeSerializable};
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};

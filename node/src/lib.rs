@@ -25,7 +25,7 @@ use errors::NodeError;
 use gossip::Gossiper;
 use internode_protocol_handler::InternodeProtocolHandler;
 use keyspace::Keyspace;
-use messages::InternodeMessage;
+use messages::{InternodeMessage, InternodeResponse, InternodeSerializable};
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -383,26 +383,6 @@ impl Node {
             is_seed = node_guard.is_seed();
             seed_ip = node_guard.seeds_nodes[0];
             self_ip = node_guard.get_ip();
-
-            if !is_seed {
-                let message = InternodeProtocolHandler::create_protocol_message(
-                    &node_guard.get_ip_string(),
-                    0,
-                    "HANDSHAKE",
-                    "_",
-                    true,
-                    false,
-                    0,
-                    "None",
-                );
-                connect_and_send_message(
-                    seed_ip,
-                    INTERNODE_PORT,
-                    Arc::clone(&connections),
-                    InternodeMessage::Query(message),
-                )?;
-                node_guard.partitioner.add_node(seed_ip)?;
-            }
         }
 
         // Creates a thread to handle node connections
@@ -518,7 +498,7 @@ impl Node {
         Ok(())
     }
 
-    fn forward_message(
+    /* fn forward_message(
         &self,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         sent_ip: Ipv4Addr,
@@ -542,7 +522,7 @@ impl Node {
             Arc::clone(&connections),
             InternodeMessage::Query(message),
         )
-    }
+    } */
 
     // Receives packets from the client
     fn handle_incoming_client_messages(
@@ -645,6 +625,9 @@ impl Node {
 
             // Try to read a line
             let bytes_read = reader.read(&mut buffer);
+            let message = InternodeMessage::from_bytes(&buffer)
+                .map_err(|e| NodeError::InternodeProtocolError)?;
+
             match bytes_read {
                 Ok(0) => {
                     // Connection closed
@@ -654,7 +637,7 @@ impl Node {
                     // Process the command with the protocol, passing the buffer and the necessary parameters
                     let result = internode_protocol_handler.handle_command(
                         &node,
-                        &buffer.trim().to_string(),
+                        message,
                         connections.clone(),
                         is_seed,
                     );
@@ -727,15 +710,14 @@ impl Node {
         )?;
 
         if let Some(((finished_responses, failed_nodes), content)) = response {
-
             let mut guard_node = node.lock()?;
             // Obtener el keyspace especificado o el actual del cliente
-            
+
             let keyspace = guard_node
                 .get_open_handle_query()
                 .get_keyspace_of_query(open_query_id)?
                 .clone();
-       
+
             // Intentar obtener el nombre de la tabla y buscar la tabla correspondiente en el keyspace
             let table = query.get_table_name().and_then(|table_name| {
                 keyspace
@@ -755,13 +737,14 @@ impl Node {
             } else {
                 "".to_string()
             };
-            
+
             let query_handler = guard_node.get_open_handle_query();
 
             for _ in 0..finished_responses {
                 InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
-                    &content,
+                    // TODO: convertir el content al content de la response
+                    &InternodeResponse::new(open_query_id as u32, messages::InternodeResponseStatus::Ok, None),
                     open_query_id,
                     keyspace_name.clone(),
                     columns.clone(),
@@ -771,11 +754,10 @@ impl Node {
                 InternodeProtocolHandler::add_error_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     open_query_id,
-        
+
                 )?;
             }
         }
-
 
         Ok(())
     }
