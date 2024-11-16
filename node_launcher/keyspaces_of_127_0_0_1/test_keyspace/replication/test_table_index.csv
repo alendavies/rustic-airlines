@@ -1,1 +1,6 @@
-ClusteringColumns,StartByte,EndByte
+clustering_column,first_byte,last_byte
+name,0,21
+Gamma,22,36
+Delta,52,66
+Beta,67,94
+Alpha,95,124

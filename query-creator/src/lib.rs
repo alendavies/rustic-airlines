@@ -1,7 +1,7 @@
 ﻿pub mod clauses;
 pub mod errors;
 mod logical_operator;
-mod operator;
+pub mod operator;
 mod utils;
 
 use clauses::keyspace::{

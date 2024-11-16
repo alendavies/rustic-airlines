@@ -11,15 +11,16 @@ fn main() {
     client.startup().unwrap();
     let queries = vec![
     "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
-    "CREATE TABLE test_keyspace.test_table (id INT, name TEXT, last_name INT, age INT, PRIMARY KEY (id, name, last_name)) WITH CLUSTERING ORDER BY (name ASC, last_name DESC)".to_string(),
-    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 100, 24)".to_string(),
-    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 200, 30)".to_string(),
-    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 150, 45)".to_string(),
-    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 250, 45)".to_string(),
-    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 50, 45)".to_string(),
-    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 175, 45)".to_string(),
-    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 300, 50)".to_string(),
-    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'TestName', 25, 60)".to_string(),
+    "CREATE TABLE test_keyspace.test_table (id INT, name TEXT, last_name INT, age INT, PRIMARY KEY (id, name, last_name)) WITH CLUSTERING ORDER BY (name DESC, last_name ASC)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Alpha', 500, 40)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Alpha', 300, 30)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Alpha', 300, 35)".to_string(), // Caso idéntico
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Beta', 700, 50)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Beta', 600, 45)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Beta', 600, 60)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Gamma', 800, 55)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Delta', 400, 25)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Delta', 450, 35)".to_string(),
 ];
 
     // Ejecutar cada consulta en un loopc
