@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use egui::{Align2, Color32, FontId, Rect, Response, Stroke, Vec2};
+use egui::{include_image, Align2, Color32, FontId, Image, Rect, Response, Stroke, Vec2};
 use walkers::{extras::Style, Plugin, Projector};
 
 use crate::{db::Airport, state::SelectionState};
@@ -38,44 +38,22 @@ impl Airport {
         selection_state: &mut SelectionState,
     ) {
         let screen_position = projector.project(self.position);
-        let offset = Vec2::new(8., 8.);
-
-        let label =
-            ui.painter()
-                .layout_no_wrap(self.iata.to_string(), FontId::default(), Color32::BLACK);
-
-        ui.painter().rect_filled(
-            label
-                .rect
-                .translate(screen_position)
-                .translate(offset)
-                .expand(5.),
-            10.,
-            Color32::TRANSPARENT,
-        );
-
-        ui.painter().galley(
-            (screen_position + offset).to_pos2(),
-            label,
-            egui::Color32::BLACK,
-        );
-
-        ui.painter().circle(
-            screen_position.to_pos2(),
-            10.,
-            Color32::default(),
-            Stroke::default(),
-        );
-
-        ui.painter().text(
-            screen_position.to_pos2(),
-            Align2::LEFT_BOTTOM,
-            '📌',
-            style.symbol_font.clone(),
-            Color32::RED,
-        );
 
         let symbol_size = Vec2::new(30.0, 30.0);
+
+        // let rect = Rect::from_center_size(screen_position.to_pos2(), symbol_size);
+        let rect = {
+            let min_pos = screen_position.to_pos2() - Vec2::new(symbol_size.x / 2.0, symbol_size.y);
+            Rect::from_min_size(min_pos, symbol_size)
+        };
+
+        let image = Image::new(include_image!(
+            r"..\..\..\graphical-interface\location-pin-solid.svg"
+        ))
+        .fit_to_exact_size(symbol_size);
+
+        ui.put(rect, image);
+
         let clickable_area = Rect::from_center_size(screen_position.to_pos2(), symbol_size);
 
         let response = ui.allocate_rect(clickable_area, egui::Sense::click());
