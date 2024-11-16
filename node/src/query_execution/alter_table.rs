@@ -11,7 +11,7 @@ use super::QueryExecution;
 
 impl QueryExecution {
     pub(crate) fn execute_alter_table(
-        &self,
+        &mut self,
         alter_table: AlterTable,
         internode: bool,
         open_query_id: i32,
@@ -70,7 +70,7 @@ impl QueryExecution {
         // Broadcast the changes to other nodes if not an internode request
         if !internode {
             let serialized_alter_table = alter_table.serialize();
-            self.send_to_other_nodes(
+            self.how_many_nodes_failed = self.send_to_other_nodes(
                 node,
                 "ALTER_TABLE",
                 &serialized_alter_table,

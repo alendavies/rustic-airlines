@@ -3,6 +3,9 @@ IP2 = 127.0.0.2
 IP3 = 127.0.0.3
 IP4 = 127.0.0.4
 IP5 = 127.0.0.5
+IP6 = 127.0.0.6
+IP7 = 127.0.0.7
+IP8 = 127.0.0.8
 
 run:
 	gnome-terminal -- bash -c "cargo run -- $(IP1); exec bash" &
@@ -14,5 +17,11 @@ run:
 	gnome-terminal -- bash -c "cargo run -- $(IP4); exec bash" &
 	sleep 2
 	gnome-terminal -- bash -c "cargo run -- $(IP5); exec bash" &
+	sleep 2
+	gnome-terminal -- bash -c "cargo run -- $(IP6); exec bash" &
+	sleep 2
+	gnome-terminal -- bash -c "cargo run -- $(IP7); exec bash" &
+	sleep 2
+	gnome-terminal -- bash -c "cargo run -- $(IP8); exec bash" &
 
 .PHONY: run

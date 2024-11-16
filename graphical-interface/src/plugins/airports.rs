@@ -47,10 +47,8 @@ impl Airport {
             Rect::from_min_size(min_pos, symbol_size)
         };
 
-        let image = Image::new(include_image!(
-            r"..\..\..\graphical-interface\location-pin-solid.svg"
-        ))
-        .fit_to_exact_size(symbol_size);
+        let image = Image::new(include_image!(r"../../location-pin-solid.svg"))
+            .fit_to_exact_size(symbol_size);
 
         ui.put(rect, image);
 

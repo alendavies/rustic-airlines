@@ -22,6 +22,7 @@ use crate::utils::connect_and_send_message;
 // External libraries
 use driver::server::{handle_client_request, Request};
 use errors::NodeError;
+use gossip::Gossiper;
 use internode_protocol_handler::InternodeProtocolHandler;
 use keyspace::Keyspace;
 use messages::InternodeMessage;
@@ -52,6 +53,7 @@ pub struct Node {
     keyspaces: Vec<Keyspace>,
     clients_keyspace: HashMap<i32, Option<String>>,
     last_client_id: i32,
+    gossiper: Gossiper,
 }
 
 impl Node {
@@ -67,6 +69,7 @@ impl Node {
     pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>) -> Result<Node, NodeError> {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip)?;
+
         Ok(Node {
             ip,
             seeds_nodes,
@@ -75,6 +78,7 @@ impl Node {
             keyspaces: vec![],
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
+            gossiper: Gossiper::new(),
         })
     }
 
@@ -574,7 +578,7 @@ impl Node {
                     let query = handle_client_request(&buffer);
                     match query {
                         Request::Startup => {
-                            // let mut stream_guard = stream.lock()?;
+                            // let mut stream_guard = stream.println!("el keyspace es {}")lock()?;
                             stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
                             stream_guard.flush()?;
                         }
@@ -619,7 +623,7 @@ impl Node {
 
     fn handle_incoming_internode_messages(
         node: Arc<Mutex<Node>>,
-        mut stream: Arc<Mutex<TcpStream>>,
+        stream: Arc<Mutex<TcpStream>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         is_seed: bool,
     ) -> Result<(), NodeError> {
@@ -650,11 +654,13 @@ impl Node {
                     // Process the command with the protocol, passing the buffer and the necessary parameters
                     let result = internode_protocol_handler.handle_command(
                         &node,
-                        &buffer,
-                        &mut stream,
+                        &buffer.trim().to_string(),
                         connections.clone(),
                         is_seed,
                     );
+
+                    // acá hay que fijarse si se modificó el endpoint state y de alguna forma
+                    // avisarle al partitioner
 
                     // If there's an error handling the command, exit the loop
                     if let Err(e) = result {
@@ -720,14 +726,16 @@ impl Node {
             client_id,
         )?;
 
-        if let Some((finished_responses, content)) = response {
+        if let Some(((finished_responses, failed_nodes), content)) = response {
+
             let mut guard_node = node.lock()?;
             // Obtener el keyspace especificado o el actual del cliente
+            
             let keyspace = guard_node
                 .get_open_handle_query()
-                .get_keyspace_of_query(client_id)?
+                .get_keyspace_of_query(open_query_id)?
                 .clone();
-
+       
             // Intentar obtener el nombre de la tabla y buscar la tabla correspondiente en el keyspace
             let table = query.get_table_name().and_then(|table_name| {
                 keyspace
@@ -747,10 +755,11 @@ impl Node {
             } else {
                 "".to_string()
             };
-
+            
             let query_handler = guard_node.get_open_handle_query();
-            for _ in [..finished_responses] {
-                InternodeProtocolHandler::add_response_to_open_query_and_send_response_if_closed(
+
+            for _ in 0..finished_responses {
+                InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     &content,
                     open_query_id,
@@ -758,7 +767,15 @@ impl Node {
                     columns.clone(),
                 )?;
             }
+            for _ in 0..failed_nodes {
+                InternodeProtocolHandler::add_error_response_to_open_query_and_send_response_if_closed(
+                    query_handler,
+                    open_query_id,
+        
+                )?;
+            }
         }
+
 
         Ok(())
     }

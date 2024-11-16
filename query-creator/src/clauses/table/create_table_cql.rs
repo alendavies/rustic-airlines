@@ -85,7 +85,6 @@ impl CreateTable {
     pub fn get_used_keyspace(&self) -> String {
         self.keyspace_used_name.clone()
     }
-    // Constructor
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
@@ -145,6 +144,7 @@ impl CreateTable {
             }
 
             let col_parts: Vec<&str> = part.split_whitespace().collect();
+
             if col_parts.len() < 2 {
                 return Err(CQLError::InvalidSyntax);
             }
@@ -152,14 +152,12 @@ impl CreateTable {
             let col_name = col_parts[0];
             let data_type = DataType::from_str(col_parts[1])?;
 
+            // Si es una columna con PRIMARY KEY explícito
             if col_parts
                 .get(2)
                 .map_or(false, |&s| s.to_uppercase() == "PRIMARY")
             {
-                if primary_key_def.is_some() {
-                    return Err(CQLError::InvalidSyntax);
-                }
-                primary_key_def = Some(format!("PRIMARY KEY ({})", col_name));
+                partition_key_cols.push(col_name.to_string());
             }
 
             columns.push(Column::new(col_name, data_type, false, true));
@@ -243,8 +241,6 @@ impl CreateTable {
         })
     }
 
-    // MÃ©todo para serializar la estructura `CreateTable` a una cadena de texto
-    // Método para serializar la estructura `CreateTable` a una cadena de texto
     pub fn serialize(&self) -> String {
         let mut columns_str: Vec<String> = Vec::new();
         let mut partition_key_cols: Vec<String> = Vec::new();
@@ -257,35 +253,36 @@ impl CreateTable {
             if !col.allows_null {
                 col_def.push_str(" NOT NULL");
             }
-            columns_str.push(col_def);
 
             // Identifica las columnas de la clave primaria y órdenes de clustering
             if col.is_partition_key {
                 partition_key_cols.push(col.name.clone());
+                // Si hay una sola partition key sin clustering columns, se agrega PRIMARY KEY aquí
+                if partition_key_cols.len() == 1 && clustering_key_cols.is_empty() {
+                    col_def.push_str(" PRIMARY KEY");
+                }
             } else if col.is_clustering_column {
                 clustering_key_cols.push(col.name.clone());
                 if !col.clustering_order.is_empty() {
                     clustering_orders.push(format!("{} {}", col.name, col.clustering_order));
                 }
             }
+
+            columns_str.push(col_def);
         }
 
-        // Construye la definición de la clave primaria
-        let primary_key = if !partition_key_cols.is_empty() {
-            if clustering_key_cols.is_empty() {
-                format!("PRIMARY KEY ({})", partition_key_cols.join(", "))
-            } else {
-                format!(
-                    "PRIMARY KEY (({}), {})",
-                    partition_key_cols.join(", "),
-                    clustering_key_cols.join(", ")
-                )
-            }
+        // Construye la definición de la clave primaria si hay clustering columns
+        let primary_key = if !partition_key_cols.is_empty() && !clustering_key_cols.is_empty() {
+            format!(
+                "PRIMARY KEY (({}), {})",
+                partition_key_cols.join(", "),
+                clustering_key_cols.join(", ")
+            )
         } else {
             String::new()
         };
 
-        // Añade la definición de la Primary Key al final de la tabla
+        // Añade la definición de la Primary Key al final de la tabla si aplica
         if !primary_key.is_empty() {
             columns_str.push(primary_key);
         }
