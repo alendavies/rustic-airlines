@@ -77,26 +77,26 @@ pub enum InternodeMessageContent {
 
 #[derive(Debug, PartialEq)]
 pub struct InternodeMessage {
-    from: Ipv4Addr,
-    content: InternodeMessageContent,
+    pub from: Ipv4Addr,
+    pub content: InternodeMessageContent,
 }
 
 /// A query sent by a coordinator node to other nodes.
 #[derive(Debug, PartialEq)]
-struct InternodeQuery {
+pub struct InternodeQuery {
     /// The CQL query string.
-    query_string: String,
+    pub query_string: String,
     /// The `id` of the query to be identified by the open queries handler.
-    open_query_id: u32,
+    pub open_query_id: u32,
     /// The client that owns the query in this node.
-    client_id: u32,
+    pub client_id: u32,
     /// This query should be executed over the replications stored by the node,
     /// not over its owned data.
-    replication: bool,
+    pub replication: bool,
     /// Keyspace on which the query acts.
-    keyspace_name: String,
+    pub keyspace_name: String,
     /// The timestamp when the coordinator node received the query.
-    timestamp: i64,
+    pub timestamp: i64,
 }
 
 impl Serializable for InternodeQuery {
@@ -210,16 +210,16 @@ impl Serializable for InternodeQuery {
 }
 
 #[derive(Debug, PartialEq)]
-enum InternodeResponseStatus {
+pub enum InternodeResponseStatus {
     Ok = 0x00,
     Error = 0x01,
 }
 
 #[derive(Debug, PartialEq)]
-struct InternodeResponseContent {
-    columns: Vec<String>,
-    select_columns: Vec<String>,
-    values: Vec<Vec<String>>,
+pub struct InternodeResponseContent {
+    pub columns: Vec<String>,
+    pub select_columns: Vec<String>,
+    pub values: Vec<Vec<String>>,
 }
 
 impl Serializable for InternodeResponseContent {
@@ -357,13 +357,13 @@ impl Serializable for InternodeResponseContent {
 
 /// A response sent by a node in response of a coordinator query.
 #[derive(Debug, PartialEq)]
-struct InternodeResponse {
+pub struct InternodeResponse {
     /// The `id` of the query to be identified by the open queries handler.
-    open_query_id: u32,
+    pub open_query_id: u32,
     /// If the query was successful.
-    status: InternodeResponseStatus,
+    pub status: InternodeResponseStatus,
     /// The response content, if any (for example a `SELECT`).
-    content: Option<InternodeResponseContent>,
+    pub content: Option<InternodeResponseContent>,
 }
 
 impl Serializable for InternodeResponse {
