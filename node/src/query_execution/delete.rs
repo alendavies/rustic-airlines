@@ -78,9 +78,7 @@ impl QueryExecution {
                 failed_nodes = self.send_to_single_node(
                     node.get_ip(),
                     node_to_delete,
-                    "DELETE",
                     &serialized_delete,
-                    true,
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
@@ -94,9 +92,7 @@ impl QueryExecution {
                 (internode_failed_nodes, replication) = self.send_to_replication_nodes(
                     node,
                     node_to_delete,
-                    "DELETE",
                     &serialized_delete,
-                    true,
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),

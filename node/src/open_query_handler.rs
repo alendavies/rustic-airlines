@@ -1,6 +1,6 @@
 use crate::errors::NodeError;
 use crate::keyspace::Keyspace;
-use crate::messages::{InternodeResponse, InternodeResponseContent};
+use crate::messages::InternodeResponse;
 use crate::table::Table;
 use query_creator::Query;
 use std::collections::HashMap;
@@ -123,7 +123,6 @@ impl OpenQuery {
             .is_query_ready(self.ok_responses as usize, self.needed_responses as usize)
             || !self.can_still_achieve_required_ok(
                 self.needed_responses,
-                self.ok_responses,
                 self.error_responses,
                 self.consistency_level
                     .required_oks(self.needed_responses as usize) as i32,
@@ -133,7 +132,6 @@ impl OpenQuery {
     fn can_still_achieve_required_ok(
         &self,
         total_responses: i32,
-        ok_responses: i32,
         error_responses: i32,
         required_ok: i32,
     ) -> bool {

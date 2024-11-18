@@ -10,14 +10,13 @@ mod utils;
 
 // Standard libraries
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 // Internal project libraries
 use crate::table::Table;
-use crate::utils::connect_and_send_message;
 
 // External libraries
 use driver::server::{handle_client_request, Request};
@@ -25,7 +24,9 @@ use errors::NodeError;
 use gossip::Gossiper;
 use internode_protocol_handler::InternodeProtocolHandler;
 use keyspace::Keyspace;
-use messages::{InternodeMessage, InternodeResponse, InternodeSerializable};
+use messages::{
+    InternodeMessage, InternodeResponse, InternodeResponseContent, InternodeSerializable,
+};
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -123,10 +124,6 @@ impl Node {
             table,
             keyspace,
         ))
-    }
-
-    fn is_seed(&self) -> bool {
-        self.seeds_nodes.contains(&self.ip)
     }
 
     fn get_ip(&self) -> Ipv4Addr {
@@ -375,14 +372,17 @@ impl Node {
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
-        let is_seed;
-        let seed_ip;
         let self_ip;
         {
             let mut node_guard = node.lock()?;
-            is_seed = node_guard.is_seed();
-            seed_ip = node_guard.seeds_nodes[0];
             self_ip = node_guard.get_ip();
+            for i in 1..=5 {
+                let ip = Ipv4Addr::new(127, 0, 0, i); // Genera la dirección IP como Ipv4Addr
+                if ip != node_guard.ip {
+                    // Compara con la IP del nodo
+                    node_guard.partitioner.add_node(ip)?; // Agrega al partitioner
+                }
+            }
         }
 
         // Creates a thread to handle node connections
@@ -390,15 +390,10 @@ impl Node {
         let node_connections = Arc::clone(&connections);
         let self_ip_node = self_ip.clone();
         let handle_node_thread = thread::spawn(move || {
-            Self::handle_node_connections(
-                node_connections_node,
-                node_connections,
-                self_ip_node,
-                is_seed,
-            )
-            .unwrap_or_else(|err| {
-                eprintln!("Error in internode connections: {:?}", err); // Or handle the error as needed
-            });
+            Self::handle_node_connections(node_connections_node, node_connections, self_ip_node)
+                .unwrap_or_else(|err| {
+                    eprintln!("Error in internode connections: {:?}", err); // Or handle the error as needed
+                });
         });
 
         // Creates a thread to handle client connections
@@ -429,7 +424,6 @@ impl Node {
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         self_ip: std::net::Ipv4Addr,
-        is_seed: bool,
     ) -> Result<(), NodeError> {
         let socket = SocketAddrV4::new(self_ip, INTERNODE_PORT);
         let listener = TcpListener::bind(socket)?;
@@ -446,7 +440,6 @@ impl Node {
                             node_clone,
                             stream,
                             connections_clone,
-                            is_seed,
                         ) {
                             eprintln!("{:?}", e);
                         }
@@ -497,32 +490,6 @@ impl Node {
 
         Ok(())
     }
-
-    /* fn forward_message(
-        &self,
-        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-        sent_ip: Ipv4Addr,
-        target_ip: Ipv4Addr,
-    ) -> Result<(), NodeError> {
-        // First, try to reuse or establish a connection
-
-        let message = InternodeProtocolHandler::create_protocol_message(
-            &sent_ip.to_string(),
-            0,
-            "HANDSHAKE",
-            "_",
-            true,
-            false,
-            0,
-            "None",
-        );
-        connect_and_send_message(
-            target_ip,
-            INTERNODE_PORT,
-            Arc::clone(&connections),
-            InternodeMessage::Query(message),
-        )
-    } */
 
     // Receives packets from the client
     fn handle_incoming_client_messages(
@@ -605,7 +572,6 @@ impl Node {
         node: Arc<Mutex<Node>>,
         stream: Arc<Mutex<TcpStream>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-        is_seed: bool,
     ) -> Result<(), NodeError> {
         // Clone the stream under Mutex protection and create the reader
         let mut reader = {
@@ -626,7 +592,7 @@ impl Node {
             // Try to read a line
             let bytes_read = reader.read(&mut buffer);
             let message = InternodeMessage::from_bytes(&buffer)
-                .map_err(|e| NodeError::InternodeProtocolError)?;
+                .map_err(|_| NodeError::InternodeProtocolError)?;
 
             match bytes_read {
                 Ok(0) => {
@@ -639,7 +605,6 @@ impl Node {
                         &node,
                         message,
                         connections.clone(),
-                        is_seed,
                     );
 
                     // acá hay que fijarse si se modificó el endpoint state y de alguna forma
@@ -741,10 +706,22 @@ impl Node {
             let query_handler = guard_node.get_open_handle_query();
 
             for _ in 0..finished_responses {
+                let mut select_columns: Vec<String> = vec![];
+                let mut values: Vec<Vec<String>> = vec![];
+                let mut complete_columns: Vec<String> = vec![];
+                if let Some(cont) = content.content.clone() {
+                    complete_columns = cont.columns.clone();
+                    select_columns = cont.select_columns.clone();
+                    values = cont.values.clone();
+                }
                 InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     // TODO: convertir el content al content de la response
-                    &InternodeResponse::new(open_query_id as u32, messages::InternodeResponseStatus::Ok, None),
+                    &InternodeResponse::new(open_query_id as u32, messages::InternodeResponseStatus::Ok, Some(InternodeResponseContent{
+                        columns: complete_columns,
+                        select_columns:  select_columns,
+                        values: values,
+                    })),
                     open_query_id,
                     keyspace_name.clone(),
                     columns.clone(),

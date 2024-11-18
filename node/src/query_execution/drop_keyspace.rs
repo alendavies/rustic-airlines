@@ -41,9 +41,7 @@ impl QueryExecution {
             let serialized_drop_keyspace = drop_keyspace.serialize();
             self.send_to_other_nodes(
                 node,
-                "DROP_KEYSPACE",
                 &serialized_drop_keyspace,
-                true,
                 open_query_id,
                 client_id,
                 "None",

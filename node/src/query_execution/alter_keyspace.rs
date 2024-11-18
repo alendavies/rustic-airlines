@@ -41,9 +41,7 @@ impl QueryExecution {
             let serialized_alter_keyspace = alter_keyspace.serialize();
             self.how_many_nodes_failed = self.send_to_other_nodes(
                 node,
-                "ALTER_KEYSPACE",
                 &serialized_alter_keyspace,
-                true,
                 open_query_id,
                 client_id,
                 "None",

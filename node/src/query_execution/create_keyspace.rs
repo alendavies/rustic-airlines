@@ -52,9 +52,7 @@ impl QueryExecution {
             let serialized_create_keyspace = create_keyspace.serialize();
             self.how_many_nodes_failed = self.send_to_other_nodes(
                 node,
-                "CREATE_KEYSPACE",
                 &serialized_create_keyspace,
-                true,
                 open_query_id,
                 client_id,
                 "None",

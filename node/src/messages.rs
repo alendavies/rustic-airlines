@@ -69,13 +69,13 @@ impl InternodeSerializable for InternodeHeader {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum InternodeMessageContent {
     Query(InternodeQuery),
     Response(InternodeResponse),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct InternodeMessage {
     pub from: Ipv4Addr,
     pub content: InternodeMessageContent,
@@ -88,7 +88,7 @@ impl InternodeMessage {
 }
 
 /// A query sent by a coordinator node to other nodes.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct InternodeQuery {
     /// The CQL query string.
     pub query_string: String,
