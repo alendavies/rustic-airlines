@@ -603,7 +603,7 @@ impl Node {
                     // Process the command with the protocol, passing the buffer and the necessary parameters
                     let result = internode_protocol_handler.handle_command(
                         &node,
-                        message,
+                        message.clone(),
                         connections.clone(),
                     );
 
@@ -612,7 +612,7 @@ impl Node {
 
                     // If there's an error handling the command, exit the loop
                     if let Err(e) = result {
-                        eprintln!("{:?} when other node sent me {:?}", e, buffer);
+                        eprintln!("{:?} when other node sent me {:?}", e, message);
                         break;
                     }
                 }

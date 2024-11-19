@@ -178,107 +178,113 @@ impl InternodeProtocolHandler {
                 );
             }
         }
-        let query_type = query
-            .query_string
-            .split_whitespace()
-            .next()
-            .ok_or(NodeError::InternodeProtocolError)?;
+        let query_split: Vec<&str> = query.query_string.split_whitespace().collect();
 
-        let result: Result<Option<((i32, i32), InternodeResponse)>, NodeError> = match query_type {
-            "CREATE_TABLE" => Self::handle_create_table_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            "DROP_TABLE" => Self::handle_drop_table_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            "ALTER_TABLE" => Self::handle_alter_table_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            "CREATE_KEYSPACE" => Self::handle_create_keyspace_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            "DROP_KEYSPACE" => Self::handle_drop_keyspace_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            "ALTER_KEYSPACE" => Self::handle_alter_keyspace_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            "INSERT" => Self::handle_insert_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.replication,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            "UPDATE" => Self::handle_update_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.replication,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            "DELETE" => Self::handle_delete_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.replication,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            "SELECT" => Self::handle_select_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.replication,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            "USE" => Self::handle_use_command(
-                node,
-                &query.query_string,
-                connections.clone(),
-                true,
-                query.open_query_id as i32,
-                query.client_id as i32,
-            ),
-            _ => Err(NodeError::InternodeProtocolError),
-        };
+        let result: Result<Option<((i32, i32), InternodeResponse)>, NodeError> =
+            match query_split[0] {
+                "CREATE" => match query_split[1] {
+                    "TABLE" => Self::handle_create_table_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    "KEYSPACE" => Self::handle_create_keyspace_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    _ => Err(NodeError::InternodeProtocolError),
+                },
+                "DROP" => match query_split[1] {
+                    "TABLE" => Self::handle_drop_table_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    "KEYSPACE" => Self::handle_drop_keyspace_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    _ => Err(NodeError::InternodeProtocolError),
+                },
+                "ALTER" => match query_split[1] {
+                    "TABLE" => Self::handle_alter_table_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    "KEYSPACE" => Self::handle_alter_keyspace_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    _ => Err(NodeError::InternodeProtocolError),
+                },
+                "INSERT" => Self::handle_insert_command(
+                    node,
+                    &query.query_string,
+                    connections.clone(),
+                    true,
+                    query.replication,
+                    query.open_query_id as i32,
+                    query.client_id as i32,
+                ),
+                "UPDATE" => Self::handle_update_command(
+                    node,
+                    &query.query_string,
+                    connections.clone(),
+                    true,
+                    query.replication,
+                    query.open_query_id as i32,
+                    query.client_id as i32,
+                ),
+                "DELETE" => Self::handle_delete_command(
+                    node,
+                    &query.query_string,
+                    connections.clone(),
+                    true,
+                    query.replication,
+                    query.open_query_id as i32,
+                    query.client_id as i32,
+                ),
+                "SELECT" => Self::handle_select_command(
+                    node,
+                    &query.query_string,
+                    connections.clone(),
+                    true,
+                    query.replication,
+                    query.open_query_id as i32,
+                    query.client_id as i32,
+                ),
+                "USE" => Self::handle_use_command(
+                    node,
+                    &query.query_string,
+                    connections.clone(),
+                    true,
+                    query.open_query_id as i32,
+                    query.client_id as i32,
+                ),
+                _ => Err(NodeError::InternodeProtocolError),
+            };
 
         let response: Option<((i32, i32), InternodeResponse)> = result?;
 

@@ -109,18 +109,18 @@ impl QueryExecution {
                         client_id,
                     ) {
                         Ok(select_querys) => {
-                            let columns: Vec<String> = select_querys
+                            /* let columns: Vec<String> = select_querys
+                            .get(0)
+                            .map(|s| s.split(',').map(String::from).collect())
+                            .unwrap_or_default(); */
+
+                            let select_columns: Vec<String> = select_querys
                                 .get(0)
                                 .map(|s| s.split(',').map(String::from).collect())
                                 .unwrap_or_default();
 
-                            let select_columns: Vec<String> = select_querys
-                                .get(1)
-                                .map(|s| s.split(',').map(String::from).collect())
-                                .unwrap_or_default();
-
                             let values: Vec<Vec<String>> = if select_querys.len() > 2 {
-                                select_querys[2..]
+                                select_querys[1..]
                                     .iter()
                                     .map(|s| s.split(',').map(String::from).collect())
                                     .collect()
@@ -129,7 +129,7 @@ impl QueryExecution {
                             };
 
                             response.content = Some(InternodeResponseContent {
-                                columns: columns,
+                                columns: Vec::new(),
                                 select_columns: select_columns,
                                 values: values,
                             });
