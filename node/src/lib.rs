@@ -105,16 +105,15 @@ impl Node {
 
                 for ip in ips {
                     let connections_clone = Arc::clone(&connections);
-                    connect_and_send_message(
-                        *ip,
-                        INTERNODE_PORT,
-                        connections_clone,
-                        InternodeMessage::new(
-                            ip.clone(),
-                            InternodeMessageContent::Gossip(syn.clone()),
-                        ),
-                    )
-                    .unwrap();
+
+                    let msg = InternodeMessage::new(
+                        ip.clone(),
+                        InternodeMessageContent::Gossip(syn.clone()),
+                    );
+
+                    println!("Sending gossip to {:?}: {:?}", ip, &msg);
+
+                    connect_and_send_message(*ip, INTERNODE_PORT, connections_clone, msg).unwrap();
                 }
             }
 
