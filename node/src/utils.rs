@@ -1,4 +1,5 @@
 use crate::errors::NodeError;
+use crate::messages::{InternodeMessage, InternodeSerializable};
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
@@ -24,7 +25,7 @@ pub fn connect_and_send_message(
     peer_id: Ipv4Addr,
     port: u16,
     connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-    message: &str,
+    message: InternodeMessage,
 ) -> Result<(), NodeError> {
     let peer_socket = SocketAddrV4::new(peer_id, port);
     let peer_addr = peer_socket.to_string();
@@ -35,8 +36,9 @@ pub fn connect_and_send_message(
         if let Some(existing_stream) = connections_guard.get(&peer_addr) {
             // Try to acquire the lock and send the message
             if let Ok(mut stream) = existing_stream.lock() {
-                if stream.write_all(message.as_bytes()).is_ok()
-                    && stream.write_all(b"\n").is_ok()
+                // if stream.write_all(message.as_bytes()).is_ok()
+                if stream.write_all(&message.as_bytes()).is_ok()
+                    // && stream.write_all(b"\n").is_ok()
                     && stream.flush().is_ok()
                 {
                     //println!("Reutilizamos TCP ");
@@ -64,9 +66,10 @@ pub fn connect_and_send_message(
     {
         let mut stream_guard = stream.lock().map_err(|_| NodeError::LockError)?;
         stream_guard
-            .write_all(message.as_bytes())
+            // .write_all(message.as_bytes())
+            .write(&message.as_bytes())
             .map_err(NodeError::IoError)?;
-        stream_guard.write_all(b"\n").map_err(NodeError::IoError)?;
+        // stream_guard.write_all(b"\n").map_err(NodeError::IoError)?;
         stream_guard.flush().map_err(NodeError::IoError)?;
     }
 

@@ -72,9 +72,7 @@ impl QueryExecution {
             let serialized_alter_table = alter_table.serialize();
             self.how_many_nodes_failed = self.send_to_other_nodes(
                 node,
-                "ALTER_TABLE",
                 &serialized_alter_table,
-                true,
                 open_query_id,
                 client_id,
                 &client_keyspace.get_name(),

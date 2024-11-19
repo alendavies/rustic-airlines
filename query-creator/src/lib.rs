@@ -451,13 +451,13 @@ impl QueryCreator {
         let mut tokens = Vec::new();
         let mut current = String::new();
         let mut in_braces = false;
-
+    
         let string = string.replace(";", "");
         let length = string.len();
-
+    
         while index < length {
             let char = string.chars().nth(index).unwrap_or('0');
-
+    
             if char == '{' {
                 tokens.push("{".to_string());
                 in_braces = true;
@@ -481,14 +481,12 @@ impl QueryCreator {
                         tokens.push(current.clone());
                         current.clear();
                     }
-                    index += 1; // Skip separators ':' and ','
+                    index += 1;
                 } else {
                     index += 1;
                 }
-            } else if char.is_alphabetic() || char == '_' || char == '@' {
-                index = Self::process_alphabetic(&string, index, &mut current, &mut tokens);
-            } else if char.is_numeric() || char == '-' {
-                index = Self::process_numeric(&string, index, &mut current, &mut tokens);
+            } else if char.is_alphanumeric() || char == '_' || char == '@' {
+                index = Self::process_alfa(&string, index, &mut current, &mut tokens);
             } else if char == '\'' {
                 index = Self::process_quotes(&string, index, &mut current, &mut tokens);
             } else if char == '(' {
@@ -499,12 +497,16 @@ impl QueryCreator {
                 index = Self::process_other(&string, index, &mut current, &mut tokens);
             }
         }
-
+    
+        if !current.is_empty() {
+            tokens.push(current.clone());
+        }
+    
         tokens.retain(|s| !s.is_empty());
         tokens
     }
-
-    fn process_alphabetic(
+    
+    fn process_alfa(
         string: &str,
         mut index: usize,
         current: &mut String,
@@ -512,36 +514,21 @@ impl QueryCreator {
     ) -> usize {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-
-            if char.is_alphabetic() || char == '_' || char == '@' || char == '.' || char == '-' {
+            
+            // Aceptamos cualquier caracter alfanumérico, guiones bajos, arroba, punto o guión
+            if char.is_alphanumeric() || char == '_' || char == '@' || char == '.' || char == '-' {
                 current.push(char);
                 index += 1;
             } else {
                 break;
             }
         }
-        tokens.push(current.clone());
-        current.clear();
-        index
-    }
-
-    fn process_numeric(
-        string: &str,
-        mut index: usize,
-        current: &mut String,
-        tokens: &mut Vec<String>,
-    ) -> usize {
-        while index < string.len() {
-            let char = string.chars().nth(index).unwrap_or('0');
-            if char.is_numeric() || char == '-' {
-                current.push(char);
-                index += 1;
-            } else {
-                break;
-            }
+        
+        if !current.is_empty() {
+            tokens.push(current.clone());
+            current.clear();
         }
-        tokens.push(current.clone());
-        current.clear();
+        
         index
     }
 
