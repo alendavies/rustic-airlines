@@ -1,6 +1,6 @@
 use crate::errors::NodeError;
+use crate::internode_protocol::response::InternodeResponse;
 use crate::keyspace::Keyspace;
-use crate::messages::InternodeResponse;
 use crate::table::Table;
 use query_creator::Query;
 use std::collections::HashMap;

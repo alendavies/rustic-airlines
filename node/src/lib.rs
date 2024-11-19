@@ -1,8 +1,8 @@
 // Local modules first
 mod errors;
+mod internode_protocol;
 mod internode_protocol_handler;
 mod keyspace;
-mod messages;
 mod open_query_handler;
 mod query_execution;
 mod table;
@@ -22,11 +22,13 @@ use crate::table::Table;
 use driver::server::{handle_client_request, Request};
 use errors::NodeError;
 use gossip::Gossiper;
+use internode_protocol::message::{InternodeMessage, InternodeMessageContent};
+use internode_protocol::response::{
+    InternodeResponse, InternodeResponseContent, InternodeResponseStatus,
+};
+use internode_protocol::InternodeSerializable;
 use internode_protocol_handler::InternodeProtocolHandler;
 use keyspace::Keyspace;
-use messages::{
-    InternodeMessage, InternodeResponse, InternodeResponseContent, InternodeSerializable,
-};
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -39,6 +41,7 @@ use query_creator::errors::CQLError;
 use query_creator::{GetTableName, GetUsedKeyspace, Query};
 use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
+use utils::connect_and_send_message;
 
 const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
 const INTERNODE_PORT: u16 = 0x554D; // Hexadecimal of "UM" (FERRUM) = 21837
@@ -99,9 +102,6 @@ impl Node {
 
                 let ips = node_guard.gossiper.pick_ips(node_guard.get_ip());
                 let syn = node_guard.gossiper.create_syn(node_guard.ip);
-                let bytes = syn.as_bytes();
-
-                let message = std::str::from_utf8(bytes.as_slice()).unwrap();
 
                 for ip in ips {
                     let connections_clone = Arc::clone(&connections);
@@ -109,7 +109,10 @@ impl Node {
                         *ip,
                         INTERNODE_PORT,
                         connections_clone,
-                        format!("GOSSIP - {}", message).as_str(),
+                        InternodeMessage::new(
+                            ip.clone(),
+                            InternodeMessageContent::Gossip(syn.clone()),
+                        ),
                     )
                     .unwrap();
                 }
@@ -776,7 +779,7 @@ impl Node {
                 InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     // TODO: convertir el content al content de la response
-                    &InternodeResponse::new(open_query_id as u32, messages::InternodeResponseStatus::Ok, Some(InternodeResponseContent{
+                    &InternodeResponse::new(open_query_id as u32, InternodeResponseStatus::Ok, Some(InternodeResponseContent{
                         columns: complete_columns,
                         select_columns:  select_columns,
                         values: values,

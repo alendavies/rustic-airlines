@@ -1,3 +1,6 @@
+//! This module contains the implementation of the gossip protocol.
+//! TODO: complete
+
 use messages::{Ack, Ack2, Digest, GossipMessage, Syn};
 use rand::{seq::IteratorRandom, thread_rng};
 use std::{
@@ -9,11 +12,16 @@ use structures::{EndpointState, HeartbeatState};
 pub mod messages;
 pub mod structures;
 
+/// Struct to represent the gossiper node.
+///
+/// ### Fields
+/// - `endpoints_state`: HashMap containing the state of all the endpoints that the gossiper knows about.
 pub struct Gossiper {
     pub endpoints_state: HashMap<Ipv4Addr, EndpointState>,
 }
 
 #[derive(Debug)]
+/// Enum to represent the different errors that can occur during the gossip protocol.
 pub enum GossipError {
     SynError,
 }
@@ -29,12 +37,14 @@ impl fmt::Display for GossipError {
 }
 
 impl Gossiper {
+    /// Create a new Gossiper instance with an empty state.
     pub fn new() -> Self {
         Self {
             endpoints_state: HashMap::new(),
         }
     }
 
+    /// Increment the version of the heartbeat state of the endpoint with the given ip.
     pub fn heartbeat(&mut self, ip: Ipv4Addr) {
         self.endpoints_state
             .get_mut(&ip)
@@ -43,19 +53,21 @@ impl Gossiper {
             .inc_version();
     }
 
+    /// Set the application state of the endpoint with the given ip.
     pub fn with_endpoint_state(mut self, ip: Ipv4Addr) -> Self {
         self.endpoints_state.insert(ip, EndpointState::default());
         self
     }
 
+    /// Inserts the given ip with a default state into the gossiper.
     pub fn with_seeds(mut self, seeds_ip: Vec<Ipv4Addr>) -> Self {
-        // init seed with default state
         for ip in seeds_ip {
             self.endpoints_state.insert(ip, EndpointState::default());
         }
         self
     }
 
+    /// Picks 3 random ips from the gossiper state, excluding the given ip.
     pub fn pick_ips(&self, exclude: Ipv4Addr) -> Vec<&Ipv4Addr> {
         let mut rng = thread_rng();
         let ips: Vec<&Ipv4Addr> = self
@@ -66,6 +78,7 @@ impl Gossiper {
         ips
     }
 
+    /// Creates a Syn message with the digests of the endpoints in the gossiper state.
     pub fn create_syn(&self, from: Ipv4Addr) -> GossipMessage {
         let digests: Vec<Digest> = self
             .endpoints_state
@@ -81,6 +94,7 @@ impl Gossiper {
         }
     }
 
+    /// Handles a Syn message and returns the corresponding Ack message.
     pub fn handle_syn(&self, syn: &Syn) -> Ack {
         let mut stale_digests = Vec::new();
         let mut updated_info = BTreeMap::new();
@@ -132,6 +146,7 @@ impl Gossiper {
         }
     }
 
+    /// Handles an Ack message and returns the corresponding Ack2 message.
     pub fn handle_ack(&mut self, ack: &Ack) -> Ack2 {
         let mut updated_info = BTreeMap::new();
 
@@ -175,6 +190,7 @@ impl Gossiper {
         Ack2 { updated_info }
     }
 
+    /// Handles an Ack2 message and updates the local state.
     pub fn handle_ack2(&mut self, ack2: &Ack2) {
         for info in &ack2.updated_info {
             if let Some(my_state) = self.endpoints_state.get(&info.0.address) {
