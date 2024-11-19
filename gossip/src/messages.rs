@@ -95,10 +95,16 @@ impl Digest {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct GossipMessage {
     pub from: Ipv4Addr,
     pub payload: Payload,
+}
+
+impl GossipMessage {
+    pub fn new(from: Ipv4Addr, payload: Payload) -> Self {
+        GossipMessage { from, payload }
+    }
 }
 
 #[derive(Debug)]
@@ -108,7 +114,7 @@ enum PayloadType {
     Ack2 = 0x02,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Payload {
     Syn(Syn),
     Ack(Ack),
@@ -186,7 +192,7 @@ impl GossipMessage {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Syn {
     pub digests: Vec<Digest>,
 }
@@ -298,7 +304,7 @@ enum InfoType {
     DigestAndInfo = 0x01,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Ack {
     /// Local outdated digests which application state need to be updated in the ACK2.
     pub stale_digests: Vec<Digest>,
@@ -443,7 +449,7 @@ impl Ack {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Ack2 {
     pub updated_info: BTreeMap<Digest, ApplicationState>,
 }
