@@ -351,6 +351,7 @@ mod tests {
             String::from("ORDER"),
             String::from("BY"),
             String::from("email"),
+            String::from("ASC"),
             String::from("Limit"),
             String::from("10"),
         ];
@@ -373,7 +374,7 @@ mod tests {
             orderby_clause,
             OrderBy {
                 columns,
-                order: String::new()
+                order: String::from("ASC")
             }
         );
         assert_eq!(select.limit.unwrap(), 10)
