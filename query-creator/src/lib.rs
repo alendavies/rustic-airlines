@@ -485,7 +485,7 @@ impl QueryCreator {
                 } else {
                     index += 1;
                 }
-            } else if char.is_alphanumeric() || char == '_' || char == '@' {
+            } else if char.is_alphanumeric() || char == '_' || char == '@' || char == '-' {
                 index = Self::process_alfa(&string, index, &mut current, &mut tokens);
             } else if char == '\'' {
                 index = Self::process_quotes(&string, index, &mut current, &mut tokens);
