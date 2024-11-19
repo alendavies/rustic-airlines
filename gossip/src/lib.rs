@@ -81,11 +81,11 @@ impl Gossiper {
         }
     }
 
-    pub fn handle_syn(&self, syn: Syn) -> Ack {
+    pub fn handle_syn(&self, syn: &Syn) -> Ack {
         let mut stale_digests = Vec::new();
         let mut updated_info = BTreeMap::new();
 
-        for digest in syn.digests {
+        for digest in &syn.digests {
             if let Some(my_state) = self.endpoints_state.get(&digest.address) {
                 let my_digest =
                     Digest::from_heartbeat_state(digest.address, &my_state.heartbeat_state);
@@ -132,10 +132,10 @@ impl Gossiper {
         }
     }
 
-    pub fn handle_ack(&mut self, ack: Ack) -> Ack2 {
+    pub fn handle_ack(&mut self, ack: &Ack) -> Ack2 {
         let mut updated_info = BTreeMap::new();
 
-        for digest in ack.stale_digests {
+        for digest in &ack.stale_digests {
             let my_state = self.endpoints_state.get(&digest.address).unwrap();
 
             let my_digest = Digest::from_heartbeat_state(digest.address, &my_state.heartbeat_state);
@@ -154,7 +154,7 @@ impl Gossiper {
             }
         }
 
-        for info in ack.updated_info {
+        for info in &ack.updated_info {
             let my_state = self.endpoints_state.get(&info.0.address).unwrap();
 
             // por las dudas chequeo que efectivamente sea info más actualizada que la que tengo
@@ -165,7 +165,7 @@ impl Gossiper {
                 self.endpoints_state.insert(
                     info.0.address,
                     EndpointState::new(
-                        info.1,
+                        info.1.clone(),
                         HeartbeatState::new(info.0.generation, info.0.version),
                     ),
                 );
@@ -206,7 +206,7 @@ impl Gossiper {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::IpAddr, str::FromStr};
+    use std::str::FromStr;
 
     use messages::Payload;
 
@@ -234,7 +234,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack = gossiper.handle_syn(syn);
+        let ack = gossiper.handle_syn(&syn);
 
         assert!(ack.stale_digests.is_empty());
         assert_eq!(
@@ -274,7 +274,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack = gossiper.handle_syn(syn);
+        let ack = gossiper.handle_syn(&syn);
 
         assert!(ack.stale_digests.is_empty());
         assert_eq!(
@@ -314,7 +314,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack = gossiper.handle_syn(syn);
+        let ack = gossiper.handle_syn(&syn);
 
         assert_eq!(
             ack.stale_digests,
@@ -346,7 +346,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack = gossiper.handle_syn(syn);
+        let ack = gossiper.handle_syn(&syn);
 
         assert_eq!(
             ack.stale_digests,
@@ -378,7 +378,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack2 = gossiper.handle_ack(ack);
+        let ack2 = gossiper.handle_ack(&ack);
 
         assert_eq!(
             ack2.updated_info,
@@ -415,7 +415,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack2 = gossiper.handle_ack(ack);
+        let ack2 = gossiper.handle_ack(&ack);
 
         assert_eq!(
             ack2.updated_info,
@@ -452,7 +452,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack2 = gossiper.handle_ack(ack);
+        let ack2 = gossiper.handle_ack(&ack);
 
         assert_eq!(
             ack2.updated_info,
@@ -497,7 +497,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack2 = gossiper.handle_ack(ack);
+        let ack2 = gossiper.handle_ack(&ack);
 
         assert!(ack2.updated_info.is_empty());
         assert_eq!(
@@ -536,7 +536,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack2 = gossiper.handle_ack(ack);
+        let ack2 = gossiper.handle_ack(&ack);
 
         assert!(ack2.updated_info.is_empty());
         assert_eq!(
@@ -584,7 +584,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack2 = gossiper.handle_ack(ack);
+        let ack2 = gossiper.handle_ack(&ack);
 
         // the ack2 should contain the updated info for ip_1
         assert_eq!(
@@ -695,7 +695,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let ack = gossiper.handle_syn(syn);
+        let ack = gossiper.handle_syn(&syn);
 
         assert_eq!(ack.stale_digests, vec![Digest::new(new_ip, 0, 0)]);
         assert!(ack.updated_info.is_empty(),);
@@ -811,7 +811,7 @@ mod tests {
         };
 
         // server handles syn and sends ack to client
-        let ack = gossiper_server.handle_syn(syn);
+        let ack = gossiper_server.handle_syn(&syn);
 
         assert_eq!(
             ack,
@@ -835,7 +835,7 @@ mod tests {
         };
 
         // client handles ack, updates its state and sends ack2 to server
-        let ack2 = gossiper_client.handle_ack(ack);
+        let ack2 = gossiper_client.handle_ack(&ack);
 
         assert_eq!(
             ack2,
