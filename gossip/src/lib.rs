@@ -175,8 +175,8 @@ impl Gossiper {
         Ack2 { updated_info }
     }
 
-    pub fn handle_ack2(&mut self, ack2: Ack2) {
-        for info in ack2.updated_info {
+    pub fn handle_ack2(&mut self, ack2: &Ack2) {
+        for info in &ack2.updated_info {
             if let Some(my_state) = self.endpoints_state.get(&info.0.address) {
                 // por las dudas chequeo que efectivamente sea info más actualizada que la que tengo
                 if info.0.version > my_state.heartbeat_state.version
@@ -186,7 +186,7 @@ impl Gossiper {
                     self.endpoints_state.insert(
                         info.0.address,
                         EndpointState::new(
-                            info.1,
+                            info.1.clone(),
                             HeartbeatState::new(info.0.generation, info.0.version),
                         ),
                     );
@@ -195,7 +195,7 @@ impl Gossiper {
                 self.endpoints_state.insert(
                     info.0.address,
                     EndpointState::new(
-                        info.1,
+                        info.1.clone(),
                         HeartbeatState::new(info.0.generation, info.0.version),
                     ),
                 );
@@ -654,7 +654,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        gossiper.handle_ack2(ack2);
+        gossiper.handle_ack2(&ack2);
 
         // the local_state should be updated for both ips
         assert_eq!(
@@ -716,7 +716,7 @@ mod tests {
             endpoints_state: local_state.clone(),
         };
 
-        let _ = gossiper.handle_ack2(ack);
+        let _ = gossiper.handle_ack2(&ack);
 
         assert_eq!(
             gossiper
@@ -852,7 +852,7 @@ mod tests {
         );
 
         // server handles ack2 and updates its state
-        gossiper_server.handle_ack2(ack2);
+        gossiper_server.handle_ack2(&ack2);
 
         assert_eq!(
             gossiper_server.endpoints_state,
