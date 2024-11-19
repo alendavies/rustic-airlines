@@ -57,12 +57,12 @@ impl Provider for MockProvider {
 
     fn get_flights() -> Result<Vec<Flight>, DBError> {
         let flights = vec![
-            Flight::new(Position::from_lat_lon(-30., -60.)),
-            Flight::new(Position::from_lat_lon(-35., -65.)),
-            Flight::new(Position::from_lat_lon(-40., -70.)),
-            Flight::new(Position::from_lat_lon(-35., -65.)),
-            Flight::new(Position::from_lat_lon(-25., -55.)),
-            Flight::new(Position::from_lat_lon(-30., -75.)),
+            Flight::new(Position::from_lat_lon(-30., -60.), 0.),
+            Flight::new(Position::from_lat_lon(-45., -65.), 90.),
+            Flight::new(Position::from_lat_lon(-40., -70.), 270.),
+            Flight::new(Position::from_lat_lon(-35., -65.), 45.),
+            Flight::new(Position::from_lat_lon(-25., -55.), 290.),
+            Flight::new(Position::from_lat_lon(-30., -75.), 340.),
         ];
 
         Ok(flights)
@@ -505,6 +505,8 @@ pub struct Flight {
     pub origin_airport: String,
     pub destination_airport: String,
     pub position: Position,
+    /// Angle in degrees, where 0° is East, 90° is North, etc.
+    pub heading: f32,
     pub fuel: f64,
     pub height: f64,
     pub speed: i32,
@@ -512,7 +514,7 @@ pub struct Flight {
 }
 
 impl Flight {
-    pub fn new(position: Position) -> Self {
+    pub fn new(position: Position, heading: f32) -> Self {
         Self {
             arrival_time: Default::default(),
             departure_time: Default::default(),
@@ -522,6 +524,7 @@ impl Flight {
             number: String::from("AR1234"),
             origin_airport: Default::default(),
             position,
+            heading,
             status: Default::default(),
             speed: Default::default(),
         }

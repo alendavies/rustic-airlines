@@ -8,7 +8,7 @@ use super::QueryExecution;
 /// within the library (defined as `pub(crate)`).
 impl QueryExecution {
     pub(crate) fn execute_alter_keyspace(
-        &self,
+        &mut self,
         alter_keyspace: AlterKeyspace,
         internode: bool,
         open_query_id: i32,
@@ -39,11 +39,9 @@ impl QueryExecution {
         // If not an internode operation, communicate changes to other nodes
         if !internode {
             let serialized_alter_keyspace = alter_keyspace.serialize();
-            self.send_to_other_nodes(
+            self.how_many_nodes_failed = self.send_to_other_nodes(
                 node,
-                "ALTER_KEYSPACE",
                 &serialized_alter_keyspace,
-                true,
                 open_query_id,
                 client_id,
                 "None",

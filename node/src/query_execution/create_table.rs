@@ -12,7 +12,7 @@ use super::QueryExecution;
 /// within the library (defined as `pub(crate)`).
 impl QueryExecution {
     pub(crate) fn execute_create_table(
-        &self,
+        &mut self,
         create_table: CreateTable,
         internode: bool,
         open_query_id: i32,
@@ -85,11 +85,9 @@ impl QueryExecution {
         if !internode {
             // Serialize the `CreateTable` structure
             let serialized_create_table = create_table.serialize();
-            self.send_to_other_nodes(
+            self.how_many_nodes_failed = self.send_to_other_nodes(
                 node,
-                "CREATE_TABLE",
                 &serialized_create_table,
-                true,
                 open_query_id,
                 client_id,
                 &client_keyspace.get_name(),

@@ -74,9 +74,9 @@ impl OrderBy {
     pub fn serialize(&self) -> String {
         let columns_str = self.columns.join(", ");
         if self.order.is_empty() {
-            format!("{}", columns_str)
+            format!("ORDER BY {}", columns_str)
         } else {
-            format!("{} {}", columns_str, self.order)
+            format!("ORDER BY {} {}", columns_str, self.order)
         }
     }
 

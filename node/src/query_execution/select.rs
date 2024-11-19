@@ -20,6 +20,8 @@ impl QueryExecution {
         let table;
         let mut do_in_this_node = true;
 
+        let mut failed_nodes = 0;
+        let mut internode_failed_nodes = 0;
         let client_keyspace;
         {
             // Get the table name and reference the node
@@ -78,12 +80,10 @@ impl QueryExecution {
             // Forward the SELECT if this is not an internode operation and the target node differs
             if !internode && node_to_query != self_ip {
                 let serialized_query = select_query.serialize();
-                self.send_to_single_node(
+                failed_nodes = self.send_to_single_node(
                     node.get_ip(),
                     node_to_query,
-                    "SELECT",
                     &serialized_query,
-                    true,
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
@@ -94,12 +94,10 @@ impl QueryExecution {
             // Send the SELECT to replication nodes if needed
             if !internode {
                 let serialized_select = select_query.serialize();
-                replication = self.send_to_replication_nodes(
+                (internode_failed_nodes, replication) = self.send_to_replication_nodes(
                     node,
                     node_to_query,
-                    "SELECT",
                     &serialized_select,
-                    true,
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
@@ -112,6 +110,8 @@ impl QueryExecution {
             }
         }
 
+        failed_nodes += internode_failed_nodes;
+        self.how_many_nodes_failed = failed_nodes;
         // Return if no local execution or replication is needed
         if !do_in_this_node && !replication {
             return Ok(vec![]);
