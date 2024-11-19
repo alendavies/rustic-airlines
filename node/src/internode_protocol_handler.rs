@@ -1,3 +1,7 @@
+use crate::messages::{
+    InternodeMessage, InternodeMessageContent, InternodeQuery, InternodeResponse,
+    InternodeResponseStatus,
+};
 use crate::open_query_handler::OpenQueryHandler;
 use crate::utils::connect_and_send_message;
 use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
@@ -33,57 +37,6 @@ impl InternodeProtocolHandler {
         InternodeProtocolHandler {}
     }
 
-    /// Creates a formatted protocol message for sending a query between nodes.
-    ///
-    /// # Parameters
-    /// - `id`: The identifier of the node sending the message.
-    /// - `open_query_id`: The unique ID of the open query, allowing tracking across nodes.
-    /// - `query_type`: The type of query being executed (e.g., "SELECT", "INSERT").
-    /// - `structure`: The serialized string structure of the query.
-    /// - `internode`: Boolean flag indicating if the query originates from another node.
-    /// - `replication`: Boolean flag indicating if replication is required.
-    ///
-    /// # Returns
-    /// * `String` - A formatted string representing the protocol message, including
-    ///   node ID, query ID, query type, serialized query structure, internode status,
-    ///   and replication status.
-    pub fn create_protocol_message(
-        id: &str,
-        open_query_id: i32,
-        query_type: &str,
-        structure: &str,
-        internode: bool,
-        replication: bool,
-        client_id: i32,
-        keyspace_name: &str,
-    ) -> String {
-        format!(
-            "QUERY - {} - {} - {} - {} - {} - {} - {} - {}",
-            id,
-            open_query_id,
-            query_type,
-            structure,
-            internode,
-            replication,
-            client_id,
-            keyspace_name
-        )
-    }
-
-    /// Creates a response message for a query, used for communication between nodes.
-    ///
-    /// # Parameters
-    /// - `status`: The status of the response (e.g., "OK" or "ERROR").
-    /// - `content`: The content of the response message.
-    /// - `open_query_id`: The ID of the open query related to this response.
-    ///
-    /// # Returns
-    /// * `String` - A formatted string representing the response message, including
-    ///   the query ID, status, and content of the response.
-    pub fn create_protocol_response(status: &str, content: &str, open_query_id: i32) -> String {
-        format!("RESPONSE - {} - {} - {}", open_query_id, status, content)
-    }
-
     /// Handles an incoming command from a node or client, distinguishing between query commands
     /// and response commands, and delegating to the appropriate handler.
     ///
@@ -105,31 +58,18 @@ impl InternodeProtocolHandler {
     pub fn handle_command(
         &self,
         node: &Arc<Mutex<Node>>,
-        message: &str,
+        message: InternodeMessage,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-        is_seed: bool,
     ) -> Result<(), NodeError> {
-        let cleaned_message = message.trim_end();
-        let parts: Vec<&str> = cleaned_message.splitn(2, " - ").collect();
-
-        if parts.len() < 2 {
-            return Err(NodeError::InternodeProtocolError);
-        }
-        match parts[0] {
-            "QUERY" => {
-                self.handle_query_command(node, parts[1], connections, is_seed)?;
+        match message.content {
+            InternodeMessageContent::Query(query) => {
+                self.handle_query_command(node, query, connections, message.from)?;
                 Ok(())
             }
-            "RESPONSE" => {
-                self.handle_response_command(node, parts[1])?;
+            InternodeMessageContent::Response(response) => {
+                self.handle_response_command(node, &response)?;
                 Ok(())
             }
-
-            "GOSSIP" => {
-                self.handle_gossip_command(node, parts[1], connections)?;
-                Ok(())
-            }
-            _ => Err(NodeError::InternodeProtocolError),
         }
     }
 
@@ -151,20 +91,29 @@ impl InternodeProtocolHandler {
     /// - `NodeError::OtherError` may be returned if the open query cannot be retrieved.
     pub fn add_ok_response_to_open_query_and_send_response_if_closed(
         query_handler: &mut OpenQueryHandler,
-        content: &str,
+        response: &InternodeResponse,
         open_query_id: i32,
         keyspace_name: String,
         columns: Vec<Column>,
     ) -> Result<(), NodeError> {
         if let Some(open_query) =
-            query_handler.add_ok_response_and_get_if_closed(open_query_id, content.to_string())
+            query_handler.add_ok_response_and_get_if_closed(open_query_id, response.clone())
         {
+            let rows = if let Some(content) = &response.content {
+                content
+                    .values
+                    .iter()
+                    .map(|row| row.join(","))
+                    .collect::<Vec<String>>()
+            } else {
+                vec![]
+            };
+
             let mut connection = open_query.get_connection();
-            let frame = open_query.get_query().create_client_response(
-                columns,
-                keyspace_name,
-                content.split("/").map(|s| s.to_string()).collect(),
-            )?;
+            let frame =
+                open_query
+                    .get_query()
+                    .create_client_response(columns, keyspace_name, rows)?;
 
             println!("Returning frame to client: {:?}", frame);
 
@@ -215,144 +164,144 @@ impl InternodeProtocolHandler {
     fn handle_query_command(
         &self,
         node: &Arc<Mutex<Node>>,
-        message: &str,
+        query: InternodeQuery,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-        is_seed: bool,
+        node_ip: Ipv4Addr,
     ) -> Result<(), NodeError> {
-        let parts: Vec<&str> = message.splitn(8, " - ").collect();
-        if parts.len() < 7 {
-            return Err(NodeError::InternodeProtocolError);
-        }
-
-        let nodo_id = parts[0];
-        let open_query_id: i32 = parts[1]
-            .parse()
-            .map_err(|_| NodeError::InternodeProtocolError)?;
-        let query_type = parts[2];
-        let structure = parts[3];
-        let internode = parts[4] == "true";
-        let replication = parts[5] == "true";
-        let client_id: i32 = parts[6]
-            .parse()
-            .map_err(|_| NodeError::InternodeProtocolError)?;
-        let keyspace_name = parts[7];
-
-        if keyspace_name != "None" {
+        if query.keyspace_name != "None" {
             {
                 let mut guard_node = node.lock()?;
-                let k = guard_node.get_keyspace(keyspace_name)?;
-                guard_node
-                    .get_open_handle_query()
-                    .set_keyspace_of_query(open_query_id, k.ok_or(NodeError::KeyspaceError)?);
+                let k = guard_node.get_keyspace(query.keyspace_name.as_str())?;
+                guard_node.get_open_handle_query().set_keyspace_of_query(
+                    query.open_query_id as i32,
+                    k.ok_or(NodeError::KeyspaceError)?,
+                );
             }
         }
-        let result: Result<Option<((i32, i32), String)>, NodeError> = match query_type {
-            "HANDSHAKE" => {
-                Self::handle_introduction_command(node, nodo_id, connections.clone(), is_seed)
-            }
-            "CREATE_TABLE" => Self::handle_create_table_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                open_query_id,
-                client_id,
-            ),
-            "DROP_TABLE" => Self::handle_drop_table_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                open_query_id,
-                client_id,
-            ),
-            "ALTER_TABLE" => Self::handle_alter_table_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                open_query_id,
-                client_id,
-            ),
-            "CREATE_KEYSPACE" => Self::handle_create_keyspace_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                open_query_id,
-                client_id,
-            ),
-            "DROP_KEYSPACE" => Self::handle_drop_keyspace_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                open_query_id,
-                client_id,
-            ),
-            "ALTER_KEYSPACE" => Self::handle_alter_keyspace_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                open_query_id,
-                client_id,
-            ),
-            "INSERT" => Self::handle_insert_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                replication,
-                open_query_id,
-                client_id,
-            ),
-            "UPDATE" => Self::handle_update_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                replication,
-                open_query_id,
-                client_id,
-            ),
-            "DELETE" => Self::handle_delete_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                replication,
-                open_query_id,
-                client_id,
-            ),
-            "SELECT" => Self::handle_select_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                replication,
-                open_query_id,
-                client_id,
-            ),
-            "USE" => Self::handle_use_command(
-                node,
-                structure,
-                connections.clone(),
-                internode,
-                open_query_id,
-                client_id,
-            ),
-            _ => Err(NodeError::InternodeProtocolError),
-        };
+        let query_split: Vec<&str> = query.query_string.split_whitespace().collect();
 
-        let response: Option<((i32, i32), String)> = result?;
+        let result: Result<Option<((i32, i32), InternodeResponse)>, NodeError> =
+            match query_split[0] {
+                "CREATE" => match query_split[1] {
+                    "TABLE" => Self::handle_create_table_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    "KEYSPACE" => Self::handle_create_keyspace_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    _ => Err(NodeError::InternodeProtocolError),
+                },
+                "DROP" => match query_split[1] {
+                    "TABLE" => Self::handle_drop_table_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    "KEYSPACE" => Self::handle_drop_keyspace_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    _ => Err(NodeError::InternodeProtocolError),
+                },
+                "ALTER" => match query_split[1] {
+                    "TABLE" => Self::handle_alter_table_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    "KEYSPACE" => Self::handle_alter_keyspace_command(
+                        node,
+                        &query.query_string,
+                        connections.clone(),
+                        true,
+                        query.open_query_id as i32,
+                        query.client_id as i32,
+                    ),
+                    _ => Err(NodeError::InternodeProtocolError),
+                },
+                "INSERT" => Self::handle_insert_command(
+                    node,
+                    &query.query_string,
+                    connections.clone(),
+                    true,
+                    query.replication,
+                    query.open_query_id as i32,
+                    query.client_id as i32,
+                ),
+                "UPDATE" => Self::handle_update_command(
+                    node,
+                    &query.query_string,
+                    connections.clone(),
+                    true,
+                    query.replication,
+                    query.open_query_id as i32,
+                    query.client_id as i32,
+                ),
+                "DELETE" => Self::handle_delete_command(
+                    node,
+                    &query.query_string,
+                    connections.clone(),
+                    true,
+                    query.replication,
+                    query.open_query_id as i32,
+                    query.client_id as i32,
+                ),
+                "SELECT" => Self::handle_select_command(
+                    node,
+                    &query.query_string,
+                    connections.clone(),
+                    true,
+                    query.replication,
+                    query.open_query_id as i32,
+                    query.client_id as i32,
+                ),
+                "USE" => Self::handle_use_command(
+                    node,
+                    &query.query_string,
+                    connections.clone(),
+                    true,
+                    query.open_query_id as i32,
+                    query.client_id as i32,
+                ),
+                _ => Err(NodeError::InternodeProtocolError),
+            };
+
+        let response: Option<((i32, i32), InternodeResponse)> = result?;
+
         if let Some(responses) = response {
-            let (_, value): ((i32, i32), String) = responses;
-            let peer_id: Ipv4Addr = nodo_id
-                .parse()
-                .map_err(|_| NodeError::InternodeProtocolError)?;
-            connect_and_send_message(peer_id, INTERNODE_PORT, connections, &value)?;
+            let (_, value): ((i32, i32), InternodeResponse) = responses;
+
+            connect_and_send_message(
+                node_ip,
+                INTERNODE_PORT,
+                connections,
+                InternodeMessage {
+                    from: node_ip,
+                    content: InternodeMessageContent::Response(value),
+                },
+            )?;
         }
+
         Ok(())
     }
 
@@ -360,24 +309,13 @@ impl InternodeProtocolHandler {
     fn handle_response_command(
         &self,
         node: &Arc<Mutex<Node>>,
-        message: &str,
+        response: &InternodeResponse,
     ) -> Result<(), NodeError> {
         let mut guard_node = node.lock()?;
 
         let query_handler = guard_node.get_open_handle_query();
 
-        let parts: Vec<&str> = message.splitn(3, " - ").collect();
-        if parts.len() < 3 {
-            return Err(NodeError::InternodeProtocolError);
-        }
-
-        let open_query_id: i32 = parts[0]
-            .parse()
-            .map_err(|_| NodeError::InternodeProtocolError)?;
-        let status = parts[1];
-        let content = parts[2];
-
-        let keyspace = query_handler.get_keyspace_of_query(open_query_id)?;
+        let keyspace = query_handler.get_keyspace_of_query(response.open_query_id as i32)?;
 
         let keyspace_name = if let Some(value) = keyspace {
             value.get_name()
@@ -385,54 +323,54 @@ impl InternodeProtocolHandler {
             "".to_string()
         };
 
-        match status {
-            "OK" => {
-                self.process_ok_response(query_handler, content, open_query_id, keyspace_name)?;
+        match response.status {
+            InternodeResponseStatus::Ok => {
+                self.process_ok_response(
+                    query_handler,
+                    response,
+                    response.open_query_id as i32,
+                    keyspace_name,
+                )?;
             }
-            "ERROR" => {
+            InternodeResponseStatus::Error => {
                 // Aquí puedes agregar la lógica para manejar el caso "ERROR".
                 // Por ejemplo, puedes retornar un error específico o realizar otra acción.
-                self.process_error_response(query_handler, open_query_id)?;
-            }
-            _ => {
-                // En caso de que el estado no sea ni "OK" ni "ERROR", podemos manejarlo
-                // como un error de protocolo o una situación inesperada.
-                return Err(NodeError::InternodeProtocolError);
+                self.process_error_response(query_handler, response.open_query_id as i32)?;
             }
         }
 
         Ok(())
     }
 
-    /// Handles a gossip command from another node.
-    fn handle_gossip_command(
-        &self,
-        node: &Arc<Mutex<Node>>,
-        message: &str,
-        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-    ) -> Result<(), NodeError> {
-        let mut guard_node = node.lock()?;
+    // /// Handles a gossip command from another node.
+    // fn handle_gossip_command(
+    //     &self,
+    //     node: &Arc<Mutex<Node>>,
+    //     message: &str,
+    //     connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+    // ) -> Result<(), NodeError> {
+    //     let mut guard_node = node.lock()?;
 
-        // guard_node.gossiper;
+    //     // guard_node.gossiper;
 
-        // TODO
-        // acá tendríamos acceso a node.gossiper y node.partitioner
-        // 1. deserializar el msj
-        // 2. mandar el mensaje que corresponda
-        // 3. actualizar el node.endpoints_state según corresponda
-        // 4. informarle al partitioner según corresponda
-        // listo
+    //     // TODO
+    //     // acá tendríamos acceso a node.gossiper y node.partitioner
+    //     // 1. deserializar el msj
+    //     // 2. mandar el mensaje que corresponda
+    //     // 3. actualizar el node.endpoints_state según corresponda
+    //     // 4. informarle al partitioner según corresponda
+    //     // listo
 
-        // connect_and_send_message(peer_id, port, connections, message);
+    //     // connect_and_send_message(peer_id, port, connections, message);
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     /// Procesa la respuesta cuando el estado es "OK"
     fn process_ok_response(
         &self,
         query_handler: &mut OpenQueryHandler,
-        content: &str,
+        response: &InternodeResponse,
         open_query_id: i32,
         keyspace_name: String,
     ) -> Result<(), NodeError> {
@@ -456,7 +394,7 @@ impl InternodeProtocolHandler {
         // Llamar a la función con los valores copiados, sin `open_query` en uso
         Self::add_ok_response_to_open_query_and_send_response_if_closed(
             query_handler,
-            content,
+            response,
             open_query_id,
             keyspace_name,
             columns,
@@ -479,35 +417,6 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Handles the introduction command, which is used for the "HANDSHAKE" protocol.
-    fn handle_introduction_command(
-        node: &Arc<Mutex<Node>>,
-        nodo_id: &str,
-        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-        is_seed: bool,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
-        let mut lock_node = node.lock().map_err(|_| NodeError::LockError)?;
-        let self_ip = lock_node.get_ip();
-
-        let new_ip: Ipv4Addr = nodo_id
-            .parse()
-            .map_err(|_| NodeError::InternodeProtocolError)?;
-
-        if self_ip != new_ip && !lock_node.partitioner.contains_node(&new_ip) {
-            lock_node.partitioner.add_node(new_ip)?;
-        }
-
-        if is_seed {
-            for ip in lock_node.get_partitioner().get_nodes() {
-                if new_ip != ip && self_ip != ip && is_seed {
-                    lock_node.forward_message(connections.clone(), ip, new_ip)?;
-                    lock_node.forward_message(connections.clone(), new_ip, ip)?;
-                }
-            }
-        }
-        Ok(None)
-    }
-
     /// Handles an `INSERT` command.
     fn handle_insert_command(
         node: &Arc<Mutex<Node>>,
@@ -517,7 +426,7 @@ impl InternodeProtocolHandler {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Insert::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::Insert(query),
@@ -536,7 +445,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = CreateTable::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::CreateTable(query),
@@ -555,7 +464,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = DropTable::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::DropTable(query),
@@ -574,7 +483,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = AlterTable::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::AlterTable(query),
@@ -593,7 +502,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = CreateKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::CreateKeyspace(query),
@@ -612,7 +521,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = DropKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::DropKeyspace(query),
@@ -631,7 +540,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = AlterKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::AlterKeyspace(query),
@@ -651,7 +560,7 @@ impl InternodeProtocolHandler {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Update::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::Update(query),
@@ -671,7 +580,7 @@ impl InternodeProtocolHandler {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Delete::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::Delete(query),
@@ -691,7 +600,7 @@ impl InternodeProtocolHandler {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Select::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::Select(query),
@@ -710,7 +619,7 @@ impl InternodeProtocolHandler {
         internode: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Use::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
             Query::Use(query),
@@ -719,59 +628,5 @@ impl InternodeProtocolHandler {
             open_query_id,
             client_id,
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{Node, NodeError};
-    use std::collections::HashMap;
-    use std::net::TcpListener;
-    use std::sync::{Arc, Mutex};
-
-    // Función auxiliar para crear un nodo para pruebas
-    fn create_test_node() -> Arc<Mutex<Node>> {
-        let ip = std::net::Ipv4Addr::new(127, 0, 0, 1);
-        let seeds_nodes = vec![std::net::Ipv4Addr::new(127, 0, 0, 2)];
-        let node = Node::new(ip, seeds_nodes).expect("Error creating node for test");
-        Arc::new(Mutex::new(node))
-    }
-
-    #[test]
-    fn test_create_protocol_message() {
-        let message = InternodeProtocolHandler::create_protocol_message(
-            "127.0.0.1",
-            1,
-            "CREATE_TABLE",
-            "table_structure",
-            true,
-            true,
-            1,
-            "a",
-        );
-        assert_eq!(
-            message,
-            "QUERY - 127.0.0.1 - 1 - CREATE_TABLE - table_structure - true - true - 1 - a"
-        );
-    }
-
-    #[test]
-    fn test_create_protocol_response() {
-        let response = InternodeProtocolHandler::create_protocol_response("OK", "content", 1);
-        assert_eq!(response, "RESPONSE - 1 - OK - content");
-    }
-
-    #[test]
-    fn test_handle_invalid_command() {
-        // Crear un listener para aceptar conexiones
-        let _listener = TcpListener::bind("127.0.0.1:8080").unwrap();
-
-        let node = create_test_node();
-        let handler = InternodeProtocolHandler::new();
-        let connections = Arc::new(Mutex::new(HashMap::new()));
-
-        let result = handler.handle_command(&node, "INVALID - command", connections, false);
-        assert!(matches!(result, Err(NodeError::InternodeProtocolError)));
     }
 }

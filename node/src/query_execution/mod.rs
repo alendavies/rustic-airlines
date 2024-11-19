@@ -1,4 +1,7 @@
-use crate::internode_protocol_handler::InternodeProtocolHandler;
+use crate::messages::{
+    InternodeMessage, InternodeMessageContent, InternodeQuery, InternodeResponse,
+    InternodeResponseContent, InternodeResponseStatus,
+};
 use crate::table::Table;
 use crate::utils::connect_and_send_message;
 use crate::NodeError;
@@ -89,8 +92,12 @@ impl QueryExecution {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
-    ) -> Result<Option<((i32, i32), String)>, NodeError> {
-        let mut content: Result<Option<String>, NodeError> = Ok(Some(String::from("_")));
+    ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
+        let mut response: InternodeResponse = InternodeResponse {
+            open_query_id: open_query_id as u32,
+            status: InternodeResponseStatus::Ok,
+            content: None,
+        };
         let query_result = {
             match query.clone() {
                 Query::Select(select_query) => {
@@ -102,7 +109,30 @@ impl QueryExecution {
                         client_id,
                     ) {
                         Ok(select_querys) => {
-                            content = Ok(Some(select_querys.join("/")));
+                            /* let columns: Vec<String> = select_querys
+                            .get(0)
+                            .map(|s| s.split(',').map(String::from).collect())
+                            .unwrap_or_default(); */
+
+                            let select_columns: Vec<String> = select_querys
+                                .get(0)
+                                .map(|s| s.split(',').map(String::from).collect())
+                                .unwrap_or_default();
+
+                            let values: Vec<Vec<String>> = if select_querys.len() > 2 {
+                                select_querys[1..]
+                                    .iter()
+                                    .map(|s| s.split(',').map(String::from).collect())
+                                    .collect()
+                            } else {
+                                Vec::new()
+                            };
+
+                            response.content = Some(InternodeResponseContent {
+                                columns: Vec::new(),
+                                select_columns: select_columns,
+                                values: values,
+                            });
                             Ok(())
                         }
                         Err(e) => {
@@ -176,21 +206,18 @@ impl QueryExecution {
         if internode {
             let response = {
                 match query_result {
-                    Ok(_) => InternodeProtocolHandler::create_protocol_response(
-                        "OK",
-                        &content?.unwrap_or("_".to_string()),
-                        open_query_id,
-                    ),
+                    Ok(_) => response,
+
                     Err(_) => {
                         println!(
                             "el error en este nodo es {:?} de la query {:?}",
                             query_result, query
                         );
-                        InternodeProtocolHandler::create_protocol_response(
-                            "ERROR",
-                            &content?.unwrap_or("_".to_string()),
-                            open_query_id,
-                        )
+                        InternodeResponse {
+                            open_query_id: open_query_id as u32,
+                            status: InternodeResponseStatus::Error,
+                            content: None,
+                        }
                     }
                 }
             };
@@ -212,10 +239,9 @@ impl QueryExecution {
                             how_many_internode_query_has_finish,
                             self.how_many_nodes_failed,
                         ),
-                        content?.unwrap_or("_".to_string()),
+                        response,
                     )));
                 }
-
                 Err(e) => return Err(e),
             }
         }
@@ -225,25 +251,24 @@ impl QueryExecution {
     fn send_to_other_nodes(
         &self,
         local_node: MutexGuard<'_, Node>,
-        header: &str,
         serialized_message: &str,
-        internode: bool,
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
     ) -> Result<i32, NodeError> {
-        let message = InternodeProtocolHandler::create_protocol_message(
-            &&local_node.get_ip_string(),
-            open_query_id,
-            header,
-            &serialized_message,
-            internode,
-            false,
-            client_id,
-            keyspace_name,
+        let current_ip = local_node.get_ip();
+        let message = InternodeMessage::new(
+            current_ip,
+            InternodeMessageContent::Query(InternodeQuery {
+                query_string: serialized_message.to_string(),
+                open_query_id: open_query_id as u32,
+                client_id: client_id as u32,
+                replication: false,
+                keyspace_name: keyspace_name.to_string(),
+                timestamp: 0 as i64,
+            }),
         );
 
-        let current_ip = local_node.get_ip();
         let mut failed_nodes = 0;
 
         for ip in local_node.get_partitioner().get_nodes() {
@@ -252,7 +277,7 @@ impl QueryExecution {
                     ip,
                     INTERNODE_PORT,
                     self.connections.clone(),
-                    &message,
+                    message.clone(),
                 );
                 if result.is_err() {
                     failed_nodes += 1;
@@ -267,29 +292,28 @@ impl QueryExecution {
         &self,
         self_ip: Ipv4Addr,
         target_ip: Ipv4Addr,
-        header: &str,
         serialized_message: &str,
-        internode: bool,
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
     ) -> Result<i32, NodeError> {
-        let message = InternodeProtocolHandler::create_protocol_message(
-            &self_ip.to_string(),
-            open_query_id,
-            header,
-            serialized_message,
-            internode,
-            false,
-            client_id,
-            keyspace_name,
+        let message = InternodeMessage::new(
+            self_ip,
+            InternodeMessageContent::Query(InternodeQuery {
+                query_string: serialized_message.to_string(),
+                open_query_id: open_query_id as u32,
+                client_id: client_id as u32,
+                replication: false,
+                keyspace_name: keyspace_name.to_string(),
+                timestamp: 0 as i64,
+            }),
         );
 
         let result = connect_and_send_message(
             target_ip,
             INTERNODE_PORT,
             self.connections.clone(),
-            &message,
+            message.clone(),
         );
 
         if result.is_err() {
@@ -304,27 +328,28 @@ impl QueryExecution {
         &self,
         mut local_node: MutexGuard<'_, Node>,
         node_to_get_succesor: Ipv4Addr,
-        header: &str,
         serialized_message: &str,
-        internode: bool,
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
     ) -> Result<(i32, bool), NodeError> {
         // Serializa el objeto que se quiere enviar
-        let message = InternodeProtocolHandler::create_protocol_message(
-            &&local_node.get_ip_string(),
-            open_query_id,
-            header,
-            &serialized_message,
-            internode,
-            true,
-            client_id,
-            keyspace_name,
-        );
 
         // Bloquea el nodo para obtener el partitioner y la IP
         let current_ip = local_node.get_ip();
+
+        let message = InternodeMessage::new(
+            current_ip,
+            InternodeMessageContent::Query(InternodeQuery {
+                query_string: serialized_message.to_string(),
+                open_query_id: open_query_id as u32,
+                client_id: client_id as u32,
+                replication: true,
+                keyspace_name: keyspace_name.to_string(),
+                timestamp: 0 as i64,
+            }),
+        );
+
         let replication_factor = local_node
             .get_open_handle_query()
             .get_keyspace_of_query(open_query_id)?
@@ -345,7 +370,7 @@ impl QueryExecution {
                     ip,
                     INTERNODE_PORT,
                     self.connections.clone(),
-                    &message,
+                    message.clone(),
                 );
                 if result.is_err() {
                     failed_nodes += 1;

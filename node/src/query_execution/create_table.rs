@@ -87,9 +87,7 @@ impl QueryExecution {
             let serialized_create_table = create_table.serialize();
             self.how_many_nodes_failed = self.send_to_other_nodes(
                 node,
-                "CREATE_TABLE",
                 &serialized_create_table,
-                true,
                 open_query_id,
                 client_id,
                 &client_keyspace.get_name(),

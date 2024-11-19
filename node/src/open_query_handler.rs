@@ -1,5 +1,6 @@
 use crate::errors::NodeError;
 use crate::keyspace::Keyspace;
+use crate::messages::InternodeResponse;
 use crate::table::Table;
 use query_creator::Query;
 use std::collections::HashMap;
@@ -61,7 +62,7 @@ pub struct OpenQuery {
     needed_responses: i32,
     ok_responses: i32,
     error_responses: i32,
-    acumulated_ok_responses: Vec<String>,
+    acumulated_ok_responses: Vec<InternodeResponse>,
     connection: TcpStream,
     query: Query,
     consistency_level: ConsistencyLevel,
@@ -100,7 +101,7 @@ impl OpenQuery {
     ///
     /// # Parameters
     /// - `response`: The response to be added.
-    fn add_ok_response(&mut self, response: String) {
+    fn add_ok_response(&mut self, response: InternodeResponse) {
         self.acumulated_ok_responses.push(response);
         self.ok_responses += 1;
     }
@@ -122,7 +123,6 @@ impl OpenQuery {
             .is_query_ready(self.ok_responses as usize, self.needed_responses as usize)
             || !self.can_still_achieve_required_ok(
                 self.needed_responses,
-                self.ok_responses,
                 self.error_responses,
                 self.consistency_level
                     .required_oks(self.needed_responses as usize) as i32,
@@ -132,7 +132,6 @@ impl OpenQuery {
     fn can_still_achieve_required_ok(
         &self,
         total_responses: i32,
-        ok_responses: i32,
         error_responses: i32,
         required_ok: i32,
     ) -> bool {
@@ -313,7 +312,7 @@ impl OpenQueryHandler {
     pub fn add_ok_response_and_get_if_closed(
         &mut self,
         open_query_id: i32,
-        response: String,
+        response: InternodeResponse,
     ) -> Option<OpenQuery> {
         match self.get_query_mut(&open_query_id) {
             Some(query) => {
