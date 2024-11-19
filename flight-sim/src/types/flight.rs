@@ -89,7 +89,7 @@ impl Flight {
 
 
 
-    // Update the position and fuel level based on the current time
+    /// Update the position of the flight and its fuel level based on the current time
     pub fn update_position(&mut self, current_time: NaiveDateTime) {
         if self.status == FlightStatus::Pending && current_time >= self.departure_time {
             self.status = FlightStatus::InFlight;

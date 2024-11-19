@@ -140,6 +140,8 @@ fn print_help() {
     println!("    Show the current flights.");
     println!("  time-rate");
     println!("    Changes the simulation's elapsed time per tick.");
+    println!("  test-data");
+    println!("    Adds four airports and four flights to the simulation.");
     println!("  exit");
     println!("    Closes this application.");
 }
