@@ -19,6 +19,7 @@ use std::thread;
 use crate::table::Table;
 
 // External libraries
+use chrono::Utc;
 use driver::server::{handle_client_request, Request};
 use errors::NodeError;
 use gossip::Gossiper;
@@ -626,6 +627,10 @@ impl Node {
         Ok(())
     }
 
+    fn current_timestamp() -> i64 {
+        Utc::now().timestamp()
+    }
+
     fn handle_query_execution(
         query_str: &str,
         consistency_level: &str,
@@ -666,12 +671,15 @@ impl Node {
             )?;
         }
 
+        let timestamp = Self::current_timestamp();
+
         let response = QueryExecution::new(node.clone(), connections.clone()).execute(
             query.clone(),
             false,
             false,
             open_query_id,
             client_id,
+            Some(timestamp),
         )?;
 
         if let Some(((finished_responses, failed_nodes), content)) = response {

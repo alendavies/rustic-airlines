@@ -8,6 +8,7 @@ use query_creator::errors::CQLError;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
+use uuid::timestamp;
 
 use super::QueryExecution;
 
@@ -41,6 +42,7 @@ impl QueryExecution {
         mut replication: bool,
         open_query_id: i32,
         client_id: i32,
+        timestamp: i64,
     ) -> Result<(), NodeError> {
         let table;
         let mut do_in_this_node = true;
@@ -102,6 +104,7 @@ impl QueryExecution {
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    timestamp,
                 )?;
                 do_in_this_node = false;
             }
@@ -116,6 +119,7 @@ impl QueryExecution {
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    timestamp,
                 )?;
             }
 

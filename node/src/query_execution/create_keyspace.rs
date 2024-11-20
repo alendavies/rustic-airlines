@@ -56,6 +56,7 @@ impl QueryExecution {
                 open_query_id,
                 client_id,
                 "None",
+                0,
             )?;
         }
 

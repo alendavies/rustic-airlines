@@ -16,7 +16,7 @@ fn main() {
         "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'John', 'Doe', 30)".to_string(),
         "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (2, 'Jane', 'Smith', 25)".to_string(),
         "UPDATE test_keyspace.test_table SET age = 31 WHERE id = 1".to_string(),
-        "SELECT * FROM test_keyspace.test_table WHERE id = 1".to_string(),
+        "SELECT id,name FROM test_keyspace.test_table WHERE id = 1".to_string(),
     ];
 
     // Ejecutar cada consulta en un loop

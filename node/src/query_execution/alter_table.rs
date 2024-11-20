@@ -76,6 +76,7 @@ impl QueryExecution {
                 open_query_id,
                 client_id,
                 &client_keyspace.get_name(),
+                0,
             )?;
         }
 

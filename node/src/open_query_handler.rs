@@ -154,6 +154,10 @@ impl OpenQuery {
     pub fn get_table(&self) -> Option<Table> {
         self.table.clone()
     }
+
+    pub fn get_acumulated_responses(&self) -> Vec<InternodeResponse> {
+        self.acumulated_ok_responses.clone()
+    }
 }
 
 /// Implements `fmt::Display` for `OpenQuery` to provide human-readable formatting for query status.

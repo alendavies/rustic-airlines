@@ -23,6 +23,7 @@ impl QueryExecution {
         mut replication: bool,
         open_query_id: i32,
         client_id: i32,
+        timestap: i64,
     ) -> Result<(), NodeError> {
         let mut failed_nodes = 0;
         let mut internode_failed_nodes = 0;
@@ -110,6 +111,7 @@ impl QueryExecution {
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    timestap,
                 )?;
                 do_in_this_node = false; // The actual insert will be done by another node
             } else {
@@ -125,6 +127,7 @@ impl QueryExecution {
                 open_query_id,
                 client_id,
                 &client_keyspace.get_name(),
+                timestap,
             )?;
             if replication {
                 self.execution_replicate_itself = true; // This node will replicate the insert

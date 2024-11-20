@@ -1,6 +1,6 @@
 use crate::messages::{
     InternodeMessage, InternodeMessageContent, InternodeQuery, InternodeResponse,
-    InternodeResponseStatus,
+    InternodeResponseContent, InternodeResponseStatus,
 };
 use crate::open_query_handler::OpenQueryHandler;
 use crate::utils::connect_and_send_message;
@@ -99,12 +99,12 @@ impl InternodeProtocolHandler {
         if let Some(open_query) =
             query_handler.add_ok_response_and_get_if_closed(open_query_id, response.clone())
         {
+            let _contents_of_different_nodes = open_query.get_acumulated_responses();
+            //here we have to determinated the more new row
+            // and do READ REPAIR
+
             let rows = if let Some(content) = &response.content {
-                content
-                    .values
-                    .iter()
-                    .map(|row| row.join(","))
-                    .collect::<Vec<String>>()
+                Self::filter_and_join_columns(content)
             } else {
                 vec![]
             };
@@ -124,6 +124,36 @@ impl InternodeProtocolHandler {
         } else {
             Ok(())
         }
+    }
+
+    fn filter_and_join_columns(content: &InternodeResponseContent) -> Vec<String> {
+        // Crear el encabezado con las columnas seleccionadas
+        let mut result = vec![content.select_columns.join(",")];
+
+        // Obtener los índices de las columnas seleccionadas
+        let selected_indices: Vec<usize> = content
+            .select_columns
+            .iter()
+            .filter_map(|col| content.columns.iter().position(|c| c == col))
+            .collect();
+
+        // Procesar cada fila de valores
+        let filtered_rows: Vec<String> = content
+            .values
+            .iter()
+            .map(|row| {
+                selected_indices
+                    .iter()
+                    .map(|&i| row.get(i).unwrap_or(&String::new()).to_string()) // Crear copias de los valores
+                    .collect::<Vec<String>>()
+                    .join(",")
+            })
+            .collect();
+
+        // Agregar los valores procesados al resultado
+        result.extend(filtered_rows);
+
+        result
     }
 
     /// Closes an open query and sends an error response back to the client.
@@ -247,6 +277,7 @@ impl InternodeProtocolHandler {
                     query.replication,
                     query.open_query_id as i32,
                     query.client_id as i32,
+                    query.timestamp,
                 ),
                 "UPDATE" => Self::handle_update_command(
                     node,
@@ -256,6 +287,7 @@ impl InternodeProtocolHandler {
                     query.replication,
                     query.open_query_id as i32,
                     query.client_id as i32,
+                    query.timestamp,
                 ),
                 "DELETE" => Self::handle_delete_command(
                     node,
@@ -426,6 +458,7 @@ impl InternodeProtocolHandler {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
+        timestamp: i64,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Insert::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -434,6 +467,7 @@ impl InternodeProtocolHandler {
             replication,
             open_query_id,
             client_id,
+            Some(timestamp),
         )
     }
 
@@ -453,6 +487,7 @@ impl InternodeProtocolHandler {
             false,
             open_query_id,
             client_id,
+            None,
         )
     }
 
@@ -472,6 +507,7 @@ impl InternodeProtocolHandler {
             false,
             open_query_id,
             client_id,
+            None,
         )
     }
 
@@ -491,6 +527,7 @@ impl InternodeProtocolHandler {
             false,
             open_query_id,
             client_id,
+            None,
         )
     }
 
@@ -510,6 +547,7 @@ impl InternodeProtocolHandler {
             false,
             open_query_id,
             client_id,
+            None,
         )
     }
 
@@ -529,6 +567,7 @@ impl InternodeProtocolHandler {
             false,
             open_query_id,
             client_id,
+            None,
         )
     }
 
@@ -548,6 +587,7 @@ impl InternodeProtocolHandler {
             false,
             open_query_id,
             client_id,
+            None,
         )
     }
 
@@ -560,6 +600,7 @@ impl InternodeProtocolHandler {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
+        timestamp: i64,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Update::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections).execute(
@@ -568,6 +609,7 @@ impl InternodeProtocolHandler {
             replication,
             open_query_id,
             client_id,
+            Some(timestamp),
         )
     }
 
@@ -588,6 +630,7 @@ impl InternodeProtocolHandler {
             replication,
             open_query_id,
             client_id,
+            None,
         )
     }
 
@@ -608,6 +651,7 @@ impl InternodeProtocolHandler {
             replication,
             open_query_id,
             client_id,
+            None,
         )
     }
 
@@ -627,6 +671,7 @@ impl InternodeProtocolHandler {
             false,
             open_query_id,
             client_id,
+            None,
         )
     }
 }

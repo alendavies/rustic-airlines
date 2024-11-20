@@ -82,6 +82,7 @@ impl QueryExecution {
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    0,
                 )?;
                 do_in_this_node = false;
             }
@@ -96,6 +97,7 @@ impl QueryExecution {
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    0,
                 )?;
             }
 

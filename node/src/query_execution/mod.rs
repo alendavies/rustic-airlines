@@ -92,12 +92,14 @@ impl QueryExecution {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
+        timestap: Option<i64>,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let mut response: InternodeResponse = InternodeResponse {
             open_query_id: open_query_id as u32,
             status: InternodeResponseStatus::Ok,
             content: None,
         };
+
         let query_result = {
             match query.clone() {
                 Query::Select(select_query) => {
@@ -109,18 +111,18 @@ impl QueryExecution {
                         client_id,
                     ) {
                         Ok(select_querys) => {
-                            /* let columns: Vec<String> = select_querys
-                            .get(0)
-                            .map(|s| s.split(',').map(String::from).collect())
-                            .unwrap_or_default(); */
-
-                            let select_columns: Vec<String> = select_querys
+                            let columns: Vec<String> = select_querys
                                 .get(0)
                                 .map(|s| s.split(',').map(String::from).collect())
                                 .unwrap_or_default();
 
+                            let select_columns: Vec<String> = select_querys
+                                .get(1)
+                                .map(|s| s.split(',').map(String::from).collect())
+                                .unwrap_or_default();
+
                             let values: Vec<Vec<String>> = if select_querys.len() > 2 {
-                                select_querys[1..]
+                                select_querys[2..]
                                     .iter()
                                     .map(|s| s.split(',').map(String::from).collect())
                                     .collect()
@@ -129,7 +131,7 @@ impl QueryExecution {
                             };
 
                             response.content = Some(InternodeResponseContent {
-                                columns: Vec::new(),
+                                columns: columns,
                                 select_columns: select_columns,
                                 values: values,
                             });
@@ -142,6 +144,12 @@ impl QueryExecution {
                     }
                 }
                 Query::Insert(insert_query) => {
+                    let timestamp_n;
+                    if let Some(t) = timestap {
+                        timestamp_n = t;
+                    } else {
+                        return Err(NodeError::InternodeProtocolError);
+                    }
                     let table;
                     {
                         let table_name = insert_query.into_clause.table_name.clone();
@@ -160,15 +168,25 @@ impl QueryExecution {
                         replication,
                         open_query_id,
                         client_id,
+                        timestamp_n,
                     )
                 }
-                Query::Update(update_query) => self.execute_update(
-                    update_query,
-                    internode,
-                    replication,
-                    open_query_id,
-                    client_id,
-                ),
+                Query::Update(update_query) => {
+                    let timestamp_n;
+                    if let Some(t) = timestap {
+                        timestamp_n = t;
+                    } else {
+                        return Err(NodeError::InternodeProtocolError);
+                    }
+                    self.execute_update(
+                        update_query,
+                        internode,
+                        replication,
+                        open_query_id,
+                        client_id,
+                        timestamp_n,
+                    )
+                }
                 Query::Delete(delete_query) => self.execute_delete(
                     delete_query,
                     internode,
@@ -255,6 +273,7 @@ impl QueryExecution {
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
+        timestap: i64,
     ) -> Result<i32, NodeError> {
         let current_ip = local_node.get_ip();
         let message = InternodeMessage::new(
@@ -265,7 +284,7 @@ impl QueryExecution {
                 client_id: client_id as u32,
                 replication: false,
                 keyspace_name: keyspace_name.to_string(),
-                timestamp: 0 as i64,
+                timestamp: timestap,
             }),
         );
 
@@ -296,6 +315,7 @@ impl QueryExecution {
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
+        timestap: i64,
     ) -> Result<i32, NodeError> {
         let message = InternodeMessage::new(
             self_ip,
@@ -305,7 +325,7 @@ impl QueryExecution {
                 client_id: client_id as u32,
                 replication: false,
                 keyspace_name: keyspace_name.to_string(),
-                timestamp: 0 as i64,
+                timestamp: timestap,
             }),
         );
 
@@ -332,6 +352,7 @@ impl QueryExecution {
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
+        timestap: i64,
     ) -> Result<(i32, bool), NodeError> {
         // Serializa el objeto que se quiere enviar
 
@@ -346,7 +367,7 @@ impl QueryExecution {
                 client_id: client_id as u32,
                 replication: true,
                 keyspace_name: keyspace_name.to_string(),
-                timestamp: 0 as i64,
+                timestamp: timestap,
             }),
         );
 
