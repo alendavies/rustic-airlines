@@ -673,8 +673,7 @@ impl Node {
 
         let timestamp = Self::current_timestamp();
 
-        let response = QueryExecution::new(node.clone(), connections.clone()).execute(
-
+        let response = QueryExecution::new(node.clone(), connections.clone())?.execute(
             query.clone(),
             false,
             false,

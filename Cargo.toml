@@ -12,7 +12,7 @@ members = [
     "native_protocol",
     "graphical-interface",
     "node_launcher", 
-    "gossip"
+    "gossip",
     "storage"
 ]
 
