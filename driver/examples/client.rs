@@ -1,4 +1,5 @@
 use driver::CassandraClient;
+use native_protocol::messages::result;
 use std::{net::Ipv4Addr, str::FromStr};
 
 fn main() {
@@ -23,18 +24,19 @@ fn main() {
     "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Delta', 450, 35)".to_string(),
 ];
 
-    // Ejecutar cada consulta en un loopc
+
+    // Ejecutar cada consulta en un loop
     let mut contador = 0;
     let len = queries.len();
     for query in queries {
-        match client.execute(&query, "all") {
+        match client.execute(&query, "quorum") {
             Ok(query_result) => {
                 match query_result {
-                    driver::QueryResult::Result(_) => {
+                    driver::QueryResult::Result(result) => {
                         contador += 1;
                         println!(
                             "Consulta ejecutada exitosamente: {} y el resultado fue {:?}",
-                            query, query_result
+                            query, result
                         );
                     }
                     driver::QueryResult::Error(error) => {

@@ -8,6 +8,7 @@ use query_creator::errors::CQLError;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
+use uuid::timestamp;
 use storage::StorageEngine;
 
 use super::QueryExecution;
@@ -42,10 +43,13 @@ impl QueryExecution {
         mut replication: bool,
         open_query_id: i32,
         client_id: i32,
+        timestamp: i64,
     ) -> Result<(), NodeError> {
         let table;
         let mut do_in_this_node = true;
         let client_keyspace;
+        let mut failed_nodes = 0;
+        let mut internode_failed_nodes = 0;
         {
             // Get the table name and reference the node
             let table_name = update_query.table_name.clone();
@@ -94,15 +98,14 @@ impl QueryExecution {
             // If not an internode operation and the target node differs, forward the update
             if !internode && node_to_update != self_ip {
                 let serialized_update = update_query.serialize();
-                self.send_to_single_node(
+                failed_nodes = self.send_to_single_node(
                     node.get_ip(),
                     node_to_update,
-                    "UPDATE",
                     &serialized_update,
-                    true,
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    timestamp,
                 )?;
                 do_in_this_node = false;
             }
@@ -110,15 +113,14 @@ impl QueryExecution {
             // Send update to replication nodes if needed
             if !internode {
                 let serialized_update = update_query.serialize();
-                replication = self.send_to_replication_nodes(
+                (internode_failed_nodes, replication) = self.send_to_replication_nodes(
                     node,
                     node_to_update,
-                    "UPDATE",
                     &serialized_update,
-                    true,
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    timestamp,
                 )?;
             }
 
@@ -127,6 +129,9 @@ impl QueryExecution {
                 self.execution_finished_itself = true;
             }
         }
+
+        failed_nodes += internode_failed_nodes;
+        self.how_many_nodes_failed = failed_nodes;
 
         // Early return if no local execution or replication is needed
         if !do_in_this_node && !replication {

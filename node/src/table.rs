@@ -99,11 +99,7 @@ impl Table {
                 clustering_columns.push(column.name.clone());
             }
         }
-        if clustering_columns.is_empty() {
-            Err(NodeError::OtherError)
-        } else {
-            Ok(clustering_columns)
-        }
+        Ok(clustering_columns)
     }
 
     pub fn get_clustering_column_in_order(&self) -> Vec<String> {

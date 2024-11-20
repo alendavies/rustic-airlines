@@ -21,6 +21,8 @@ impl QueryExecution {
         let table;
         let mut do_in_this_node = true;
 
+        let mut failed_nodes = 0;
+        let mut internode_failed_nodes = 0;
         let client_keyspace;
         {
             // Get the table name and reference the node
@@ -79,15 +81,14 @@ impl QueryExecution {
             // Forward the SELECT if this is not an internode operation and the target node differs
             if !internode && node_to_query != self_ip {
                 let serialized_query = select_query.serialize();
-                self.send_to_single_node(
+                failed_nodes = self.send_to_single_node(
                     node.get_ip(),
                     node_to_query,
-                    "SELECT",
                     &serialized_query,
-                    true,
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    0,
                 )?;
                 do_in_this_node = false;
             }
@@ -95,15 +96,14 @@ impl QueryExecution {
             // Send the SELECT to replication nodes if needed
             if !internode {
                 let serialized_select = select_query.serialize();
-                replication = self.send_to_replication_nodes(
+                (internode_failed_nodes, replication) = self.send_to_replication_nodes(
                     node,
                     node_to_query,
-                    "SELECT",
                     &serialized_select,
-                    true,
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    0,
                 )?;
             }
 
@@ -113,6 +113,8 @@ impl QueryExecution {
             }
         }
 
+        failed_nodes += internode_failed_nodes;
+        self.how_many_nodes_failed = failed_nodes;
         // Return if no local execution or replication is needed
         if !do_in_this_node && !replication {
             return Ok(vec![]);
@@ -146,6 +148,9 @@ impl QueryExecution {
         let file = OpenOptions::new().read(true).open(&file_path)?;
         let reader = BufReader::new(file);
         let mut results = Vec::new();
+        let complete_columns: Vec<String> =
+            table.get_columns().iter().map(|c| c.name.clone()).collect();
+        results.push(complete_columns.join(","));
         results.push(select_query.columns.join(","));
         // Iterate over each line in the file and apply the WHERE clause condition
         for (i, line) in reader.lines().enumerate() {
@@ -154,8 +159,8 @@ impl QueryExecution {
             }
             let line = line?;
             if self.line_matches_where_clause(&line, &table, &select_query)? {
-                let selected_columns = self.extract_selected_columns(&line, &table, &select_query);
-                results.push(selected_columns);
+                //let selected_columns = self.extract_selected_columns(&line, &table, &select_query);
+                results.push(line);
             }
         }
         if let Some(limit) = select_query.limit {
@@ -170,24 +175,26 @@ impl QueryExecution {
         Ok(results)
     }
 
-    /// Sorts the results based on a single specified column and its ordering
+    /// Sorts the results based on a single specified column and its ordering.
+    /// Handles cases with two headers and sorts the remaining rows.
     fn sort_results_single_column(
         &self,
         results: &mut Vec<String>,
         order_by_column: &str,
         order: &str, // Either "ASC" or "DESC"
     ) -> Result<(), NodeError> {
-        if results.len() <= 1 {
-            // No sorting needed if only header or empty results
+        if results.len() <= 3 {
+            // No sorting needed if only headers or very few rows
             return Ok(());
         }
 
-        // Split header from the rest of the rows
-        let header = results[0].clone();
-        let rows = &mut results[1..];
+        // Separate the two headers
+        let header1 = results[0].clone();
+        let header2 = results[1].clone();
+        let rows = &mut results[2..];
 
         // Get the index of the column specified in order_by_column
-        let header_columns: Vec<&str> = header.split(',').collect();
+        let header_columns: Vec<&str> = header1.split(',').collect();
         let col_index = header_columns
             .iter()
             .position(|&col| col == order_by_column);
@@ -207,8 +214,9 @@ impl QueryExecution {
             });
         }
 
-        // Restore header
-        results[0] = header;
+        // Restore headers
+        results[0] = header1;
+        results[1] = header2;
         Ok(())
     }
 
@@ -234,19 +242,19 @@ impl QueryExecution {
         }
     }
 
-    /// Extracts the selected columns from a line according to the SELECT query
-    fn extract_selected_columns(&self, line: &str, table: &Table, select_query: &Select) -> String {
-        let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
-        let column_value_map = self.create_column_value_map(table, &columns, false);
+    // /// Extracts the selected columns from a line according to the SELECT query
+    // fn extract_selected_columns(&self, line: &str, table: &Table, select_query: &Select) -> String {
+    //     let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
+    //     let column_value_map = self.create_column_value_map(table, &columns, false);
 
-        // Filter only the columns specified in the SELECT query
-        let selected_columns: Vec<String> = select_query
-            .columns
-            .iter()
-            .filter_map(|col| column_value_map.get(col).cloned())
-            .collect();
+    //     // Filter only the columns specified in the SELECT query
+    //     let selected_columns: Vec<String> = select_query
+    //         .columns
+    //         .iter()
+    //         .filter_map(|col| column_value_map.get(col).cloned())
+    //         .collect();
 
-        // Join the selected columns into a single comma-separated string
-        selected_columns.join(",")
-    }
+    //     // Join the selected columns into a single comma-separated string
+    //     selected_columns.join(",")
+    // }
 }

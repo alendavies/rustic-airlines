@@ -20,6 +20,8 @@ impl QueryExecution {
     ) -> Result<(), NodeError> {
         let table;
         let mut do_in_this_node = true;
+        let mut failed_nodes = 0;
+        let mut internode_failed_nodes = 0;
 
         let client_keyspace;
         {
@@ -73,15 +75,14 @@ impl QueryExecution {
             // Forward the DELETE operation if the responsible node is different and not an internode operation
             if !internode && node_to_delete != self_ip {
                 let serialized_delete = delete_query.serialize();
-                self.send_to_single_node(
+                failed_nodes = self.send_to_single_node(
                     node.get_ip(),
                     node_to_delete,
-                    "DELETE",
                     &serialized_delete,
-                    true,
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    0,
                 )?;
                 do_in_this_node = false;
             }
@@ -89,15 +90,14 @@ impl QueryExecution {
             // Send DELETE to replication nodes if required
             if !internode {
                 let serialized_delete = delete_query.serialize();
-                replication = self.send_to_replication_nodes(
+                (internode_failed_nodes, replication) = self.send_to_replication_nodes(
                     node,
                     node_to_delete,
-                    "DELETE",
                     &serialized_delete,
-                    true,
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    0,
                 )?;
             }
 
@@ -106,6 +106,9 @@ impl QueryExecution {
                 self.execution_finished_itself = true;
             }
         }
+
+        failed_nodes += internode_failed_nodes;
+        self.how_many_nodes_failed = failed_nodes;
 
         // Early return if no local execution or replication is needed
         if !do_in_this_node && !replication {

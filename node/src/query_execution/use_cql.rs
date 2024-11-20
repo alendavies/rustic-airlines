@@ -41,12 +41,11 @@ impl QueryExecution {
             let serialized_use_keyspace = use_keyspace.serialize();
             self.send_to_other_nodes(
                 node,
-                "USE",
                 &serialized_use_keyspace,
-                true,
                 open_query_id,
                 client_id,
                 &keyspace_name,
+                0,
             )?;
         }
 

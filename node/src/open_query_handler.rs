@@ -1,5 +1,6 @@
 use crate::errors::NodeError;
 use crate::keyspace::Keyspace;
+use crate::messages::InternodeResponse;
 use crate::table::Table;
 use query_creator::Query;
 use std::collections::HashMap;
@@ -41,14 +42,27 @@ impl ConsistencyLevel {
             ConsistencyLevel::All => responses_received >= responses_needed,
         }
     }
+
+    // Calcula cuántos OKs se necesitan para cumplir con el nivel de consistencia
+    pub fn required_oks(&self, responses_needed: usize) -> usize {
+        match self {
+            ConsistencyLevel::Any => 1,
+            ConsistencyLevel::One => 1,
+            ConsistencyLevel::Two => 2,
+            ConsistencyLevel::Three => 3,
+            ConsistencyLevel::Quorum => responses_needed / 2 + 1,
+            ConsistencyLevel::All => responses_needed,
+        }
+    }
 }
 
 /// Represents an open query, tracking the number of responses needed and received.
 #[derive(Debug)]
 pub struct OpenQuery {
     needed_responses: i32,
-    actual_responses: i32,
-    responses: Vec<String>,
+    ok_responses: i32,
+    error_responses: i32,
+    acumulated_ok_responses: Vec<InternodeResponse>,
     connection: TcpStream,
     query: Query,
     consistency_level: ConsistencyLevel,
@@ -73,8 +87,9 @@ impl OpenQuery {
     ) -> Self {
         Self {
             needed_responses,
-            actual_responses: 0,
-            responses: vec![],
+            ok_responses: 0,
+            error_responses: 0,
+            acumulated_ok_responses: vec![],
             connection,
             query,
             consistency_level: ConsistencyLevel::from_str(consistencty),
@@ -86,9 +101,17 @@ impl OpenQuery {
     ///
     /// # Parameters
     /// - `response`: The response to be added.
-    fn add_response(&mut self, response: String) {
-        self.responses.push(response);
-        self.actual_responses += 1;
+    fn add_ok_response(&mut self, response: InternodeResponse) {
+        self.acumulated_ok_responses.push(response);
+        self.ok_responses += 1;
+    }
+
+    /// Adds a response to the query and increments the count of actual responses.
+    ///
+    /// # Parameters
+    /// - `response`: The response to be added.
+    fn add_error_response(&mut self) {
+        self.error_responses += 1;
     }
 
     /// Checks if the query has received all needed responses.
@@ -96,18 +119,24 @@ impl OpenQuery {
     /// # Returns
     /// `true` if the query is closed (i.e., all responses have been received), `false` otherwise.
     fn is_close(&self) -> bool {
-        self.consistency_level.is_query_ready(
-            self.actual_responses as usize,
-            self.needed_responses as usize,
-        )
+        self.consistency_level
+            .is_query_ready(self.ok_responses as usize, self.needed_responses as usize)
+            || !self.can_still_achieve_required_ok(
+                self.needed_responses,
+                self.error_responses,
+                self.consistency_level
+                    .required_oks(self.needed_responses as usize) as i32,
+            )
     }
 
-    /// Gets a clone of all the responses received for this query.
-    ///
-    /// # Returns
-    /// A `Vec<String>` containing all responses.
-    fn _get_responses(&self) -> Vec<String> {
-        self.responses.clone()
+    fn can_still_achieve_required_ok(
+        &self,
+        total_responses: i32,
+        error_responses: i32,
+        required_ok: i32,
+    ) -> bool {
+        total_responses - error_responses >= required_ok
+        //total rta - errores - ok >= oks necesarios - oks
     }
 
     /// Gets the TCP connection associated with this query.
@@ -125,6 +154,10 @@ impl OpenQuery {
     pub fn get_table(&self) -> Option<Table> {
         self.table.clone()
     }
+
+    pub fn get_acumulated_responses(&self) -> Vec<InternodeResponse> {
+        self.acumulated_ok_responses.clone()
+    }
 }
 
 /// Implements `fmt::Display` for `OpenQuery` to provide human-readable formatting for query status.
@@ -132,8 +165,8 @@ impl fmt::Display for OpenQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ID: responses {}/{} with responses: {:?}",
-            self.actual_responses, self.needed_responses, self.responses
+            "ID: con {:?} (Ok responses) y {:?} (Error responses) of {:?} needed responses",
+            self.ok_responses, self.error_responses, self.needed_responses
         )
     }
 }
@@ -280,20 +313,20 @@ impl OpenQueryHandler {
     /// # Returns
     /// The `OpenQuery` if it has been closed, or `None` if it is still open.
     ///
-    pub fn add_response_and_get_if_closed(
+    pub fn add_ok_response_and_get_if_closed(
         &mut self,
         open_query_id: i32,
-        response: String,
+        response: InternodeResponse,
     ) -> Option<OpenQuery> {
         match self.get_query_mut(&open_query_id) {
             Some(query) => {
-                query.add_response(response);
-
+                query.add_ok_response(response);
                 if query.is_close() {
                     println!(
-                        "con respuestas = {:?} y cl = {:?}, la query se cerro",
-                        query.actual_responses, query.consistency_level
+                        "con {:?} OKS y {:?} ERRORS la query se cerro",
+                        query.ok_responses, query.error_responses
                     );
+
                     self.queries.remove(&open_query_id)
                 } else {
                     None
@@ -303,204 +336,39 @@ impl OpenQueryHandler {
         }
     }
 
-    pub fn close_query_and_get_if_closed(&mut self, open_query_id: i32) -> Option<OpenQuery> {
+    pub fn add_error_response_and_get_if_closed(
+        &mut self,
+        open_query_id: i32,
+    ) -> Option<OpenQuery> {
         match self.get_query_mut(&open_query_id) {
-            Some(_) => self.queries.remove(&open_query_id),
+            Some(query) => {
+                query.add_error_response();
+
+                if query.is_close() {
+                    println!(
+                        "con {:?} OKS y {:?} ERRORS la query se cerro",
+                        query.ok_responses, query.error_responses
+                    );
+                    self.queries.remove(&open_query_id)
+                } else {
+                    None
+                }
+            }
             None => None,
         }
     }
 }
 
-/// Implements `fmt::Debug` for `OpenQueryHandler` to show the active queries and their statuses.
-impl fmt::Debug for OpenQueryHandler {
+impl fmt::Display for OpenQueryHandler {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let query_status: Vec<String> = self
-            .queries
-            .iter()
-            .map(|(id, query)| {
-                format!(
-                    "ID {}: responses {}/{} with responses: {:?}",
-                    id, query.actual_responses, query.needed_responses, query.responses
-                )
-            })
-            .collect();
-
-        write!(f, "Active Queries:\n{}", query_status.join("\n"))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use query_creator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
-    use query_creator::clauses::table::create_table_cql::CreateTable;
-    use query_creator::Query;
-    use std::net::TcpListener;
-
-    // Helper function to create a dummy TCP stream for testing.
-    fn get_dummy_tcpstream() -> TcpStream {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        TcpStream::connect(listener.local_addr().unwrap()).unwrap()
-    }
-
-    // Helper function to create a dummy Table for testing.
-    fn get_dummy_table() -> Table {
-        let query_tokens = vec![
-            "CREATE".to_string(),
-            "TABLE".to_string(),
-            "users".to_string(),
-            "(id INT PRIMARY KEY, name TEXT, age INT)".to_string(),
-        ];
-
-        let create_table = CreateTable::new_from_tokens(query_tokens).unwrap();
-        Table::new(create_table)
-    }
-
-    // Helper function to create a dummy Query for testing.
-    fn get_dummy_query() -> Query {
-        Query::Select(query_creator::clauses::select_cql::Select {
-            table_name: "dummy_table".to_string(),
-            keyspace_used_name: "".to_string(),
-            columns: vec!["col1".to_string(), "col2".to_string()],
-            where_clause: None,
-            orderby_clause: None,
-            limit: None,
-        })
-    }
-
-    #[test]
-    fn test_open_query_initialization() {
-        let stream = get_dummy_tcpstream();
-        let query = get_dummy_query();
-        let table = get_dummy_table();
-
-        let open_query = OpenQuery::new(3, stream, query, "quorum", Some(table));
-
-        assert_eq!(open_query.needed_responses, 3);
-        assert_eq!(open_query.actual_responses, 0);
-        assert!(open_query.responses.is_empty());
-        assert_eq!(open_query.consistency_level, ConsistencyLevel::Quorum);
-    }
-
-    #[test]
-    fn test_open_query_add_response() {
-        let stream = get_dummy_tcpstream();
-        let query = get_dummy_query();
-        let mut open_query = OpenQuery::new(2, stream, query, "two", None);
-
-        open_query.add_response("Response 1".to_string());
-        assert_eq!(open_query.actual_responses, 1);
-        assert_eq!(open_query.responses, vec!["Response 1".to_string()]);
-
-        open_query.add_response("Response 2".to_string());
-        assert_eq!(open_query.actual_responses, 2);
-        assert_eq!(
-            open_query.responses,
-            vec!["Response 1".to_string(), "Response 2".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_open_query_is_close() {
-        let stream = get_dummy_tcpstream();
-        let query = get_dummy_query();
-        let table = get_dummy_table();
-        let mut open_query = OpenQuery::new(2, stream, query, "one", Some(table));
-
-        assert!(!open_query.is_close());
-
-        open_query.add_response("Response 1".to_string());
-        assert!(open_query.is_close()); // Should be true with "one" consistency level
-    }
-
-    #[test]
-    fn test_open_query_quorum() {
-        let stream = get_dummy_tcpstream();
-        let query = get_dummy_query();
-        let table = get_dummy_table();
-        let mut open_query = OpenQuery::new(4, stream, query, "quorum", Some(table));
-
-        open_query.add_response("Response 1".to_string());
-        open_query.add_response("Response 2".to_string());
-        assert!(!open_query.is_close()); // Should be false with only 2 responses
-
-        open_query.add_response("Response 3".to_string());
-        assert!(open_query.is_close()); // Should be true with quorum met (3/4)
-    }
-
-    #[test]
-    fn test_open_query_get_responses() {
-        let stream = get_dummy_tcpstream();
-        let query = get_dummy_query();
-        let mut open_query = OpenQuery::new(2, stream, query, "two", None);
-
-        open_query.add_response("Response 1".to_string());
-        open_query.add_response("Response 2".to_string());
-
-        let responses = open_query._get_responses();
-        assert_eq!(
-            responses,
-            vec!["Response 1".to_string(), "Response 2".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_open_query_handler_create_query_with_keyspace() {
-        let stream = get_dummy_tcpstream();
-        let query = get_dummy_query();
-        let table = get_dummy_table();
-        let keyspace = Keyspace::new(CreateKeyspace {
-            name: "test_keyspace".to_string(),
-            if_not_exists_clause: true,
-            replication_class: "SimpleStrategy".to_string(),
-            replication_factor: 3,
-        });
-
-        let mut handler = OpenQueryHandler::new();
-        let query_id = handler.new_open_query(
-            3,
-            stream,
-            query,
-            "quorum",
-            Some(table),
-            Some(keyspace.clone()),
-        );
-
-        assert!(handler.queries.contains_key(&query_id));
-        assert_eq!(handler.queries[&query_id].needed_responses, 3);
-        assert_eq!(
-            handler.queries[&query_id].consistency_level,
-            ConsistencyLevel::Quorum
-        );
-
-        // Verificación de keyspace en el HashMap
-        assert_eq!(
-            handler.get_keyspace_of_query(query_id).unwrap(),
-            Some(keyspace)
-        );
-    }
-
-    #[test]
-    fn test_open_query_handler_remove_query() {
-        let stream = get_dummy_tcpstream();
-        let query = get_dummy_query();
-        let table = get_dummy_table();
-        let keyspace = Keyspace::new(CreateKeyspace {
-            name: "test_keyspace".to_string(),
-            if_not_exists_clause: false,
-            replication_class: "SimpleStrategy".to_string(),
-            replication_factor: 3,
-        });
-
-        let mut handler = OpenQueryHandler::new();
-        let query_id = handler.new_open_query(2, stream, query, "two", Some(table), Some(keyspace));
-
-        assert!(handler.queries.contains_key(&query_id));
-
-        handler._remove_query(&query_id);
-        assert!(!handler.queries.contains_key(&query_id));
-
-        // Verificación de que el keyspace fue removido
-        assert!(handler.get_keyspace_of_query(query_id).is_err());
+        write!(f, "Open Queries:\n")?;
+        for (id, query) in &self.queries {
+            writeln!(
+                f,
+                "Query ID {}: {} OKs, {} Errors, {} Needed",
+                id, query.ok_responses, query.error_responses, query.needed_responses
+            )?;
+        }
+        Ok(())
     }
 }

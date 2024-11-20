@@ -44,12 +44,11 @@ impl QueryExecution {
             let serialized_drop_table = drop_table.serialize();
             self.send_to_other_nodes(
                 node,
-                "DROP_TABLE",
                 &serialized_drop_table,
-                true,
                 open_query_id,
                 client_id,
                 &client_keyspace.get_name(),
+                0,
             )?;
         }
 
