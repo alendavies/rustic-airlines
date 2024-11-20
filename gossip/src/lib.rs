@@ -8,7 +8,7 @@ use std::{
     fmt,
     net::Ipv4Addr,
 };
-use structures::{EndpointState, HeartbeatState};
+use structures::{EndpointState, HeartbeatState, NodeStatus};
 pub mod messages;
 pub mod structures;
 
@@ -16,6 +16,7 @@ pub mod structures;
 ///
 /// ### Fields
 /// - `endpoints_state`: HashMap containing the state of all the endpoints that the gossiper knows about.
+#[derive(Clone)]
 pub struct Gossiper {
     pub endpoints_state: HashMap<Ipv4Addr, EndpointState>,
 }
@@ -72,8 +73,11 @@ impl Gossiper {
         let mut rng = thread_rng();
         let ips: Vec<&Ipv4Addr> = self
             .endpoints_state
-            .keys()
-            .filter(|&key| *key != exclude)
+            .iter()
+            .filter(|(&ip, state)| {
+                ip != exclude && state.application_state.status != NodeStatus::Dead
+            })
+            .map(|(ip, _)| ip)
             .choose_multiple(&mut rng, 3);
         ips
     }

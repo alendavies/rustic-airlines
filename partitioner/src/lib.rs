@@ -72,10 +72,15 @@ impl Partitioner {
     /// - `PartitionerError::HashError` - If there is an issue hashing the IP address.
     /// - `PartitionerError::NodeNotFound` - If the node is not found in the partitioner.
     pub fn remove_node(&mut self, ip: Ipv4Addr) -> Result<Ipv4Addr, PartitionerError> {
+        println!("Removing node...");
         let hash = Self::hash_value(ip.to_string())?;
-        self.nodes
+        let result = self
+            .nodes
             .remove(&hash)
-            .ok_or(PartitionerError::NodeNotFound)
+            .ok_or(PartitionerError::NodeNotFound);
+        println!("el anillo es {:?}", self);
+
+        result
     }
 
     /// Retrieves the IP address of the node responsible for a given value.

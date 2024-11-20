@@ -21,6 +21,7 @@ use crate::table::Table;
 // External libraries
 use driver::server::{handle_client_request, Request};
 use errors::NodeError;
+use gossip::structures::NodeStatus;
 use gossip::Gossiper;
 use internode_protocol::message::{InternodeMessage, InternodeMessageContent};
 use internode_protocol::response::{
@@ -73,6 +74,11 @@ impl Node {
     pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>) -> Result<Node, NodeError> {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip)?;
+        for seed_ip in seeds_nodes.clone() {
+            if seed_ip != ip {
+                partitioner.add_node(seed_ip)?;
+            }
+        }
 
         Ok(Node {
             ip,
@@ -94,31 +100,69 @@ impl Node {
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
-        let handle = thread::spawn(move || loop {
-            {
-                let mut node_guard = node.lock().unwrap();
-                let ip = node_guard.ip;
-                node_guard.gossiper.heartbeat(ip);
+        let handle =
+            thread::spawn(move || loop {
+                {
+                    // TODO: ver cambio de estado del nodo de bootstrap a normal
+                    {
+                        let mut node_guard = node.lock().unwrap();
+                        let ip = node_guard.ip;
+                        node_guard.gossiper.heartbeat(ip);
 
-                let ips = node_guard.gossiper.pick_ips(node_guard.get_ip());
-                let syn = node_guard.gossiper.create_syn(node_guard.ip);
+                        // check if there are dead nodes, and remove them from the partitioner
+                        node_guard.gossiper.clone().endpoints_state.iter().for_each(
+                            |(ip, state)| {
+                                if state.application_state.status == NodeStatus::Dead {
+                                    let _ = node_guard.partitioner.remove_node(*ip);
+                                }
+                            },
+                        );
+                    }
 
-                for ip in ips {
-                    let connections_clone = Arc::clone(&connections);
+                    let ips: Vec<Ipv4Addr>;
+                    let syn;
 
-                    let msg = InternodeMessage::new(
-                        ip.clone(),
-                        InternodeMessageContent::Gossip(syn.clone()),
-                    );
+                    {
+                        let node_guard = node.lock().unwrap();
+                        ips = node_guard
+                            .gossiper
+                            .pick_ips(node_guard.get_ip())
+                            .iter()
+                            .map(|x| **x)
+                            .collect();
 
-                    println!("Sending gossip to {:?}: {:?}", ip, &msg);
+                        syn = node_guard.gossiper.create_syn(node_guard.ip);
+                    }
 
-                    connect_and_send_message(*ip, INTERNODE_PORT, connections_clone, msg).unwrap();
+                    let mut node_guard = node.lock().unwrap();
+
+                    for ip in ips {
+                        let connections_clone = Arc::clone(&connections);
+
+                        let msg = InternodeMessage::new(
+                            ip.clone(),
+                            InternodeMessageContent::Gossip(syn.clone()),
+                        );
+
+                        //println!("Sending gossip to {:?}: {:?}", ip, &msg);
+
+                        if connect_and_send_message(ip, INTERNODE_PORT, connections_clone, msg)
+                            .is_err()
+                        {
+                            println!("Node {:?} is dead", ip);
+                            node_guard
+                                .gossiper
+                                .endpoints_state
+                                .get_mut(&ip)
+                                .unwrap()
+                                .application_state
+                                .status = NodeStatus::Dead;
+                        }
+                    }
                 }
-            }
 
-            thread::sleep(std::time::Duration::from_secs(1));
-        });
+                thread::sleep(std::time::Duration::from_secs(1));
+            });
 
         handle.join().unwrap();
         Ok(())
@@ -652,8 +696,15 @@ impl Node {
 
             // Try to read a line
             let bytes_read = reader.read(&mut buffer);
-            let message = InternodeMessage::from_bytes(&buffer)
-                .map_err(|_| NodeError::InternodeProtocolError)?;
+            let result = InternodeMessage::from_bytes(&buffer);
+
+            let message;
+
+            if let Ok(value) = result {
+                message = value;
+            } else {
+                continue;
+            }
 
             match bytes_read {
                 Ok(0) => {

@@ -177,8 +177,6 @@ impl InternodeSerializable for InternodeMessage {
         let header =
             InternodeHeader::from_bytes(&header_bytes).map_err(|_| InternodeMessageError)?;
 
-        dbg!(&header);
-
         let mut content_bytes = vec![0u8; header.length as usize];
         cursor
             .read_exact(&mut content_bytes)

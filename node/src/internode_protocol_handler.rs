@@ -5,6 +5,7 @@ use crate::open_query_handler::OpenQueryHandler;
 use crate::utils::connect_and_send_message;
 use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
 use gossip::messages::GossipMessage;
+use gossip::structures::NodeStatus;
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -357,10 +358,27 @@ impl InternodeProtocolHandler {
             gossip::messages::Payload::Syn(syn) => {
                 let ack = guard_node.gossiper.handle_syn(syn);
 
+                ack.stale_digests.iter().for_each(|digest| {
+                    let status = guard_node
+                        .gossiper
+                        .endpoints_state
+                        .get(&digest.address)
+                        .unwrap()
+                        .application_state
+                        .status;
+
+                    if digest.version == 0 && status == NodeStatus::Bootstrap {
+                        let _ = guard_node
+                            .partitioner
+                            .add_node(digest.address)
+                            .map_err(|e| NodeError::PartitionerError(e));
+                    }
+                });
+
                 let msg =
                     GossipMessage::new(guard_node.get_ip(), gossip::messages::Payload::Ack(ack));
 
-                connect_and_send_message(
+                let result = connect_and_send_message(
                     gossip_message.from,
                     INTERNODE_PORT,
                     connections,
@@ -368,8 +386,18 @@ impl InternodeProtocolHandler {
                         guard_node.get_ip(),
                         InternodeMessageContent::Gossip(msg),
                     ),
-                )
-                .unwrap();
+                );
+
+                if result.is_err() {
+                    println!("Node is dead: {:?}", gossip_message.from);
+                    guard_node
+                        .gossiper
+                        .endpoints_state
+                        .get_mut(&gossip_message.from)
+                        .unwrap()
+                        .application_state
+                        .status = NodeStatus::Dead;
+                }
             }
             gossip::messages::Payload::Ack(ack) => {
                 let ack2 = guard_node.gossiper.handle_ack(ack);
@@ -377,7 +405,7 @@ impl InternodeProtocolHandler {
                 let msg =
                     GossipMessage::new(guard_node.get_ip(), gossip::messages::Payload::Ack2(ack2));
 
-                connect_and_send_message(
+                let result = connect_and_send_message(
                     gossip_message.from,
                     INTERNODE_PORT,
                     connections,
@@ -385,16 +413,23 @@ impl InternodeProtocolHandler {
                         guard_node.get_ip(),
                         InternodeMessageContent::Gossip(msg),
                     ),
-                )
-                .unwrap();
+                );
+
+                if result.is_err() {
+                    println!("Node is dead: {:?}", gossip_message.from);
+                    guard_node
+                        .gossiper
+                        .endpoints_state
+                        .get_mut(&gossip_message.from)
+                        .unwrap()
+                        .application_state
+                        .status = NodeStatus::Dead;
+                }
             }
             gossip::messages::Payload::Ack2(ack2) => {
                 guard_node.gossiper.handle_ack2(ack2);
             }
         };
-
-        //TODO
-        //informar al partitioner que un nodo se ha unido
 
         Ok(())
     }
