@@ -34,16 +34,7 @@ impl QueryExecution {
         if has_to_create {
             // Get the keyspace name
             let keyspace_name = create_keyspace.get_name().clone();
-
-            // Generate the folder name where the keyspace will be stored
-            let ip_str = node.get_ip_string().to_string().replace(".", "_");
-            let folder_name = format!("keyspaces_{}", ip_str);
-
-            // Create the keyspace folder if it doesn't exist
-            let keyspace_path = format!("{}/{}", folder_name, keyspace_name);
-            if let Err(e) = std::fs::create_dir_all(&keyspace_path) {
-                return Err(NodeError::IoError(e));
-            }
+            self.storage_engine.create_keyspace(&keyspace_name)?;
         }
 
         // If this is not an internode operation, communicate the creation to other nodes

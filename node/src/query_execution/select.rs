@@ -5,6 +5,7 @@ use query_creator::clauses::select_cql::Select;
 use query_creator::errors::CQLError;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
+use storage::StorageEngine;
 
 use super::QueryExecution;
 

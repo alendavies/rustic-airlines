@@ -461,7 +461,7 @@ impl InternodeProtocolHandler {
         timestamp: i64,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Insert::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::Insert(query),
             internode,
             replication,
@@ -481,7 +481,8 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = CreateTable::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        println!("la query quedo como {:?}", query);
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::CreateTable(query),
             internode,
             false,
@@ -501,7 +502,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = DropTable::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::DropTable(query),
             internode,
             false,
@@ -521,7 +522,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = AlterTable::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::AlterTable(query),
             internode,
             false,
@@ -541,7 +542,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = CreateKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::CreateKeyspace(query),
             internode,
             false,
@@ -561,7 +562,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = DropKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::DropKeyspace(query),
             internode,
             false,
@@ -581,7 +582,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = AlterKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::AlterKeyspace(query),
             internode,
             false,
@@ -603,7 +604,7 @@ impl InternodeProtocolHandler {
         timestamp: i64,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Update::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::Update(query),
             internode,
             replication,
@@ -624,7 +625,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Delete::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::Delete(query),
             internode,
             replication,
@@ -645,7 +646,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Select::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::Select(query),
             internode,
             replication,
@@ -665,7 +666,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Use::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections).execute(
+        QueryExecution::new(node.clone(), connections)?.execute(
             Query::Use(query),
             internode,
             false,

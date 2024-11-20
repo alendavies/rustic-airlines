@@ -1,6 +1,7 @@
 use crate::clauses::types::column::Column;
 use crate::clauses::types::datatype::DataType;
 use crate::errors::CQLError;
+use crate::QueryCreator;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
 
@@ -10,6 +11,7 @@ pub struct CreateTable {
     keyspace_used_name: String,
     if_not_exists_clause: bool,
     columns: Vec<Column>,
+    clustering_columns_in_order: Vec<String>,
 }
 
 impl CreateTable {
@@ -85,6 +87,11 @@ impl CreateTable {
     pub fn get_used_keyspace(&self) -> String {
         self.keyspace_used_name.clone()
     }
+
+    pub fn get_clustering_column_in_order(&self) -> Vec<String> {
+        self.clustering_columns_in_order.clone()
+    }
+    // Constructor
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
@@ -214,6 +221,7 @@ impl CreateTable {
                 if parts.len() == 2 {
                     let col_name = parts[0].trim().to_string();
                     let order = parts[1].trim().to_uppercase();
+                    println!("al deserializar el orden es {:?}", order);
                     if order == "ASC" || order == "DESC" {
                         clustering_orders.insert(col_name, order);
                     }
@@ -229,7 +237,7 @@ impl CreateTable {
                 column.is_clustering_column = true;
                 column.clustering_order = clustering_orders
                     .get(&column.name)
-                    .map_or(String::from(""), |order| order.to_string());
+                    .map_or(String::from("ASC"), |order| order.to_string());
             }
         }
 
@@ -238,6 +246,7 @@ impl CreateTable {
             keyspace_used_name,
             if_not_exists_clause,
             columns,
+            clustering_columns_in_order: clustering_key_cols,
         })
     }
 
@@ -312,34 +321,12 @@ impl CreateTable {
             query.push_str(&clustering_orders.join(", "));
             query.push(')');
         }
-
         query
     }
 
     // MÃ©todo para deserializar una cadena de texto a una instancia de `CreateTable`
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
-        let mut tokens: Vec<String> = Vec::new();
-        let mut current = String::new();
-        let mut in_parens = false;
-
-        for word in serialized.split_whitespace() {
-            if word.contains('(') {
-                in_parens = true;
-                current.push_str(word);
-            } else if word.contains(')') {
-                current.push(' ');
-                current.push_str(word);
-                tokens.push(current.clone());
-                current.clear();
-                in_parens = false;
-            } else if in_parens {
-                current.push(' ');
-                current.push_str(word);
-            } else {
-                tokens.push(word.to_string());
-            }
-        }
-
+        let tokens = QueryCreator::tokens_from_query(serialized);
         Self::new_from_tokens(tokens)
     }
 }
@@ -415,7 +402,7 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: true,
                     is_partition_key: false,
-                    clustering_order: String::new(),
+                    clustering_order: String::from("ASC"),
                 },
                 Column {
                     name: "country".to_string(),
@@ -427,6 +414,7 @@ mod tests {
                     clustering_order: String::new(),
                 },
             ],
+            clustering_columns_in_order: vec!["iata".to_string()],
         };
 
         assert_eq!(result.unwrap(), expected_table);
@@ -461,7 +449,7 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: true,
                     is_partition_key: false,
-                    clustering_order: String::new(),
+                    clustering_order: String::from("ASC"),
                 },
                 Column {
                     name: "country".to_string(),
@@ -473,6 +461,7 @@ mod tests {
                     clustering_order: String::new(),
                 },
             ],
+            clustering_columns_in_order: vec!["iata".to_string()],
         };
 
         assert_eq!(result.unwrap(), expected_table);
@@ -538,8 +527,30 @@ mod tests {
                     clustering_order: "DESC".to_string(),
                 },
             ],
+            clustering_columns_in_order: vec!["iata".to_string(), "name".to_string()],
         };
 
         assert_eq!(result.unwrap(), expected_table);
+    }
+
+    #[test]
+    fn test_clustering_columns_in_order() {
+        // Verificar que clustering_columns_in_order se inicializa correctamente
+        let tokens = vec![
+            "CREATE".to_string(),
+            "TABLE".to_string(),
+            "airports".to_string(),
+            "iata TEXT, country TEXT, name TEXT, PRIMARY KEY (country, iata, name)".to_string(),
+        ];
+
+        let result = CreateTable::new_from_tokens(tokens);
+
+        assert!(result.is_ok());
+        let table = result.unwrap();
+
+        assert_eq!(
+            table.clustering_columns_in_order,
+            vec!["iata".to_string(), "name".to_string()]
+        );
     }
 }

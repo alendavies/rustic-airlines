@@ -22,12 +22,14 @@ pub mod use_cql;
 use query_creator::errors::CQLError;
 use query_creator::Query;
 use std::collections::HashMap;
+use std::env;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
+use storage::StorageEngine;
 
 /// Struct for executing various database queries across nodes with support
 /// for distributed communication and replication.
@@ -37,6 +39,7 @@ pub struct QueryExecution {
     execution_finished_itself: bool,
     execution_replicate_itself: bool,
     how_many_nodes_failed: i32,
+    storage_engine: StorageEngine,
 }
 
 impl QueryExecution {
@@ -52,14 +55,19 @@ impl QueryExecution {
     pub fn new(
         node_that_execute: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-    ) -> QueryExecution {
-        QueryExecution {
+    ) -> Result<QueryExecution, NodeError> {
+        let ip = { node_that_execute.lock()?.get_ip_string() };
+        Ok(QueryExecution {
             node_that_execute,
             connections,
             execution_finished_itself: false,
             execution_replicate_itself: false,
             how_many_nodes_failed: 0,
-        }
+            storage_engine: StorageEngine::new(
+                env::current_dir().expect("Failed to get current directory"),
+                ip,
+            ),
+        })
     }
 
     /// Executes a database query by determining the query type and applying the necessary operations

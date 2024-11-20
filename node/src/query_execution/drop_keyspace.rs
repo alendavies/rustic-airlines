@@ -25,15 +25,8 @@ impl QueryExecution {
 
         node.remove_keyspace(keyspace_name.clone())?;
 
-        // Generate the folder name where the keyspace is stored
-        let ip_str = node.get_ip_string().to_string().replace(".", "_");
-        let folder_name = format!("keyspaces_{}", ip_str);
-
-        // Define the keyspace path and delete the folder if it exists
-        let keyspace_path = format!("{}/{}", folder_name, keyspace_name);
-        if let Err(e) = std::fs::remove_dir_all(&keyspace_path) {
-            return Err(NodeError::IoError(e));
-        }
+        self.storage_engine
+            .drop_keyspace(&keyspace_name, &node.get_ip_string())?;
 
         // If this is not an internode operation, communicate to other nodes
         if !internode {

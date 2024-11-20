@@ -3,8 +3,6 @@ use crate::table::Table;
 use crate::NodeError;
 use query_creator::clauses::table::create_table_cql::CreateTable;
 use query_creator::errors::CQLError;
-use std::fs::OpenOptions;
-use std::io::Write;
 
 use super::QueryExecution;
 
@@ -44,37 +42,10 @@ impl QueryExecution {
             let columns = create_table.get_columns().clone();
 
             // Generate the primary and replication folder paths
-            let ip_str = node.get_ip_string().replace(".", "_");
             let keyspace_name = client_keyspace.get_name();
-            let primary_folder = format!("keyspaces_{}/{}", ip_str, keyspace_name);
-            let replication_folder = format!("{}/replication", primary_folder);
-            let primary_file_path = format!("{}/{}.csv", primary_folder, table_name);
-            let replication_file_path = format!("{}/{}.csv", replication_folder, table_name);
-
-            // Create the primary and replication folders if they don't exist
-            std::fs::create_dir_all(&primary_folder).map_err(NodeError::IoError)?;
-            std::fs::create_dir_all(&replication_folder).map_err(NodeError::IoError)?;
-
-            // Create the file in the primary folder and write the columns as the header
-            let mut primary_file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&primary_file_path)
-                .map_err(NodeError::IoError)?;
-
-            let header: Vec<String> = columns.iter().map(|col| col.name.clone()).collect();
-            writeln!(primary_file, "{}", header.join(",")).map_err(NodeError::IoError)?;
-
-            // Create the same file in the replication folder and write the columns as the header
-            let mut replication_file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&replication_file_path)
-                .map_err(NodeError::IoError)?;
-
-            writeln!(replication_file, "{}", header.join(",")).map_err(NodeError::IoError)?;
+            let columns_name: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
+            self.storage_engine
+                .create_table(&keyspace_name, &table_name, columns_name)?;
         }
         node.get_open_handle_query().update_table_in_keyspace(
             &client_keyspace.get_name(),

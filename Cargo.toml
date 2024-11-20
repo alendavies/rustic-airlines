@@ -13,6 +13,7 @@ members = [
     "graphical-interface",
     "node_launcher", 
     "gossip"
+    "storage"
 ]
 
 [dev-dependencies]

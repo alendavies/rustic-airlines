@@ -1,9 +1,8 @@
 // Ordered imports
+use super::QueryExecution;
 use crate::NodeError;
 use query_creator::clauses::table::drop_table_cql::DropTable;
 use query_creator::errors::CQLError;
-
-use super::QueryExecution;
 
 /// Executes the deletion of a table. This function is public only for internal use
 /// within the library (defined as `pub(crate)`).

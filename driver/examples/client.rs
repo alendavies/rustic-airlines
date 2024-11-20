@@ -11,13 +11,19 @@ fn main() {
     let mut client = CassandraClient::connect(ip).unwrap();
     client.startup().unwrap();
     let queries = vec![
-        "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
-        "CREATE TABLE test_keyspace.test_table (id INT PRIMARY KEY, name TEXT, last_name TEXT, age INT)".to_string(),
-        "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'John', 'Doe', 30)".to_string(),
-        "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (2, 'Jane', 'Smith', 25)".to_string(),
-        "UPDATE test_keyspace.test_table SET age = 31 WHERE id = 1".to_string(),
-        "SELECT id,name FROM test_keyspace.test_table WHERE id = 1".to_string(),
-    ];
+    "CREATE KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
+    "CREATE TABLE test_keyspace.test_table (id INT, name TEXT, last_name INT, age INT, PRIMARY KEY (id, name, last_name)) WITH CLUSTERING ORDER BY (name DESC, last_name ASC)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Alpha', 500, 40)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Alpha', 300, 30)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Alpha', 300, 35)".to_string(), // Caso idéntico
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Beta', 700, 50)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Beta', 600, 45)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Beta', 600, 60)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Gamma', 800, 55)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Delta', 400, 25)".to_string(),
+    "INSERT INTO test_keyspace.test_table (id, name, last_name, age) VALUES (1, 'Delta', 450, 35)".to_string(),
+];
+
 
     // Ejecutar cada consulta en un loop
     let mut contador = 0;

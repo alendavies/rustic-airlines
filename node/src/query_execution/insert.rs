@@ -4,12 +4,6 @@ use crate::NodeError;
 use query_creator::clauses::insert_cql::Insert;
 use query_creator::clauses::types::column::Column;
 use query_creator::errors::CQLError;
-use std::fs::File;
-use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
-use std::net::Ipv4Addr;
-use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid;
 
 use super::QueryExecution;
@@ -93,7 +87,7 @@ impl QueryExecution {
         let mut new_insert = insert_query.clone();
         let new_values: Vec<String> = values.iter().filter(|v| !v.is_empty()).cloned().collect();
         new_insert.values = new_values;
-        self.validate_values(columns, &values)?;
+        self.validate_values(columns.clone(), &values)?;
 
         // Deterclient_keyspacemine the node responsible for the insert
         let node_to_insert = node.get_partitioner().get_ip(value_to_hash.clone())?;
@@ -144,15 +138,17 @@ impl QueryExecution {
 
         // If this node is responsible for the insert, execute it here
         keys_index.extend(&clustering_columns_index);
-        QueryExecution::insert_in_this_node(
-            values,
-            self_ip,
-            insert_query.into_clause.table_name,
-            keys_index,
-            keyspace_name,
+
+        self.storage_engine.insert(
+            &keyspace_name,
+            &insert_query.into_clause.table_name,
+            values.iter().map(|s| s.as_str()).collect(),
+            columns,
+            table_to_insert.get_clustering_column_in_order(),
             replication,
             insert_query.if_not_exists,
-        )
+        )?;
+        Ok(())
     }
 
     fn complete_row(
@@ -195,89 +191,5 @@ impl QueryExecution {
         }
 
         Ok(complete_row)
-    }
-
-    fn insert_in_this_node(
-        values: Vec<String>,
-        ip: Ipv4Addr,
-        table_name: String,
-        index_of_keys: Vec<usize>, // Vector de índices para las partition keys
-        actual_keyspace_name: String,
-        replication: bool,
-        if_not_exist: bool,
-    ) -> Result<(), NodeError> {
-        // Convertir IP a string para usar en el nombre de la carpeta
-        let add_str = ip.to_string().replace(".", "_");
-
-        // Generar la ruta de la carpeta, agregando "replication" si es una inserción de replicación
-        let folder_name = if replication {
-            format!("keyspaces_{}/{}/replication", add_str, actual_keyspace_name)
-        } else {
-            format!("keyspaces_{}/{}", add_str, actual_keyspace_name)
-        };
-        let folder_path = Path::new(&folder_name);
-
-        // Crear la carpeta si no existe
-        if !folder_path.exists() {
-            fs::create_dir_all(&folder_path).map_err(|_| NodeError::OtherError)?;
-        }
-
-        // Nombre del archivo de la tabla con extensión ".csv"
-        let file_path = folder_path.join(format!("{}.csv", table_name));
-
-        // Generar un nombre único para el archivo temporal
-        let temp_file_path = folder_path.join(format!(
-            "{}.tmp",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|_| NodeError::OtherError)?
-                .as_nanos()
-        ));
-
-        // Abrir el archivo temporal en modo escritura
-        let mut temp_file = File::create(&temp_file_path).map_err(NodeError::IoError)?;
-
-        // Si el archivo de la tabla existe, abrirlo en modo lectura
-        let file = OpenOptions::new().read(true).open(&file_path);
-        let mut key_exists = false;
-
-        if let Ok(file) = file {
-            let reader = BufReader::new(file);
-
-            // Iterar por el archivo existente para verificar conflictos de clave de partición
-            for line in reader.lines() {
-                let line = line.map_err(NodeError::IoError)?;
-                let row_values: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-
-                // Verificar si todas las claves de partición coinciden
-                let all_keys_match = index_of_keys
-                    .iter()
-                    .all(|&index| row_values.get(index) == Some(&values[index].as_str()));
-
-                if all_keys_match {
-                    // Si `if_not_exist` es `true` y las claves coinciden, solo copia la fila original sin sobrescribirla
-                    if if_not_exist {
-                        writeln!(temp_file, "{}", line).map_err(NodeError::IoError)?;
-                        key_exists = true;
-                    } else {
-                        // Si `if_not_exist` es `false`, sobrescribe la fila existente
-                        writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
-                        key_exists = true;
-                    }
-                } else {
-                    // Copiar la fila original al archivo temporal
-                    writeln!(temp_file, "{}", line).map_err(NodeError::IoError)?;
-                }
-            }
-        }
-
-        // Si no existe ninguna clave de partición coincidente, añadir la nueva fila al final
-        if !key_exists {
-            writeln!(temp_file, "{}", values.join(",")).map_err(NodeError::IoError)?;
-        }
-
-        // Renombrar el archivo temporal para reemplazar el archivo original de la tabla
-        fs::rename(&temp_file_path, &file_path).map_err(NodeError::IoError)?;
-        Ok(())
     }
 }

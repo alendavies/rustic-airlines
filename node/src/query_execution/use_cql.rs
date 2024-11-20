@@ -1,6 +1,7 @@
 // Ordered imports
 use crate::NodeError;
 use query_creator::clauses::use_cql::Use;
+use storage::StorageEngine;
 
 use super::QueryExecution;
 
