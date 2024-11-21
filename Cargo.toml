@@ -11,8 +11,9 @@ members = [
     "query-creator",
     "native_protocol",
     "graphical-interface",
-    "node_launcher", 
-    "gossip"
+    "node_launcher",
+    "gossip",
+    "flight-sim"
 ]
 
 [dev-dependencies]
