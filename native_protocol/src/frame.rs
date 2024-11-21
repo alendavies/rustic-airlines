@@ -6,7 +6,12 @@ use std::{
 use crate::{
     errors::NativeError,
     header::{Flags, FrameHeader, Opcode, Version},
-    messages::{error::Error, query::Query, result::result::Result},
+    messages::{
+        auth::{AuthChallenge, AuthResponse, AuthSuccess, Authenticate},
+        error::Error,
+        query::Query,
+        result::result::Result,
+    },
     types::{Int, Short},
     ByteSerializable, Serializable,
 };
@@ -23,6 +28,14 @@ pub enum Frame {
     Result(Result),
     /// Indicates an error processing a request.
     Error(Error),
+    /// Indicates that the server require authentication, and which authentication mechanism to use.
+    Authenticate(Authenticate),
+    /// Sent by the client as a response to a server authentication challenge or to initiate the authentication exchange.
+    AuthResponse(AuthResponse),
+    /// Sent by the server to indicate the authentication phase was successful.
+    AuthSuccess(AuthSuccess),
+    /// Sent by the server to challenge the client during the authentication process.
+    AuthChallenge(AuthChallenge),
 }
 
 impl Serializable for Frame {
@@ -41,8 +54,13 @@ impl Serializable for Frame {
         let mut bytes = Vec::new();
 
         let version = match self {
-            Frame::Startup | Frame::Query(_) => Version::RequestV3,
-            Frame::Ready | Frame::Result(_) | Frame::Error(_) => Version::ResponseV3,
+            Frame::Startup | Frame::Query(_) | Frame::AuthResponse(_) => Version::RequestV3,
+            Frame::Ready
+            | Frame::Result(_)
+            | Frame::Error(_)
+            | Frame::AuthChallenge(_)
+            | Frame::AuthSuccess(_)
+            | Frame::Authenticate(_) => Version::ResponseV3,
         };
 
         let opcode = match self {
@@ -51,6 +69,10 @@ impl Serializable for Frame {
             Frame::Query(_) => Opcode::Query,
             Frame::Result(_) => Opcode::Result,
             Frame::Error(_) => Opcode::Error,
+            Frame::AuthChallenge(_) => Opcode::AuthChallenge,
+            Frame::AuthSuccess(_) => Opcode::AuthSuccess,
+            Frame::Authenticate(_) => Opcode::Authenticate,
+            Frame::AuthResponse(_) => Opcode::AuthResponse,
         };
 
         let flags = Flags {
@@ -64,6 +86,10 @@ impl Serializable for Frame {
             Frame::Query(query) => query.to_bytes()?,
             Frame::Result(result) => result.to_bytes()?,
             Frame::Error(error) => error.to_bytes()?,
+            Frame::AuthChallenge(auth_challenge) => auth_challenge.to_bytes()?,
+            Frame::AuthSuccess(auth_success) => auth_success.to_bytes()?,
+            Frame::Authenticate(authenticate) => authenticate.to_bytes()?,
+            Frame::AuthResponse(auth_response) => auth_response.to_bytes()?,
         };
 
         let length =
@@ -134,6 +160,10 @@ impl Serializable for Frame {
             Opcode::Query => Self::Query(Query::from_bytes(&body)?),
             Opcode::Error => Self::Error(Error::from_bytes(&body)?),
             Opcode::Result => Self::Result(Result::from_bytes(&body)?),
+            Opcode::AuthChallenge => Self::AuthChallenge(AuthChallenge::from_bytes(&body)?),
+            Opcode::AuthSuccess => Self::AuthSuccess(AuthSuccess::from_bytes(&body)?),
+            Opcode::Authenticate => Self::Authenticate(Authenticate::from_bytes(&body)?),
+            Opcode::AuthResponse => Self::AuthResponse(AuthResponse::from_bytes(&body)?),
             _ => return Err(NativeError::InvalidVariant),
         };
 
@@ -146,9 +176,12 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use crate::messages::{
-        query::{Consistency, QueryParams},
-        result::rows::{ColumnType, ColumnValue, Rows},
+    use crate::{
+        messages::{
+            query::{Consistency, QueryParams},
+            result::rows::{ColumnType, ColumnValue, Rows},
+        },
+        types::Bytes,
     };
 
     use super::*;
@@ -301,5 +334,96 @@ mod tests {
         };
 
         assert_eq!(error, Error::ServerError(error_message));
+    }
+
+    #[test]
+    fn bytes_to_frame_authenticate() {
+        let auth = Authenticate {
+            authenticator: "auth_mech".to_string(),
+        };
+        let bytes = Frame::Authenticate(auth).to_bytes().unwrap();
+
+        let frame = Frame::from_bytes(&bytes).unwrap();
+
+        assert!(matches!(frame, Frame::Authenticate(_)));
+
+        let auth = match frame {
+            Frame::Authenticate(auth) => auth,
+            _ => panic!(),
+        };
+
+        assert_eq!(auth.authenticator, "auth_mech");
+    }
+
+    #[test]
+    fn bytes_to_frame_auth_response() {
+        let auth_response = AuthResponse {
+            token: Bytes::Vec(vec![0x01, 0x02, 0x03]),
+        };
+        let bytes = Frame::AuthResponse(auth_response).to_bytes().unwrap();
+
+        let frame = Frame::from_bytes(&bytes).unwrap();
+
+        assert!(matches!(frame, Frame::AuthResponse(_)));
+
+        let new_auth_response = match frame {
+            Frame::AuthResponse(auth) => auth,
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            new_auth_response,
+            AuthResponse {
+                token: Bytes::Vec(vec![0x01, 0x02, 0x03]),
+            }
+        );
+    }
+
+    #[test]
+    fn bytes_to_frame_auth_success() {
+        let auth_success = AuthSuccess {
+            token: Bytes::Vec(vec![0x01, 0x02, 0x03]),
+        };
+        let bytes = Frame::AuthSuccess(auth_success).to_bytes().unwrap();
+
+        let frame = Frame::from_bytes(&bytes).unwrap();
+
+        assert!(matches!(frame, Frame::AuthSuccess(_)));
+
+        let new_auth_success = match frame {
+            Frame::AuthSuccess(auth) => auth,
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            new_auth_success,
+            AuthSuccess {
+                token: Bytes::Vec(vec![0x01, 0x02, 0x03]),
+            }
+        );
+    }
+
+    #[test]
+    fn bytes_to_frame_auth_challenge() {
+        let auth_challenge = AuthChallenge {
+            token: Bytes::Vec(vec![0x01, 0x02, 0x03]),
+        };
+        let bytes = Frame::AuthChallenge(auth_challenge).to_bytes().unwrap();
+
+        let frame = Frame::from_bytes(&bytes).unwrap();
+
+        assert!(matches!(frame, Frame::AuthChallenge(_)));
+
+        let new_auth_challenge = match frame {
+            Frame::AuthChallenge(auth) => auth,
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            new_auth_challenge,
+            AuthChallenge {
+                token: Bytes::Vec(vec![0x01, 0x02, 0x03]),
+            }
+        );
     }
 }
