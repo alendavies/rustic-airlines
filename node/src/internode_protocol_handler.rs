@@ -481,7 +481,6 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = CreateTable::deserialize(structure).map_err(NodeError::CQLError)?;
-        println!("la query quedo como {:?}", query);
         QueryExecution::new(node.clone(), connections)?.execute(
             Query::CreateTable(query),
             internode,

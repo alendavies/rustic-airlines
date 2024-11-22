@@ -399,7 +399,6 @@ impl QueryCreator {
             }
             "CREATE" => match tokens[1].as_str() {
                 "TABLE" => {
-                    println!("los tokens en la ejecucion de la query son {:?}", tokens);
                     let create_table = CreateTable::new_from_tokens(tokens)?;
                     Ok(Query::CreateTable(create_table))
                 }
@@ -452,13 +451,13 @@ impl QueryCreator {
         let mut tokens = Vec::new();
         let mut current = String::new();
         let mut in_braces = false;
-    
+
         let string = string.replace(";", "");
         let length = string.len();
-    
+
         while index < length {
             let char = string.chars().nth(index).unwrap_or('0');
-    
+
             if char == '{' {
                 tokens.push("{".to_string());
                 in_braces = true;
@@ -498,15 +497,15 @@ impl QueryCreator {
                 index = Self::process_other(&string, index, &mut current, &mut tokens);
             }
         }
-    
+
         if !current.is_empty() {
             tokens.push(current.clone());
         }
-    
+
         tokens.retain(|s| !s.is_empty());
         tokens
     }
-    
+
     fn process_alfa(
         string: &str,
         mut index: usize,
@@ -515,7 +514,7 @@ impl QueryCreator {
     ) -> usize {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            
+
             // Aceptamos cualquier caracter alfanumérico, guiones bajos, arroba, punto o guión
             if char.is_alphanumeric() || char == '_' || char == '@' || char == '.' || char == '-' {
                 current.push(char);
@@ -524,12 +523,12 @@ impl QueryCreator {
                 break;
             }
         }
-        
+
         if !current.is_empty() {
             tokens.push(current.clone());
             current.clear();
         }
-        
+
         index
     }
 

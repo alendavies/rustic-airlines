@@ -221,7 +221,7 @@ impl CreateTable {
                 if parts.len() == 2 {
                     let col_name = parts[0].trim().to_string();
                     let order = parts[1].trim().to_uppercase();
-                    println!("al deserializar el orden es {:?}", order);
+
                     if order == "ASC" || order == "DESC" {
                         clustering_orders.insert(col_name, order);
                     }

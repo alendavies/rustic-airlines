@@ -5,7 +5,8 @@ mod keyspace;
 mod messages;
 mod open_query_handler;
 mod query_execution;
-mod table;
+pub mod storage_engine;
+pub mod table;
 mod utils;
 
 // Standard libraries
@@ -526,7 +527,6 @@ impl Node {
                     let query = handle_client_request(&buffer);
                     match query {
                         Request::Startup => {
-                            // let mut stream_guard = stream.println!("el keyspace es {}")lock()?;
                             stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
                             stream_guard.flush()?;
                         }

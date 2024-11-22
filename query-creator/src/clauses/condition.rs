@@ -161,7 +161,6 @@ impl Condition {
                     let col_type = &col.data_type;
                     if col_type.is_valid_value(value) {
                         let comparison = col_type.compare(x, y, operator)?;
-
                         return Ok(comparison);
                     } else {
                         return Err(CQLError::InvalidSyntax);

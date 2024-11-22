@@ -19,17 +19,14 @@ pub mod insert;
 pub mod select;
 pub mod update;
 pub mod use_cql;
+use super::storage_engine::StorageEngine;
 use query_creator::errors::CQLError;
 use query_creator::Query;
 use std::collections::HashMap;
 use std::env;
-use std::fs::File;
-use std::io::BufRead;
-use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
-use storage::StorageEngine;
+use std::time::{SystemTime, UNIX_EPOCH}; // Si `node` es el módulo raíz
 
 /// Struct for executing various database queries across nodes with support
 /// for distributed communication and replication.
@@ -462,7 +459,7 @@ impl QueryExecution {
     }
 
     /// Crea un mapa de valores de columna para una fila dada.
-    fn create_column_value_map(
+    pub fn create_column_value_map(
         &self,
         table: &Table,
         columns: &[String],
@@ -478,29 +475,5 @@ impl QueryExecution {
         }
 
         column_value_map
-    }
-
-    fn write_header<R: BufRead>(
-        &self,
-        reader: &mut R,
-        temp_file: &mut File,
-    ) -> Result<(), NodeError> {
-        if let Some(header_line) = reader.lines().next() {
-            writeln!(temp_file, "{}", header_line?).map_err(|e| NodeError::from(e))?;
-        }
-        Ok(())
-    }
-
-    // Funciones auxiliares adicionales (debes agregarlas también en tu implementación)
-    fn create_temp_file(&self, temp_file_path: &str) -> Result<File, NodeError> {
-        File::create(temp_file_path).map_err(NodeError::IoError)
-    }
-
-    fn replace_original_file(
-        &self,
-        temp_file_path: &str,
-        file_path: &str,
-    ) -> Result<(), NodeError> {
-        std::fs::rename(temp_file_path, file_path).map_err(NodeError::from)
     }
 }

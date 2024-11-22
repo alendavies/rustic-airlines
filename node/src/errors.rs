@@ -4,11 +4,10 @@
 use std::fmt::{self, Display};
 use std::io;
 
+use super::storage_engine::errors::StorageEngineError;
 use native_protocol::errors::NativeError;
 use partitioner::errors::PartitionerError;
 use query_creator::errors::CQLError;
-use storage::errors::StorageEngineError;
-
 /// Enum representing the possible errors that can occur within the `Node` and during query execution (`QueryExecution`).
 #[derive(Debug)]
 pub enum NodeError {

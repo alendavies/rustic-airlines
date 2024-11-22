@@ -11,8 +11,6 @@ driver = { path = "../driver" }
 native_protocol = { path = "../native_protocol" }
 gossip = { path = "../gossip" }
 chrono = "0.4"
-storage = { path = "../storage" }
-
 [dependencies.uuid]
 version = "1.11.0"
 features = [
