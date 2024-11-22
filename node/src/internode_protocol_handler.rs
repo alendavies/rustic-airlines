@@ -372,7 +372,6 @@ impl InternodeProtocolHandler {
                 );
 
                 if result.is_err() {
-                    println!("Node is dead: {:?}", gossip_message.from);
                     guard_node
                         .gossiper
                         .endpoints_state

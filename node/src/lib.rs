@@ -137,7 +137,6 @@ impl Node {
 
                     if connect_and_send_message(ip, INTERNODE_PORT, connections_clone, msg).is_err()
                     {
-                        println!("Node {:?} is dead", ip);
                         node_guard
                             .gossiper
                             .endpoints_state

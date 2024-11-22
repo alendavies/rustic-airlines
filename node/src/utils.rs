@@ -38,14 +38,12 @@ pub fn connect_and_send_message(
     } {
         let mut stream_guard = existing_stream.lock().map_err(|_| NodeError::LockError)?;
         if stream_guard.write_all(&message.as_bytes()).is_err() {
-            println!("Error al escribir en el stream");
             return Err(NodeError::IoError(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "Error al escribir en el stream",
             )));
         }
         if stream_guard.flush().is_err() {
-            println!("Error al hacer flush en el stream");
             return Err(NodeError::IoError(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "Error al hacer flush en el stream",
