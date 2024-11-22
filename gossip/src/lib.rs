@@ -25,6 +25,7 @@ pub struct Gossiper {
 /// Enum to represent the different errors that can occur during the gossip protocol.
 pub enum GossipError {
     SynError,
+    NoEndpointStateForIp,
 }
 
 impl fmt::Display for GossipError {
@@ -32,6 +33,7 @@ impl fmt::Display for GossipError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let description = match self {
             GossipError::SynError => "Syn error occurred",
+            GossipError::NoEndpointStateForIp => "There is no endpoint state for the given ip",
         };
         write!(f, "{}", description)
     }
@@ -66,6 +68,20 @@ impl Gossiper {
             self.endpoints_state.insert(ip, EndpointState::default());
         }
         self
+    }
+
+    pub fn change_status(&mut self, ip: Ipv4Addr, status: NodeStatus) -> Result<(), GossipError> {
+        self.endpoints_state
+            .get_mut(&ip)
+            .ok_or(GossipError::NoEndpointStateForIp)?
+            .application_state
+            .status = status;
+
+        Ok(())
+    }
+
+    pub fn kill(&mut self, ip: Ipv4Addr) -> Result<(), GossipError> {
+        self.change_status(ip, NodeStatus::Dead)
     }
 
     /// Picks 3 random ips from the gossiper state, excluding the given ip.

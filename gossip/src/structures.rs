@@ -76,3 +76,29 @@ pub enum NodeStatus {
     /// The node is dead. Rip.
     Dead = 0x4,
 }
+
+impl NodeStatus {
+    pub fn is_dead(&self) -> bool {
+        matches!(self, NodeStatus::Dead)
+    }
+
+    pub fn is_normal(&self) -> bool {
+        matches!(self, NodeStatus::Normal)
+    }
+
+    pub fn is_leaving(&self) -> bool {
+        matches!(self, NodeStatus::Leaving)
+    }
+
+    pub fn is_starting(&self) -> bool {
+        matches!(self, NodeStatus::Bootstrap)
+    }
+
+    pub fn is_removing(&self) -> bool {
+        matches!(self, NodeStatus::Removing)
+    }
+
+    pub fn is_alive(&self) -> bool {
+        !self.is_dead()
+    }
+}

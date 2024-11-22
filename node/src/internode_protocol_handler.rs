@@ -372,13 +372,7 @@ impl InternodeProtocolHandler {
                 );
 
                 if result.is_err() {
-                    guard_node
-                        .gossiper
-                        .endpoints_state
-                        .get_mut(&gossip_message.from)
-                        .unwrap()
-                        .application_state
-                        .status = NodeStatus::Dead;
+                    guard_node.gossiper.kill(gossip_message.from).ok();
                 }
             }
             gossip::messages::Payload::Ack(ack) => {
@@ -399,13 +393,7 @@ impl InternodeProtocolHandler {
 
                 if result.is_err() {
                     println!("Node is dead: {:?}", gossip_message.from);
-                    guard_node
-                        .gossiper
-                        .endpoints_state
-                        .get_mut(&gossip_message.from)
-                        .unwrap()
-                        .application_state
-                        .status = NodeStatus::Dead;
+                    guard_node.gossiper.kill(gossip_message.from).ok();
                 }
             }
             gossip::messages::Payload::Ack2(ack2) => {

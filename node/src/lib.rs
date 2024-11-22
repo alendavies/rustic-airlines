@@ -135,7 +135,8 @@ impl Node {
                         InternodeMessageContent::Gossip(syn.clone()),
                     );
 
-                    if connect_and_send_message(ip, INTERNODE_PORT, connections_clone, msg).is_err()
+                        if connect_and_send_message(ip, INTERNODE_PORT, connections_clone, msg)
+                            .is_err()
                     {
                         node_guard
                             .gossiper
@@ -155,10 +156,10 @@ impl Node {
                 let partitioner = &mut node_guard.partitioner;
 
                 for (ip, state) in endpoints_states {
-                    if state.application_state.status != NodeStatus::Dead {
-                        partitioner.add_node(*ip).ok();
-                    } else {
+                        if state.application_state.status.is_dead() {
                         partitioner.remove_node(*ip).ok();
+                        } else {
+                            partitioner.add_node(*ip).ok();
                     }
                 }
             }
