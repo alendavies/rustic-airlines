@@ -100,69 +100,76 @@ impl Node {
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
-        let handle =
-            thread::spawn(move || loop {
+        let handle = thread::spawn(move || loop {
+            {
+                // TODO: ver cambio de estado del nodo de bootstrap a normal
                 {
-                    // TODO: ver cambio de estado del nodo de bootstrap a normal
-                    {
-                        let mut node_guard = node.lock().unwrap();
-                        let ip = node_guard.ip;
-                        node_guard.gossiper.heartbeat(ip);
-
-                        // check if there are dead nodes, and remove them from the partitioner
-                        node_guard.gossiper.clone().endpoints_state.iter().for_each(
-                            |(ip, state)| {
-                                if state.application_state.status == NodeStatus::Dead {
-                                    let _ = node_guard.partitioner.remove_node(*ip);
-                                }
-                            },
-                        );
-                    }
-
-                    let ips: Vec<Ipv4Addr>;
-                    let syn;
-
-                    {
-                        let node_guard = node.lock().unwrap();
-                        ips = node_guard
-                            .gossiper
-                            .pick_ips(node_guard.get_ip())
-                            .iter()
-                            .map(|x| **x)
-                            .collect();
-
-                        syn = node_guard.gossiper.create_syn(node_guard.ip);
-                    }
-
                     let mut node_guard = node.lock().unwrap();
-
-                    for ip in ips {
-                        let connections_clone = Arc::clone(&connections);
-
-                        let msg = InternodeMessage::new(
-                            ip.clone(),
-                            InternodeMessageContent::Gossip(syn.clone()),
-                        );
-
-                        //println!("Sending gossip to {:?}: {:?}", ip, &msg);
-
-                        if connect_and_send_message(ip, INTERNODE_PORT, connections_clone, msg)
-                            .is_err()
-                        {
-                            println!("Node {:?} is dead", ip);
-                            node_guard
-                                .gossiper
-                                .endpoints_state
-                                .get_mut(&ip)
-                                .unwrap()
-                                .application_state
-                                .status = NodeStatus::Dead;
-                        }
-                    }
+                    let ip = node_guard.ip;
+                    node_guard.gossiper.heartbeat(ip);
                 }
 
-                thread::sleep(std::time::Duration::from_secs(1));
-            });
+                let ips: Vec<Ipv4Addr>;
+                let syn;
+
+                {
+                    let node_guard = node.lock().unwrap();
+
+                    ips = node_guard
+                        .gossiper
+                        .pick_ips(node_guard.get_ip())
+                        .iter()
+                        .map(|x| **x)
+                        .collect();
+
+                    syn = node_guard.gossiper.create_syn(node_guard.ip);
+                }
+
+                let mut node_guard = node.lock().unwrap();
+
+                for ip in ips {
+                    let connections_clone = Arc::clone(&connections);
+
+                    let msg = InternodeMessage::new(
+                        ip.clone(),
+                        InternodeMessageContent::Gossip(syn.clone()),
+                    );
+
+                    if connect_and_send_message(ip, INTERNODE_PORT, connections_clone, msg).is_err()
+                    {
+                        println!("Node {:?} is dead", ip);
+                        node_guard
+                            .gossiper
+                            .endpoints_state
+                            .get_mut(&ip)
+                            .unwrap()
+                            .application_state
+                            .status = NodeStatus::Dead;
+                    }
+                }
+            }
+
+            // After each gossip round, update the partitioner
+            {
+                let mut node_guard = node.lock().unwrap();
+                let endpoints_states = &node_guard.gossiper.endpoints_state.clone();
+                let partitioner = &mut node_guard.partitioner;
+
+                for (ip, state) in endpoints_states {
+                    if state.application_state.status != NodeStatus::Dead {
+                        partitioner.add_node(*ip).ok();
+                    } else {
+                        partitioner.remove_node(*ip).ok();
+                    }
+                }
+            }
+
+            {
+                println!("Partitioner: {:?}", node.lock().unwrap().partitioner);
+            }
+
+            thread::sleep(std::time::Duration::from_secs(1));
+        });
 
         handle.join().unwrap();
         Ok(())

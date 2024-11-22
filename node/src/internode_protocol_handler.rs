@@ -358,23 +358,6 @@ impl InternodeProtocolHandler {
             gossip::messages::Payload::Syn(syn) => {
                 let ack = guard_node.gossiper.handle_syn(syn);
 
-                ack.stale_digests.iter().for_each(|digest| {
-                    let status = guard_node
-                        .gossiper
-                        .endpoints_state
-                        .get(&digest.address)
-                        .unwrap()
-                        .application_state
-                        .status;
-
-                    if digest.version == 0 && status == NodeStatus::Bootstrap {
-                        let _ = guard_node
-                            .partitioner
-                            .add_node(digest.address)
-                            .map_err(|e| NodeError::PartitionerError(e));
-                    }
-                });
-
                 let msg =
                     GossipMessage::new(guard_node.get_ip(), gossip::messages::Payload::Ack(ack));
 
