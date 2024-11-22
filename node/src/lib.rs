@@ -14,6 +14,7 @@ use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Instant;
 
 // Internal project libraries
 use crate::table::Table;
@@ -100,75 +101,80 @@ impl Node {
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
-        let handle = thread::spawn(move || loop {
-            {
-                // TODO: ver cambio de estado del nodo de bootstrap a normal
+        let handle = thread::spawn(move || {
+            let initial_gossip = Instant::now();
+
+            loop {
                 {
+                    {
+                        let mut node_guard = node.lock().unwrap();
+                        let ip = node_guard.ip;
+
+                        if initial_gossip.elapsed().as_millis() > 1500 {
+                            node_guard
+                                .gossiper
+                                .change_status(ip, NodeStatus::Normal)
+                                .ok();
+                        }
+
+                        node_guard.gossiper.heartbeat(ip);
+                    }
+
+                    let ips: Vec<Ipv4Addr>;
+                    let syn;
+
+                    {
+                        let node_guard = node.lock().unwrap();
+
+                        ips = node_guard
+                            .gossiper
+                            .pick_ips(node_guard.get_ip())
+                            .iter()
+                            .map(|x| **x)
+                            .collect();
+
+                        syn = node_guard.gossiper.create_syn(node_guard.ip);
+                    }
+
                     let mut node_guard = node.lock().unwrap();
-                    let ip = node_guard.ip;
-                    node_guard.gossiper.heartbeat(ip);
-                }
 
-                let ips: Vec<Ipv4Addr>;
-                let syn;
+                    for ip in ips {
+                        let connections_clone = Arc::clone(&connections);
 
-                {
-                    let node_guard = node.lock().unwrap();
-
-                    ips = node_guard
-                        .gossiper
-                        .pick_ips(node_guard.get_ip())
-                        .iter()
-                        .map(|x| **x)
-                        .collect();
-
-                    syn = node_guard.gossiper.create_syn(node_guard.ip);
-                }
-
-                let mut node_guard = node.lock().unwrap();
-
-                for ip in ips {
-                    let connections_clone = Arc::clone(&connections);
-
-                    let msg = InternodeMessage::new(
-                        ip.clone(),
-                        InternodeMessageContent::Gossip(syn.clone()),
-                    );
+                        let msg = InternodeMessage::new(
+                            ip.clone(),
+                            InternodeMessageContent::Gossip(syn.clone()),
+                        );
 
                         if connect_and_send_message(ip, INTERNODE_PORT, connections_clone, msg)
                             .is_err()
-                    {
-                        node_guard
-                            .gossiper
-                            .endpoints_state
-                            .get_mut(&ip)
-                            .unwrap()
-                            .application_state
-                            .status = NodeStatus::Dead;
+                        {
+                            node_guard.gossiper.change_status(ip, NodeStatus::Dead).ok();
+                        }
                     }
                 }
-            }
 
-            // After each gossip round, update the partitioner
-            {
-                let mut node_guard = node.lock().unwrap();
-                let endpoints_states = &node_guard.gossiper.endpoints_state.clone();
-                let partitioner = &mut node_guard.partitioner;
+                // After each gossip round, update the partitioner
+                {
+                    let mut node_guard = node.lock().unwrap();
+                    let endpoints_states = &node_guard.gossiper.endpoints_state.clone();
+                    let partitioner = &mut node_guard.partitioner;
 
-                for (ip, state) in endpoints_states {
+                    for (ip, state) in endpoints_states {
                         if state.application_state.status.is_dead() {
-                        partitioner.remove_node(*ip).ok();
+                            partitioner.remove_node(*ip).ok();
                         } else {
                             partitioner.add_node(*ip).ok();
+                        }
                     }
                 }
-            }
 
-            {
-                println!("Partitioner: {:?}", node.lock().unwrap().partitioner);
-            }
+                {
+                    println!("Partitioner: {:?}", node.lock().unwrap().partitioner);
+                }
 
-            thread::sleep(std::time::Duration::from_secs(1));
+                thread::sleep(std::time::Duration::from_secs(1));
+            }
         });
 
         handle.join().unwrap();
