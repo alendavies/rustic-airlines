@@ -5,7 +5,7 @@ use crate::table::Table;
 use query_creator::Query;
 use std::collections::HashMap;
 use std::fmt;
-use std::net::TcpStream;
+use std::net::{Ipv4Addr, TcpStream};
 
 #[derive(Debug, PartialEq)]
 pub enum ConsistencyLevel {
@@ -62,7 +62,7 @@ pub struct OpenQuery {
     needed_responses: i32,
     ok_responses: i32,
     error_responses: i32,
-    acumulated_ok_responses: Vec<InternodeResponse>,
+    acumulated_ok_responses: Vec<(Ipv4Addr, InternodeResponse)>,
     connection: TcpStream,
     query: Query,
     consistency_level: ConsistencyLevel,
@@ -101,8 +101,9 @@ impl OpenQuery {
     ///
     /// # Parameters
     /// - `response`: The response to be added.
-    fn add_ok_response(&mut self, response: InternodeResponse) {
-        self.acumulated_ok_responses.push(response);
+    fn add_ok_response(&mut self, response: InternodeResponse, from: Ipv4Addr) {
+        println!("agregue la respuesta de {:?}", from);
+        self.acumulated_ok_responses.push((from, response));
         self.ok_responses += 1;
     }
 
@@ -155,7 +156,7 @@ impl OpenQuery {
         self.table.clone()
     }
 
-    pub fn get_acumulated_responses(&self) -> Vec<InternodeResponse> {
+    pub fn get_acumulated_responses(&self) -> Vec<(Ipv4Addr, InternodeResponse)> {
         self.acumulated_ok_responses.clone()
     }
 }
@@ -317,10 +318,11 @@ impl OpenQueryHandler {
         &mut self,
         open_query_id: i32,
         response: InternodeResponse,
+        from: Ipv4Addr,
     ) -> Option<OpenQuery> {
         match self.get_query_mut(&open_query_id) {
             Some(query) => {
-                query.add_ok_response(response);
+                query.add_ok_response(response, from);
                 if query.is_close() {
                     println!(
                         "con {:?} OKS y {:?} ERRORS la query se cerro",

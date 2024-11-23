@@ -644,6 +644,7 @@ impl Node {
             .map_err(NodeError::CQLError)?;
 
         let open_query_id;
+        let self_ip: Ipv4Addr;
         {
             let mut guard_node = node.lock()?;
             let keyspace;
@@ -669,6 +670,7 @@ impl Node {
                 table,
                 keyspace,
             )?;
+            self_ip = guard_node.get_ip();
         }
 
         let timestamp = Self::current_timestamp();
@@ -733,6 +735,8 @@ impl Node {
                     open_query_id,
                     keyspace_name.clone(),
                     columns.clone(),
+                    self_ip
+                    
                 )?;
             }
             for _ in 0..failed_nodes {

@@ -25,7 +25,6 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
 use std::sync::{Arc, Mutex};
-
 /// Struct that represents the handler for internode communication protocol.
 /// Struct that represents the handler for internode communication protocol.
 pub struct InternodeProtocolHandler {}
@@ -67,7 +66,7 @@ impl InternodeProtocolHandler {
                 Ok(())
             }
             InternodeMessageContent::Response(response) => {
-                self.handle_response_command(node, &response)?;
+                self.handle_response_command(node, &response, message.from)?;
                 Ok(())
             }
         }
@@ -95,17 +94,21 @@ impl InternodeProtocolHandler {
         open_query_id: i32,
         keyspace_name: String,
         columns: Vec<Column>,
+        from: Ipv4Addr,
     ) -> Result<(), NodeError> {
         if let Some(open_query) =
-            query_handler.add_ok_response_and_get_if_closed(open_query_id, response.clone())
+            query_handler.add_ok_response_and_get_if_closed(open_query_id, response.clone(), from)
         {
             let contents_of_different_nodes = open_query.get_acumulated_responses();
             //here we have to determinated the more new row
             // and do READ REPAIR
 
-            for (i, c) in contents_of_different_nodes.iter().enumerate() {
-                if let Some(cont) = c.clone().content {
-                    println!("la respuesta {:?} trajo los valores {:?}", i, cont.values);
+            for (_, c) in contents_of_different_nodes.iter().enumerate() {
+                if let Some(cont) = c.clone().1.content {
+                    println!(
+                        "la respuesta del nodo {:?} trajo los valores {:?}",
+                        c.0, cont.values
+                    );
                 }
             }
             let rows = if let Some(content) = &response.content {
@@ -114,7 +117,10 @@ impl InternodeProtocolHandler {
                 vec![]
             };
 
+            //let rows = Self::read_repair(contents_of_different_nodes, columns);
+
             let mut connection = open_query.get_connection();
+
             let frame =
                 open_query
                     .get_query()
@@ -128,6 +134,101 @@ impl InternodeProtocolHandler {
             Ok(())
         } else {
             Ok(())
+        }
+    }
+
+    fn read_repair(contents_of_different_nodes: Vec<InternodeResponse>, columns: Vec<Column>) {
+        // Identificar índices de claves primarias y columnas de clustering
+        let primary_key_indices: Vec<usize> = columns
+            .iter()
+            .enumerate()
+            .filter_map(|(index, column)| {
+                if column.is_partition_key {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let clustering_column_indices: Vec<usize> = columns
+            .iter()
+            .enumerate()
+            .filter_map(|(index, column)| {
+                if column.is_clustering_column {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Crear un HashMap para rastrear los timestamps más recientes por clave y IP
+        let latest_versions: HashMap<String, (String, i64)> = HashMap::new();
+
+        // Iterar sobre las respuestas de diferentes nodos
+        for response in &contents_of_different_nodes {
+            if let Some(content) = &response.content {
+                // Recorrer los valores de la respuesta
+                for value in &content.values {
+                    // Construir una clave única a partir de las claves primarias y clustering columns
+                    let mut key_components: Vec<String> = Vec::new();
+                    for &index in &primary_key_indices {
+                        key_components.push(value[index].clone());
+                    }
+                    for &index in &clustering_column_indices {
+                        key_components.push(value[index].clone());
+                    }
+                    let key = key_components.join("|");
+
+                    // Obtener el timestamp de la última celda
+                    let timestamp_index = value.len() - 1;
+                    let timestamp = value[timestamp_index].parse::<i64>().unwrap_or_else(|_| 0); // Manejar errores de parseo
+
+                    // Comparar con la entrada existente en el HashMap
+                    if let Some((existing_ip, existing_timestamp)) = latest_versions.get(&key) {
+                        if *existing_timestamp < timestamp {
+                            // Actualizar el registro si el timestamp es más reciente
+                            //latest_versions.insert(key, (response.node_ip.clone(), timestamp));
+                        }
+                    } else {
+                        // Insertar si no existe en el HashMap
+                        //latest_versions.insert(key, (response.node_ip.clone(), timestamp));
+                    }
+                }
+            }
+        }
+
+        // Identificar nodos desactualizados y enviar INSERTs
+        for response in &contents_of_different_nodes {
+            if let Some(content) = &response.content {
+                for value in &content.values {
+                    let mut key_components: Vec<String> = Vec::new();
+                    for &index in &primary_key_indices {
+                        key_components.push(value[index].clone());
+                    }
+                    for &index in &clustering_column_indices {
+                        key_components.push(value[index].clone());
+                    }
+                    let key = key_components.join("|");
+
+                    // Verificar si el nodo está desactualizado
+                    if let Some((latest_ip, latest_timestamp)) = latest_versions.get(&key) {
+                        let timestamp_index = value.len() - 1;
+                        let current_timestamp =
+                            value[timestamp_index].parse::<i64>().unwrap_or_else(|_| 0);
+
+                        // if &response != latest_ip && current_timestamp < *latest_timestamp {
+                        //     // Nodo desactualizado: preparar el INSERT
+                        //     println!(
+                        //         "Nodo desactualizado: IP = {}, Clave = {}, Último timestamp = {}",
+                        //         response.node_ip, key, latest_timestamp
+                        //     );
+
+                        // Aquí puedes completar con la lógica para enviar el INSERT
+                    }
+                }
+            }
         }
     }
 
@@ -348,6 +449,7 @@ impl InternodeProtocolHandler {
         &self,
         node: &Arc<Mutex<Node>>,
         response: &InternodeResponse,
+        from: Ipv4Addr,
     ) -> Result<(), NodeError> {
         let mut guard_node = node.lock()?;
 
@@ -368,6 +470,7 @@ impl InternodeProtocolHandler {
                     response,
                     response.open_query_id as i32,
                     keyspace_name,
+                    from,
                 )?;
             }
             InternodeResponseStatus::Error => {
@@ -411,6 +514,7 @@ impl InternodeProtocolHandler {
         response: &InternodeResponse,
         open_query_id: i32,
         keyspace_name: String,
+        from: Ipv4Addr,
     ) -> Result<(), NodeError> {
         // Obtener la consulta abierta
 
@@ -428,7 +532,6 @@ impl InternodeProtocolHandler {
                 .get_table()
                 .map_or_else(Vec::new, |table| table.get_columns());
         }
-
         // Llamar a la función con los valores copiados, sin `open_query` en uso
         Self::add_ok_response_to_open_query_and_send_response_if_closed(
             query_handler,
@@ -436,6 +539,7 @@ impl InternodeProtocolHandler {
             open_query_id,
             keyspace_name,
             columns,
+            from,
         )?;
 
         Ok(())
