@@ -144,6 +144,7 @@ impl QueryExecution {
             table,
             replication,
             &client_keyspace.get_name(),
+            timestamp,
         )?;
         Ok(())
     }

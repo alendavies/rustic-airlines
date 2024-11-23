@@ -126,10 +126,23 @@ impl QueryExecution {
                                 .unwrap_or_default();
 
                             let values: Vec<Vec<String>> = if select_querys.len() > 2 {
-                                select_querys[2..]
+                                let result: Vec<Vec<String>> = select_querys[2..]
                                     .iter()
-                                    .map(|s| s.split(',').map(String::from).collect())
-                                    .collect()
+                                    .map(|s| {
+                                        // Dividir en dos partes por ";"
+                                        if let Some((first_part, second_part)) = s.split_once(';') {
+                                            // Dividir la primera parte por "," y agregar la segunda parte
+                                            let mut combined: Vec<String> =
+                                                first_part.split(',').map(String::from).collect();
+                                            combined.push(second_part.to_string()); // Añadir la parte después de ";"
+                                            combined
+                                        } else {
+                                            // Si no hay ";", considerar todo como un único valor
+                                            vec![s.to_string()]
+                                        }
+                                    })
+                                    .collect();
+                                result
                             } else {
                                 Vec::new()
                             };
@@ -191,13 +204,22 @@ impl QueryExecution {
                         timestamp_n,
                     )
                 }
-                Query::Delete(delete_query) => self.execute_delete(
-                    delete_query,
-                    internode,
-                    replication,
-                    open_query_id,
-                    client_id,
-                ),
+                Query::Delete(delete_query) => {
+                    let timestamp_n;
+                    if let Some(t) = timestap {
+                        timestamp_n = t;
+                    } else {
+                        return Err(NodeError::InternodeProtocolError);
+                    }
+                    self.execute_delete(
+                        delete_query,
+                        internode,
+                        replication,
+                        open_query_id,
+                        client_id,
+                        timestamp_n,
+                    )
+                }
                 Query::CreateTable(create_table) => {
                     self.execute_create_table(create_table, internode, open_query_id, client_id)
                 }

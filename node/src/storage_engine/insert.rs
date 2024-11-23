@@ -18,6 +18,7 @@ impl StorageEngine {
         clustering_columns_in_order: Vec<String>,
         is_replication: bool,
         if_not_exist: bool,
+        timestamp: i64,
     ) -> Result<(), StorageEngineError> {
         let base_folder_path = self.get_keyspace_path(keyspace);
 
@@ -96,6 +97,9 @@ impl StorageEngine {
                 let line = line.map_err(|_| StorageEngineError::IoError)?;
                 let line_length = line.len() as u64;
 
+                let (line, time_of_row) =
+                    line.split_once(";").ok_or(StorageEngineError::IoError)?;
+
                 let row: Vec<&str> = line.split(',').collect();
 
                 // Verificar si las claves de partición coinciden
@@ -134,14 +138,14 @@ impl StorageEngine {
                     if clustering_comparison == std::cmp::Ordering::Equal {
                         if if_not_exist {
                             // Escribir la línea existente sin cambios
-                            writeln!(temp_file, "{}", line)
+                            writeln!(temp_file, "{};{}", line, time_of_row)
                                 .map_err(|_| StorageEngineError::IoError)?;
                             current_byte_offset += line_length + 1;
                             continue;
                         }
                     } else if clustering_comparison == std::cmp::Ordering::Greater && !inserted {
                         // Insertar el nuevo valor antes de la fila actual
-                        writeln!(temp_file, "{}", values.join(","))
+                        writeln!(temp_file, "{};{}", values.join(","), timestamp)
                             .map_err(|_| StorageEngineError::IoError)?;
                         inserted = true;
 
@@ -169,14 +173,16 @@ impl StorageEngine {
                     entry.1 = current_byte_offset + line_length; // Extiende el rango de fin
                 }
 
-                writeln!(temp_file, "{}", line).map_err(|_| StorageEngineError::IoError)?;
+                writeln!(temp_file, "{};{}", line, time_of_row)
+                    .map_err(|_| StorageEngineError::IoError)?;
                 current_byte_offset += line_length + 1;
             }
         }
 
         // Si no se ha insertado todavía
         if !inserted {
-            writeln!(temp_file, "{}", values.join(",")).map_err(|_| StorageEngineError::IoError)?;
+            writeln!(temp_file, "{};{}", values.join(","), timestamp)
+                .map_err(|_| StorageEngineError::IoError)?;
 
             if let Some(&(idx, _)) = clustering_key_indices.first() {
                 let key = values[idx].to_string();

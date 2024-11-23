@@ -99,10 +99,15 @@ impl InternodeProtocolHandler {
         if let Some(open_query) =
             query_handler.add_ok_response_and_get_if_closed(open_query_id, response.clone())
         {
-            let _contents_of_different_nodes = open_query.get_acumulated_responses();
+            let contents_of_different_nodes = open_query.get_acumulated_responses();
             //here we have to determinated the more new row
             // and do READ REPAIR
 
+            for (i, c) in contents_of_different_nodes.iter().enumerate() {
+                if let Some(cont) = c.clone().content {
+                    println!("la respuesta {:?} trajo los valores {:?}", i, cont.values);
+                }
+            }
             let rows = if let Some(content) = &response.content {
                 Self::filter_and_join_columns(content)
             } else {
@@ -297,6 +302,7 @@ impl InternodeProtocolHandler {
                     query.replication,
                     query.open_query_id as i32,
                     query.client_id as i32,
+                    query.timestamp,
                 ),
                 "SELECT" => Self::handle_select_command(
                     node,
@@ -622,6 +628,7 @@ impl InternodeProtocolHandler {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
+        timestamp: i64,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Delete::deserialize(structure).map_err(NodeError::CQLError)?;
         QueryExecution::new(node.clone(), connections)?.execute(
@@ -630,7 +637,7 @@ impl InternodeProtocolHandler {
             replication,
             open_query_id,
             client_id,
-            None,
+            Some(timestamp),
         )
     }
 

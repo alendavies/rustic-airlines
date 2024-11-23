@@ -1,8 +1,8 @@
 // Ordered imports
+use super::QueryExecution;
 use crate::CQLError;
 use crate::NodeError;
 use query_creator::clauses::delete_cql::Delete;
-use super::QueryExecution;
 
 impl QueryExecution {
     pub(crate) fn execute_delete(
@@ -12,6 +12,7 @@ impl QueryExecution {
         mut replication: bool,
         open_query_id: i32,
         client_id: i32,
+        timestamp: i64,
     ) -> Result<(), NodeError> {
         let table;
         let mut do_in_this_node = true;
@@ -46,7 +47,6 @@ impl QueryExecution {
                     }
                 }
             }
-
             // Validate WHERE clause
             let where_clause = delete_query
                 .clone()
@@ -77,7 +77,7 @@ impl QueryExecution {
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
-                    0,
+                    timestamp,
                 )?;
                 do_in_this_node = false;
             }
@@ -92,7 +92,7 @@ impl QueryExecution {
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
-                    0,
+                    timestamp,
                 )?;
             }
 
@@ -120,6 +120,7 @@ impl QueryExecution {
             table,
             &client_keyspace.get_name(),
             replication,
+            timestamp,
         )?;
         Ok(())
     }

@@ -19,6 +19,7 @@ impl StorageEngine {
         table: Table,
         is_replication: bool,
         keyspace: &str,
+        timestamp: i64,
     ) -> Result<(), StorageEngineError> {
         let table_name = table.get_name();
         let base_folder_path = self.get_keyspace_path(keyspace);
@@ -70,7 +71,7 @@ impl StorageEngine {
         for line in reader.lines() {
             let line = line?;
             found_match |=
-                self.update_or_write_line(&table, &update_query, &line, &mut temp_file)?;
+                self.update_or_write_line(&table, &update_query, &line, &mut temp_file, timestamp)?;
         }
 
         // Reemplazar el archivo original con el actualizado
@@ -79,7 +80,7 @@ impl StorageEngine {
 
         // Si no se encontró ninguna fila que coincida, agregar una nueva
         if !found_match {
-            self.add_new_row_in_update(&table, &update_query, keyspace, is_replication)?;
+            self.add_new_row_in_update(&table, &update_query, keyspace, is_replication, timestamp)?;
         }
         Ok(())
     }
@@ -109,7 +110,9 @@ impl StorageEngine {
         update_query: &Update,
         line: &str,
         temp_file: &mut File,
+        timestamp: i64,
     ) -> Result<bool, StorageEngineError> {
+        let (line, time_of_row) = line.split_once(";").ok_or(StorageEngineError::IoError)?;
         let mut columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
         let column_value_map = self.create_column_value_map(table, &columns, false);
 
@@ -127,7 +130,7 @@ impl StorageEngine {
                         .execute(&column_value_map, columns_.clone())
                         .unwrap_or(false)
                     {
-                        writeln!(temp_file, "{}", line)?;
+                        writeln!(temp_file, "{};{}", line, time_of_row)?;
                         return Ok(true);
                     }
                 }
@@ -145,10 +148,10 @@ impl StorageEngine {
 
                     columns[index] = new_value.clone();
                 }
-                writeln!(temp_file, "{}", columns.join(","))?;
+                writeln!(temp_file, "{};{}", columns.join(","), timestamp)?;
                 return Ok(true);
             } else {
-                writeln!(temp_file, "{}", line)?;
+                writeln!(temp_file, "{};{}", line, time_of_row)?;
                 if let Some(if_clause) = &update_query.if_clause {
                     if if_clause
                         .condition
@@ -174,6 +177,7 @@ impl StorageEngine {
         update_query: &Update,
         keyspace: &str,
         is_replication: bool,
+        timestamp: i64,
     ) -> Result<(), StorageEngineError> {
         let mut new_row: Vec<String> = vec!["".to_string(); table.get_columns().len()];
 
@@ -247,6 +251,7 @@ impl StorageEngine {
             table.get_clustering_column_in_order(),
             is_replication,
             true,
+            timestamp,
         )?;
 
         Ok(())

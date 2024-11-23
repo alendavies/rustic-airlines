@@ -96,7 +96,12 @@ impl StorageEngine {
                 break; // Fin del archivo
             }
             current_byte_offset += bytes_read as u64;
-            if self.line_matches_where_clause(&buffer.trim_end(), &table, &select_query)? {
+            let (line, _) = buffer
+                .trim_end()
+                .split_once(";")
+                .ok_or(StorageEngineError::IoError)?;
+
+            if self.line_matches_where_clause(&line, &table, &select_query)? {
                 results.push(buffer.trim_end().to_string());
             }
         }

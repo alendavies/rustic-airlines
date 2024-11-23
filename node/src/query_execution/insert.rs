@@ -147,6 +147,7 @@ impl QueryExecution {
             table_to_insert.get_clustering_column_in_order(),
             replication,
             insert_query.if_not_exists,
+            timestap,
         )?;
         Ok(())
     }

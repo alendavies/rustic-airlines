@@ -17,6 +17,7 @@ impl StorageEngine {
         table: Table,
         keyspace: &str,
         is_replication: bool,
+        timestamp: i64,
     ) -> Result<(), StorageEngineError> {
         let table_name = table.get_name();
         let base_folder_path = self.get_keyspace_path(keyspace);
@@ -94,16 +95,18 @@ impl StorageEngine {
         for (i, line) in reader.lines().enumerate() {
             let line = line.map_err(|_| StorageEngineError::IoError)?;
             let line_length = line.len() as u64;
+
             if i == 0 {
                 current_byte_offset += line_length + 1;
                 writeln!(temp_file, "{}", line)?;
                 continue;
             }
 
+            let (line, time_of_row) = line.split_once(";").ok_or(StorageEngineError::IoError)?;
             let mut columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
 
             let mut write_line = true; // Flag para determinar si la línea debe ser escrita
-
+            let mut changed_line = false;
             if let Some(columns_to_delete) = &delete_query.columns {
                 // Si hay columnas específicas para eliminar, borra esos valores
                 if self.should_delete_line(&table, &delete_query, &line)? {
@@ -115,6 +118,7 @@ impl StorageEngine {
                 } else {
                     // Si se debe borrar toda la fila, no la escribimos
                     write_line = true;
+                    changed_line = true;
                 }
             } else {
                 // Si no hay columnas específicas, elimina la fila si se cumplen las condiciones
@@ -125,7 +129,12 @@ impl StorageEngine {
 
             // Si la línea no debe ser eliminada, escribirla en el archivo temporal
             if write_line {
-                writeln!(temp_file, "{}", columns.join(","))?;
+                let time_to_write = if changed_line {
+                    &timestamp.to_string()
+                } else {
+                    time_of_row
+                };
+                writeln!(temp_file, "{};{}", columns.join(","), time_to_write)?;
                 if let Some(&(idx, _)) = clustering_key_order.first() {
                     if let Some(key) = columns.get(idx) {
                         let entry = (
