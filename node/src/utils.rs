@@ -43,11 +43,6 @@ pub fn connect_and_send_message(
                 {
                     //println!("Reutilizamos TCP ");
                     return Ok(());
-                } else {
-                    // println!(
-                    //     "Conexión rota detectada para {:?}. Intentando reconectar...",
-                    //     peer_addr
-                    // );
                 }
             }
         }

@@ -28,15 +28,10 @@ impl QueryExecution {
         let table_name = drop_table.get_table_name();
 
         // Lock the node and remove the table from the internal list
-        node.remove_table(table_name.clone(), client_id)?;
+        node.remove_table(table_name.clone(), open_query_id)?;
 
-        // Generate the file name and folder where the table is stored
-        let ip_str = node.get_ip_string().replace(".", "_");
-        let folder_name = format!("keyspaces_{}/{}", ip_str, client_keyspace.get_name());
-        let file_path = format!("{}/{}.csv", folder_name, table_name);
-
-        // Delete the table file if it exists
-        std::fs::remove_file(&file_path)?;
+        self.storage_engine
+            .drop_table(&client_keyspace.get_name(), &table_name)?;
 
         // If this is not an internode operation, communicate to other nodes
         if !internode {

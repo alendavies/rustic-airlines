@@ -67,10 +67,7 @@ impl StorageEngine {
         let mut found_match = false;
 
         // Iterar sobre las líneas del archivo original y aplicar la actualización
-        for (i, line) in reader.lines().enumerate() {
-            if i == 0 {
-                continue;
-            }
+        for line in reader.lines() {
             let line = line?;
             found_match |=
                 self.update_or_write_line(&table, &update_query, &line, &mut temp_file)?;
@@ -214,15 +211,16 @@ impl StorageEngine {
             .map(|where_clause| {
                 where_clause.get_value_clustering_column_condition(clustering_keys.clone())
             })
-            .ok_or(StorageEngineError::MissingWhereClause)?
-            .map_err(|_| StorageEngineError::ClusteringKeyMismatch)?;
+            .ok_or(StorageEngineError::MissingWhereClause)?;
 
-        for (i, clustering_key) in clustering_keys.iter().enumerate() {
-            let clustering_key_index = table
-                .get_column_index(clustering_key)
-                .ok_or(StorageEngineError::ColumnNotFound)?;
+        if let Some(clustering_key_val) = clustering_key_values {
+            for (i, clustering_key) in clustering_keys.iter().enumerate() {
+                let clustering_key_index = table
+                    .get_column_index(clustering_key)
+                    .ok_or(StorageEngineError::ColumnNotFound)?;
 
-            new_row[clustering_key_index] = clustering_key_values[i].clone();
+                new_row[clustering_key_index] = clustering_key_val[i].clone();
+            }
         }
 
         for (column, new_value) in update_query.set_clause.get_pairs() {

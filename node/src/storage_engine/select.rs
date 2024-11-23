@@ -48,29 +48,37 @@ impl StorageEngine {
 
         // Obtener la primera columna de clustering y sus valores
         if let Some(first_clustering_column) = table.get_clustering_column_in_order().get(0) {
-            for (i, line) in index_reader.lines().enumerate() {
-                if i == 0 {
-                    // Saltar el header del archivo de índices
-                    continue;
-                }
-                let line = line?;
-                let parts: Vec<&str> = line.split(',').collect();
-                if parts.len() == 3 && parts[0] == first_clustering_column {
-                    start_byte = parts[1].parse::<u64>().unwrap_or(0);
-                    end_byte = parts[2].parse::<u64>().unwrap_or(u64::MAX);
-                    break;
+            let clustering_value = select_query
+                .clone()
+                .where_clause
+                .ok_or(StorageEngineError::MissingWhereClause)?
+                .get_value_for_clustering_column(&first_clustering_column);
+
+            if let Some(clustering_column_value) = clustering_value {
+                for (i, line) in index_reader.lines().enumerate() {
+                    if i == 0 {
+                        // Saltar el header del archivo de índices
+                        continue;
+                    }
+                    let line = line?;
+                    let parts: Vec<&str> = line.split(',').collect();
+                    if parts.len() == 3 && parts[0] == clustering_column_value {
+                        start_byte = parts[1].parse::<u64>().unwrap_or(0);
+                        end_byte = parts[2].parse::<u64>().unwrap_or(u64::MAX);
+                        break;
+                    }
                 }
             }
         }
 
-        println!(
-            "los bytes de la clustering colunm {:?} son ({:?}, {:?})",
-            table.get_clustering_column_in_order()[0],
-            start_byte,
-            end_byte
-        );
         // Posicionar el lector en el rango de bytes
-        reader.seek(std::io::SeekFrom::Start(start_byte))?;
+        if start_byte > 0 {
+            reader.seek(std::io::SeekFrom::Start(start_byte))?;
+        } else {
+            // Si no se encontró la clustering column, saltar el header manualmente
+            let mut buffer = String::new();
+            reader.read_line(&mut buffer)?; // Leer y descartar el header
+        }
 
         let mut results = Vec::new();
         let complete_columns: Vec<String> =
@@ -80,6 +88,7 @@ impl StorageEngine {
 
         // Leer las líneas del rango especificado
         let mut current_byte_offset = start_byte;
+
         while current_byte_offset < end_byte {
             let mut buffer = String::new();
             let bytes_read = reader.read_line(&mut buffer)?;
@@ -87,7 +96,7 @@ impl StorageEngine {
                 break; // Fin del archivo
             }
             current_byte_offset += bytes_read as u64;
-            if self.line_matches_where_clause(&buffer, &table, &select_query)? {
+            if self.line_matches_where_clause(&buffer.trim_end(), &table, &select_query)? {
                 results.push(buffer.trim_end().to_string());
             }
         }
@@ -158,11 +167,10 @@ impl StorageEngine {
     ) -> Result<bool, StorageEngineError> {
         // Convert the line into a map of column to value
         let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
-        let column_value_map = self.create_column_value_map(table, &columns, true);
+        let column_value_map = self.create_column_value_map(table, &columns, false);
 
         let columns = table.get_columns();
         // Check the WHERE clause condition in the SELECT query
-
         if let Some(where_clause) = &select_query.where_clause {
             Ok(where_clause
                 .condition

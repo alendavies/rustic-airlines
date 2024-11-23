@@ -244,18 +244,18 @@ impl Node {
         client_keyspace.get_table(&table_name)
     }
 
-    fn remove_table(&mut self, table_name: String, client_id: i32) -> Result<(), NodeError> {
+    fn remove_table(&mut self, table_name: String, open_query_id: i32) -> Result<(), NodeError> {
         // Obtiene el keyspace actual del cliente
-        let client_keyspace_name = self
-            .clients_keyspace
-            .get_mut(&client_id)
+        let keyspace_name = self
+            .get_open_handle_query()
+            .get_keyspace_of_query(open_query_id)?
             .ok_or(NodeError::KeyspaceError)?
-            .as_mut()
-            .ok_or(NodeError::KeyspaceError)?;
+            .get_name();
+
         let keyspace = self
             .keyspaces
             .iter_mut()
-            .find(|k| &k.get_name() == client_keyspace_name)
+            .find(|k| &k.get_name() == &keyspace_name)
             .ok_or(NodeError::KeyspaceError)?;
         // Remueve la tabla solicitada del keyspace del cliente
         keyspace.remove_table(&table_name)?;

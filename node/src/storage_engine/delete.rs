@@ -96,6 +96,7 @@ impl StorageEngine {
             let line_length = line.len() as u64;
             if i == 0 {
                 current_byte_offset += line_length + 1;
+                writeln!(temp_file, "{}", line)?;
                 continue;
             }
 

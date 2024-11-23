@@ -2,7 +2,6 @@ use crate::messages::{
     InternodeMessage, InternodeMessageContent, InternodeQuery, InternodeResponse,
     InternodeResponseContent, InternodeResponseStatus,
 };
-use crate::table::Table;
 use crate::utils::connect_and_send_message;
 use crate::NodeError;
 use crate::{Node, INTERNODE_PORT};
@@ -26,7 +25,7 @@ use std::collections::HashMap;
 use std::env;
 use std::net::{Ipv4Addr, TcpStream};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH}; // Si `node` es el módulo raíz
+// Si `node` es el módulo raíz
 
 /// Struct for executing various database queries across nodes with support
 /// for distributed communication and replication.
@@ -422,58 +421,5 @@ impl QueryExecution {
             }
         }
         Ok(())
-    }
-
-    /// Obtiene las rutas del archivo principal y del temporal.
-    /// Si `replication` es `true`, coloca los archivos dentro de una carpeta "replication" en el keyspace.
-    fn get_file_paths(
-        &self,
-        table_name: &str,
-        replication: bool,
-        keyspace_name: &str,
-    ) -> Result<(String, String), NodeError> {
-        let node = self
-            .node_that_execute
-            .lock()
-            .map_err(|_| NodeError::LockError)?;
-
-        let add_str = node.get_ip_string().replace(".", "_");
-        let base_folder = format!("keyspaces_{}/{}", add_str, keyspace_name);
-
-        // Agrega la carpeta "replication" si el parámetro es verdadero
-        let folder_name = if replication {
-            format!("{}/replication", base_folder)
-        } else {
-            base_folder
-        };
-
-        let file_path = format!("{}/{}.csv", folder_name, table_name);
-
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_| NodeError::OtherError)?
-            .as_nanos();
-        let temp_file_path = format!("{}.{}.temp", file_path, timestamp);
-
-        Ok((file_path, temp_file_path))
-    }
-
-    /// Crea un mapa de valores de columna para una fila dada.
-    pub fn create_column_value_map(
-        &self,
-        table: &Table,
-        columns: &[String],
-        only_partitioner_key: bool,
-    ) -> HashMap<String, String> {
-        let mut column_value_map = HashMap::new();
-        for (i, column) in table.get_columns().iter().enumerate() {
-            if let Some(value) = columns.get(i) {
-                if column.is_partition_key || column.is_clustering_column || !only_partitioner_key {
-                    column_value_map.insert(column.name.clone(), value.clone());
-                }
-            }
-        }
-
-        column_value_map
     }
 }

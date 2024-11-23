@@ -57,7 +57,7 @@ impl StorageEngine {
             .open(&index_file_path)
             .map_err(|_| StorageEngineError::FileWriteFailed)?;
 
-        writeln!(index_file, "ClusteringColumns,StartByte,EndByte")
+        writeln!(index_file, "clustering_column,start_byte,end_byte")
             .map_err(|_| StorageEngineError::FileWriteFailed)?;
 
         // Create the index file in the replication folder
