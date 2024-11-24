@@ -136,12 +136,32 @@ impl StorageEngine {
                     }
 
                     if clustering_comparison == std::cmp::Ordering::Equal {
+                        // Si las claves coinciden exactamente
                         if if_not_exist {
-                            // Escribir la línea existente sin cambios
+                            // Mantener la fila existente si `if_not_exist` es verdadero
                             writeln!(temp_file, "{};{}", line, time_of_row)
                                 .map_err(|_| StorageEngineError::IoError)?;
                             current_byte_offset += line_length + 1;
                             continue;
+                        } else {
+                            // Reemplazar la fila existente
+                            writeln!(temp_file, "{};{}", values.join(","), timestamp)
+                                .map_err(|_| StorageEngineError::IoError)?;
+                            inserted = true;
+
+                            if let Some(&(idx, _)) = clustering_key_indices.first() {
+                                let key = values[idx].to_string();
+                                index_map.insert(
+                                    key,
+                                    (
+                                        current_byte_offset,
+                                        current_byte_offset + values.join(",").len() as u64,
+                                    ),
+                                );
+                            }
+
+                            current_byte_offset += values.join(",").len() as u64 + 1;
+                            continue; // Reemplazada, no procesar más esta fila
                         }
                     } else if clustering_comparison == std::cmp::Ordering::Greater && !inserted {
                         // Insertar el nuevo valor antes de la fila actual

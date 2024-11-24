@@ -700,7 +700,7 @@ impl Node {
                     .and_then(|k| guard_node.get_table(table_name, k).ok())
             });
             let columns: Vec<Column> = {
-                if let Some(table) = table {
+                if let Some(table) = table.clone() {
                     table.get_columns()
                 } else {
                     vec![]
@@ -713,6 +713,7 @@ impl Node {
                 "".to_string()
             };
 
+            let partitioner = {guard_node.get_partitioner()};
             let query_handler = guard_node.get_open_handle_query();
 
             for _ in 0..finished_responses {
@@ -734,8 +735,12 @@ impl Node {
                     })),
                     open_query_id,
                     keyspace_name.clone(),
+                    table.clone(),
                     columns.clone(),
-                    self_ip
+                    self_ip,
+                    self_ip,
+                    connections.clone(),
+                    partitioner.clone()
                     
                 )?;
             }

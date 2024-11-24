@@ -102,7 +102,6 @@ impl OpenQuery {
     /// # Parameters
     /// - `response`: The response to be added.
     fn add_ok_response(&mut self, response: InternodeResponse, from: Ipv4Addr) {
-        println!("agregue la respuesta de {:?}", from);
         self.acumulated_ok_responses.push((from, response));
         self.ok_responses += 1;
     }
@@ -188,7 +187,7 @@ impl OpenQueryHandler {
         Self {
             queries: HashMap::new(),
             keyspaces_queries: HashMap::new(),
-            next_id: 0,
+            next_id: 1,
         }
     }
 
