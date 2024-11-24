@@ -1,7 +1,4 @@
-use crate::{
-    db::{Airport, Flight, MockProvider, Provider},
-    widgets::WidgetAirport,
-};
+use crate::db::{Airport, Db, Flight, FlightInfo, Provider};
 
 /// Tracks the state for the selection of flights and airports.
 pub struct SelectionState {
@@ -56,8 +53,8 @@ impl ViewState {
     pub fn new() -> Self {
         Self {
             // TODO: pass a parameter?
-            flights: MockProvider::get_flights().unwrap(),
-            airports: MockProvider::get_airports().unwrap(),
+            flights: Db::get_flights().unwrap(),
+            airports: Db::get_airports().unwrap(),
         }
     }
 

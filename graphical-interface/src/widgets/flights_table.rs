@@ -1,5 +1,5 @@
 use egui_extras::{Column, TableBuilder};
-use crate::db::{Flight, MockProvider, Provider};
+use crate::db::{Db, Flight, Provider};
 use super::View;
 
 pub enum FlightType {
@@ -26,8 +26,8 @@ impl WidgetFlightsTable {
 
     fn fetch_flights(&mut self) {
         self.flights = Some(match self.flight_type {
-            FlightType::Arrival => MockProvider::get_arrival_flights(&self.airport, self.selected_date).unwrap(),
-            FlightType::Departure => MockProvider::get_departure_flights(&self.airport, self.selected_date).unwrap(),
+            FlightType::Arrival => Db::get_arrival_flights(&self.airport, self.selected_date).unwrap(),
+            FlightType::Departure => Db::get_departure_flights(&self.airport, self.selected_date).unwrap(),
         });
     }
 }

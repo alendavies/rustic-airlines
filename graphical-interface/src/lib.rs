@@ -1,4 +1,4 @@
-use db::MockProvider;
+use db::Db;
 
 pub mod db;
 mod map;
@@ -12,6 +12,6 @@ pub fn run() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Flight Tracker",
         Default::default(),
-        Box::new(|cc| Ok(Box::new(MyApp::new(cc.egui_ctx.clone(), MockProvider)))),
+        Box::new(|cc| Ok(Box::new(MyApp::new(cc.egui_ctx.clone(), Db)))),
     )
 }
