@@ -1,10 +1,11 @@
-use crate::messages::{
-    InternodeMessage, InternodeMessageContent, InternodeQuery, InternodeResponse,
-    InternodeResponseStatus,
-};
+use crate::internode_protocol::message::{InternodeMessage, InternodeMessageContent};
+use crate::internode_protocol::query::InternodeQuery;
+use crate::internode_protocol::response::{InternodeResponse, InternodeResponseStatus};
 use crate::open_query_handler::OpenQueryHandler;
 use crate::utils::connect_and_send_message;
 use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
+use gossip::messages::GossipMessage;
+use gossip::structures::NodeStatus;
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -27,14 +28,13 @@ use std::net::{Ipv4Addr, TcpStream};
 use std::sync::{Arc, Mutex};
 
 /// Struct that represents the handler for internode communication protocol.
-/// Struct that represents the handler for internode communication protocol.
-pub struct InternodeProtocolHandler {}
+pub struct InternodeProtocolHandler;
 
 impl InternodeProtocolHandler {
     /// Creates a new `InternodeProtocolHandler` for handling internode commands
     /// and responses between nodes in a distributed setting.
     pub fn new() -> Self {
-        InternodeProtocolHandler {}
+        InternodeProtocolHandler
     }
 
     /// Handles an incoming command from a node or client, distinguishing between query commands
@@ -68,6 +68,10 @@ impl InternodeProtocolHandler {
             }
             InternodeMessageContent::Response(response) => {
                 self.handle_response_command(node, &response)?;
+                Ok(())
+            }
+            InternodeMessageContent::Gossip(message) => {
+                self.handle_gossip_command(node, &message, connections)?;
                 Ok(())
             }
         }
@@ -333,8 +337,6 @@ impl InternodeProtocolHandler {
                 )?;
             }
             InternodeResponseStatus::Error => {
-                // Aquí puedes agregar la lógica para manejar el caso "ERROR".
-                // Por ejemplo, puedes retornar un error específico o realizar otra acción.
                 self.process_error_response(query_handler, response.open_query_id as i32)?;
             }
         }
@@ -342,29 +344,65 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    // /// Handles a gossip command from another node.
-    // fn handle_gossip_command(
-    //     &self,
-    //     node: &Arc<Mutex<Node>>,
-    //     message: &str,
-    //     connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-    // ) -> Result<(), NodeError> {
-    //     let mut guard_node = node.lock()?;
+    /// Handles a gossip command from another node.
+    /// This function is responsible for processing the gossip message and responding accordingly.
+    fn handle_gossip_command(
+        &self,
+        node: &Arc<Mutex<Node>>,
+        gossip_message: &GossipMessage,
+        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+    ) -> Result<(), NodeError> {
+        let mut guard_node = node.lock()?;
 
-    //     // guard_node.gossiper;
+        match &gossip_message.payload {
+            gossip::messages::Payload::Syn(syn) => {
+                let ack = guard_node.gossiper.handle_syn(syn);
 
-    //     // TODO
-    //     // acá tendríamos acceso a node.gossiper y node.partitioner
-    //     // 1. deserializar el msj
-    //     // 2. mandar el mensaje que corresponda
-    //     // 3. actualizar el node.endpoints_state según corresponda
-    //     // 4. informarle al partitioner según corresponda
-    //     // listo
+                let msg =
+                    GossipMessage::new(guard_node.get_ip(), gossip::messages::Payload::Ack(ack));
 
-    //     // connect_and_send_message(peer_id, port, connections, message);
+                let result = connect_and_send_message(
+                    gossip_message.from,
+                    INTERNODE_PORT,
+                    connections,
+                    InternodeMessage::new(
+                        guard_node.get_ip(),
+                        InternodeMessageContent::Gossip(msg),
+                    ),
+                );
 
-    //     Ok(())
-    // }
+                if result.is_err() {
+                    guard_node.gossiper.kill(gossip_message.from).ok();
+                }
+            }
+            gossip::messages::Payload::Ack(ack) => {
+                let ack2 = guard_node.gossiper.handle_ack(ack);
+
+                let msg =
+                    GossipMessage::new(guard_node.get_ip(), gossip::messages::Payload::Ack2(ack2));
+
+                let result = connect_and_send_message(
+                    gossip_message.from,
+                    INTERNODE_PORT,
+                    connections,
+                    InternodeMessage::new(
+                        guard_node.get_ip(),
+                        InternodeMessageContent::Gossip(msg),
+                    ),
+                );
+
+                if result.is_err() {
+                    println!("Node is dead: {:?}", gossip_message.from);
+                    guard_node.gossiper.kill(gossip_message.from).ok();
+                }
+            }
+            gossip::messages::Payload::Ack2(ack2) => {
+                guard_node.gossiper.handle_ack2(ack2);
+            }
+        };
+
+        Ok(())
+    }
 
     /// Procesa la respuesta cuando el estado es "OK"
     fn process_ok_response(

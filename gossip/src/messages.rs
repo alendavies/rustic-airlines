@@ -1,8 +1,15 @@
-use std::{collections::BTreeMap, net::Ipv4Addr};
-
 use crate::structures::{ApplicationState, HeartbeatState, NodeStatus};
+use std::{
+    collections::BTreeMap,
+    io::{Cursor, Read},
+    net::Ipv4Addr,
+};
 
 #[derive(Debug)]
+/// Errors that can occur when creating a message.
+/// - `InvalidLength`: The message has an invalid length.
+/// - `InvalidValue`: The message has an invalid value.
+/// - `ConversionError`: Failed to convert bytes to a value.
 pub enum MessageError {
     InvalidLength(String),
     InvalidValue(String),
@@ -10,6 +17,12 @@ pub enum MessageError {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
+/// A `Digest` used to identify a node in the cluster.
+///
+/// ### Fields
+/// - `address`: The IP address of the node.
+/// - `generation`: The generation of the node.
+/// - `version`: The version of the node.
 pub struct Digest {
     pub address: Ipv4Addr,
     pub generation: u128,
@@ -17,6 +30,7 @@ pub struct Digest {
 }
 
 impl Digest {
+    /// Create a new `Digest` message.
     pub fn new(address: Ipv4Addr, generation: u128, version: u32) -> Self {
         Digest {
             address,
@@ -25,6 +39,7 @@ impl Digest {
         }
     }
 
+    /// Create a `Digest` message from a `HeartbeatState`.
     pub fn from_heartbeat_state(address: Ipv4Addr, heartbeat_state: &HeartbeatState) -> Self {
         Digest {
             address,
@@ -33,20 +48,23 @@ impl Digest {
         }
     }
 
-    // 0    8    16   24   32
-    // +----+----+----+----+
-    // |    ip address     |
-    // +----+----+----+----+
-    // |     generation    |
-    // +----+----+----+----+
-    // |     generation    |
-    // +----+----+----+----+
-    // |     generation    |
-    // +----+----+----+----+
-    // |     generation    |
-    // +----+----+----+----+
-    // |      version      |
-    // +----+----+----+----+
+    /// ```md
+    /// 0    8    16   24   32
+    /// +----+----+----+----+
+    /// |    ip address     |
+    /// +----+----+----+----+
+    /// |     generation    |
+    /// +----+----+----+----+
+    /// |     generation    |
+    /// +----+----+----+----+
+    /// |     generation    |
+    /// +----+----+----+----+
+    /// |     generation    |
+    /// +----+----+----+----+
+    /// |      version      |
+    /// +----+----+----+----+
+    /// ```
+    /// Convert the `Digest` message to a byte slice.
     pub fn as_bytes(&self) -> [u8; 24] {
         let ip_bytes = self.address.octets();
         let gen_bytes: [u8; 16] = self.generation.to_be_bytes();
@@ -60,8 +78,8 @@ impl Digest {
         bytes
     }
 
-    /// Create a `Digest` messsage from a byte array.
-    /// - The byte array must be 24 bytes long.
+    /// Create a `Digest` messsage from a byte slice.
+    /// - The byte slice must be 24 bytes long.
     /// - The first 4 bytes are the IP address.
     /// - The next 16 bytes are the generation.
     /// - The last 4 bytes are the version.
@@ -91,16 +109,139 @@ impl Digest {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Debug, PartialEq, Clone)]
+/// A `GossipMessage` used to communicate between nodes in the cluster.
+///
+/// ### Fields
+/// - `from`: The IP address of the sender.
+/// - `payload`: The payload of the message.
+pub struct GossipMessage {
+    pub from: Ipv4Addr,
+    pub payload: Payload,
+}
+
+impl GossipMessage {
+    /// Create a new `GossipMessage`.
+    pub fn new(from: Ipv4Addr, payload: Payload) -> Self {
+        GossipMessage { from, payload }
+    }
+}
+
+#[derive(Debug)]
+/// The type of payload in a `GossipMessage`.
+///
+/// - `Syn`: A `Syn` message.
+/// - `Ack`: An `Ack` message.
+/// - `Ack2`: An `Ack2` message.
+enum PayloadType {
+    Syn = 0x00,
+    Ack = 0x01,
+    Ack2 = 0x02,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+/// The payload of a `GossipMessage`.
+/// - `Syn`: A `Syn` message.
+/// - `Ack`: An `Ack` message.
+/// - `Ack2`: An `Ack2` message.
+pub enum Payload {
+    Syn(Syn),
+    Ack(Ack),
+    Ack2(Ack2),
+}
+
+impl GossipMessage {
+    /// ```md
+    /// 0    8    16   24   32
+    /// +----+----+----+----+
+    /// |         ip        |
+    /// +----+----+----+----+
+    /// |type|   payload    |
+    /// +----+----+----+----+
+    /// |      payload      |
+    /// |        ...        |
+    /// +----+----+----+----+
+    /// ```
+    /// Convert the `GossipMessage` to a byte array.
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+
+        bytes.extend_from_slice(&self.from.to_bits().to_be_bytes());
+
+        let payload_type = match &self.payload {
+            Payload::Syn(_) => PayloadType::Syn as u8,
+            Payload::Ack(_) => PayloadType::Ack as u8,
+            Payload::Ack2(_) => PayloadType::Ack2 as u8,
+        };
+
+        bytes.extend_from_slice(&payload_type.to_be_bytes());
+
+        let payload_bytes = match &self.payload {
+            Payload::Syn(syn) => syn.as_bytes(),
+            Payload::Ack(ack) => ack.as_bytes(),
+            Payload::Ack2(ack2) => ack2.as_bytes(),
+        };
+
+        bytes.extend_from_slice(&payload_bytes);
+
+        bytes
+    }
+
+    /// Create a `GossipMessage` from a byte slice.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, MessageError> {
+        let mut cursor = Cursor::new(bytes);
+
+        let mut bytes_ip = [0u8; 4];
+        cursor.read_exact(&mut bytes_ip).unwrap();
+
+        let mut bytes_type = [0u8; 1];
+        cursor.read_exact(&mut bytes_type).unwrap();
+
+        let mut bytes_payload = Vec::new();
+        cursor.read_to_end(&mut bytes_payload).unwrap();
+
+        let ip = Ipv4Addr::from_bits(u32::from_be_bytes(bytes_ip));
+
+        let payload_type = match u8::from_be_bytes(bytes_type) {
+            0x00 => PayloadType::Syn,
+            0x01 => PayloadType::Ack,
+            0x02 => PayloadType::Ack2,
+            _ => panic!(),
+        };
+
+        let payload = match payload_type {
+            PayloadType::Syn => Payload::Syn(Syn::from_bytes(&bytes_payload)?),
+            PayloadType::Ack => Payload::Ack(Ack::from_bytes(&bytes_payload)?),
+            PayloadType::Ack2 => Payload::Ack2(Ack2::from_bytes(&bytes_payload)?),
+        };
+
+        Ok(Self { from: ip, payload })
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
+/// A `Syn` message used to synchronize the state of the cluster.
+///
+/// ### Fields
+/// - `digests`: A list of `Digest` messages.
 pub struct Syn {
     pub digests: Vec<Digest>,
 }
 
 impl Syn {
+    /// Create a new `Syn` message.
     pub fn new(digests: Vec<Digest>) -> Self {
         Syn { digests }
     }
 
+    /// ```md
+    /// 0    8    16   24
+    /// +----+----+----+
+    /// |    digest    |
+    /// |      ...     |
+    /// +----+----+----+
+    /// ```
+    /// Convert the `Syn` message to a byte array.
     pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.digests.len() * 24);
 
@@ -111,10 +252,9 @@ impl Syn {
         bytes
     }
 
-    /// Create a `Syn` message from a byte array.
-    /// - The byte array must be a multiple of 24 bytes.
+    /// Create a `Syn` message from a byte slice.
+    /// - The byte slice must be a multiple of 24 bytes.
     /// - Each 24 bytes chunk is a `Digest`.
-    // TODO: receive slice https://github.com/taller-1-fiuba-rust/24C2-Ferrum/issues/33
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, MessageError> {
         if bytes.len() % 24 != 0 {
             return Err(MessageError::InvalidLength(format!(
@@ -134,16 +274,20 @@ impl Syn {
 }
 
 impl ApplicationState {
+    /// Create a new `ApplicationState` message.
     pub fn new(status: NodeStatus, version: u32) -> Self {
         ApplicationState { status, version }
     }
-    // 0    8    16   24   32
-    // +----+----+----+----+
-    // |  status |   0x00  |
-    // +----+----+----+----+
-    // |       version     |
-    // +----+----+----+----+
-    // por ahora pongo el status nomás
+
+    /// ```md
+    /// 0    8    16   24   32
+    /// +----+----+----+----+
+    /// |  status |   0x00  |
+    /// +----+----+----+----+
+    /// |       version     |
+    /// +----+----+----+----+
+    /// ```
+    /// Convert the `ApplicationState` message to a byte slice.
     pub fn as_bytes(&self) -> [u8; 8] {
         let mut bytes = [0x00; 8];
 
@@ -156,8 +300,8 @@ impl ApplicationState {
         bytes
     }
 
-    /// Create an `ApplicationState` message from a byte array.
-    /// - The byte array must be 8 bytes long.
+    /// Create an `ApplicationState` message from a byte slice.
+    /// - The byte slice must be 8 bytes long.
     /// - The first 2 bytes are the status.
     /// - The last 4 bytes are the version.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, MessageError> {
@@ -194,6 +338,9 @@ impl ApplicationState {
     }
 }
 
+/// The type of information in an `Ack` message.
+/// - `Digest`: Only a digest.
+/// - `DigestAndInfo`: Digest with info.
 enum InfoType {
     /// Only a digest, e.g.
     /// `127.0.0.1:100:15`
@@ -203,7 +350,12 @@ enum InfoType {
     DigestAndInfo = 0x01,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
+/// An `Ack` message used to acknowledge a `Syn` message.
+///
+/// ### Fields
+/// - `stale_digests`: Local outdated digests which application state need to be updated in the `Ack2`.
+/// - `updated_info`: Local updated digests with application state which where outdated in the `Syn`.
 pub struct Ack {
     /// Local outdated digests which application state need to be updated in the ACK2.
     pub stale_digests: Vec<Digest>,
@@ -212,39 +364,7 @@ pub struct Ack {
 }
 
 impl Ack {
-    // 0    8    16   24   32
-    // +----+----+----+----+
-    // |        0x00       |
-    // +----+----+----+----+
-    // |                   |
-    // +                   +
-    // |                   |
-    // +                   +
-    // |                   |
-    // +       digest      +
-    // |                   |
-    // +                   +
-    // |                   |
-    // +                   +
-    // |                   |
-    // +----+----+----+----+
-    // |        0x01       |
-    // +----+----+----+----+
-    // |                   |
-    // +                   +
-    // |                   |
-    // +                   +
-    // |                   |
-    // +       digest      +
-    // |                   |
-    // +                   +
-    // |                   |
-    // +                   +
-    // |                   |
-    // +----+----+----+----+
-    // | application state |
-    // +----+----+----+----+
-
+    /// Create a new `Ack` message.
     pub fn new(
         stale_digests: Vec<Digest>,
         updated_info: BTreeMap<Digest, ApplicationState>,
@@ -255,6 +375,41 @@ impl Ack {
         }
     }
 
+    /// ```md
+    /// 0    8    16   24   32
+    /// +----+----+----+----+
+    /// |        0x00       |
+    /// +----+----+----+----+
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +       digest      +
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +----+----+----+----+
+    /// |        0x01       |
+    /// +----+----+----+----+
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +       digest      +
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +----+----+----+----+
+    /// | application state |
+    /// +----+----+----+----+
+    /// ```
+    /// Convert the `Ack` message to a byte array.
     pub fn as_bytes(&self) -> Vec<u8> {
         let length = self.stale_digests.len() * 28 + self.updated_info.len() * 32;
         let mut bytes = Vec::with_capacity(length);
@@ -273,8 +428,8 @@ impl Ack {
         bytes
     }
 
-    /// Create an `Ack` message from a byte array.
-    /// - The byte array must be a multiple of 28 or 36 bytes.
+    /// Create an `Ack` message from a byte slice.
+    /// - The byte slice must be a multiple of 28 or 36 bytes.
     /// - Each 28 bytes chunk is a `Digest`.
     /// - Each 36 bytes chunk is a `Digest` followed by an `ApplicationState`.
     /// - The first 4 bytes of each chunk is the `InfoType`.
@@ -348,33 +503,41 @@ impl Ack {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
+/// An `Ack2` message used to acknowledge an `Ack` message.
+/// ### Fields
+/// - `updated_info`: Local updated digests with application state which were outdated in the `Syn`.
 pub struct Ack2 {
     pub updated_info: BTreeMap<Digest, ApplicationState>,
 }
 
 impl Ack2 {
+    /// Create a new `Ack2` message.
     pub fn new(updated_info: BTreeMap<Digest, ApplicationState>) -> Self {
         Ack2 { updated_info }
     }
-    // 0    8    16   24   32
-    // +----+----+----+----+
-    // |                   |
-    // +                   +
-    // |                   |
-    // +                   +
-    // |                   |
-    // +       digest      +
-    // |                   |
-    // +                   +
-    // |                   |
-    // +                   +
-    // |                   |
-    // +----+----+----+----+
-    // |                   |
-    // + application state +
-    // |                   |
-    // +----+----+----+----+
+
+    /// ```md
+    /// 0    8    16   24   32
+    /// +----+----+----+----+
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +       digest      +
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +                   +
+    /// |                   |
+    /// +----+----+----+----+
+    /// |                   |
+    /// + application state +
+    /// |                   |
+    /// +----+----+----+----+
+    /// ```
+    /// Convert the `Ack2` message to a byte array.
     pub fn as_bytes(&self) -> Vec<u8> {
         let length = self.updated_info.len().checked_mul(32).unwrap();
         let mut bytes = Vec::with_capacity(length);
@@ -387,8 +550,8 @@ impl Ack2 {
         bytes
     }
 
-    /// Create an `Ack2` message from a byte array.
-    /// - The byte array must be a multiple of 32 bytes.
+    /// Create an `Ack2` message from a byte slice.
+    /// - The byte slice must be a multiple of 32 bytes.
     /// - Each 32 bytes chunk is a `Digest` followed by an `ApplicationState`.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, MessageError> {
         let mut updated_info = BTreeMap::new();

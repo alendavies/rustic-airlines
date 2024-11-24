@@ -1,8 +1,8 @@
 // Local modules first
 mod errors;
+mod internode_protocol;
 mod internode_protocol_handler;
 mod keyspace;
-mod messages;
 mod open_query_handler;
 mod query_execution;
 mod table;
@@ -14,6 +14,7 @@ use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Instant;
 
 // Internal project libraries
 use crate::table::Table;
@@ -21,12 +22,15 @@ use crate::table::Table;
 // External libraries
 use driver::server::{handle_client_request, Request};
 use errors::NodeError;
+use gossip::structures::NodeStatus;
 use gossip::Gossiper;
+use internode_protocol::message::{InternodeMessage, InternodeMessageContent};
+use internode_protocol::response::{
+    InternodeResponse, InternodeResponseContent, InternodeResponseStatus,
+};
+use internode_protocol::InternodeSerializable;
 use internode_protocol_handler::InternodeProtocolHandler;
 use keyspace::Keyspace;
-use messages::{
-    InternodeMessage, InternodeResponse, InternodeResponseContent, InternodeSerializable,
-};
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -39,6 +43,7 @@ use query_creator::errors::CQLError;
 use query_creator::{GetTableName, GetUsedKeyspace, Query};
 use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
+use utils::connect_and_send_message;
 
 const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
 const INTERNODE_PORT: u16 = 0x554D; // Hexadecimal of "UM" (FERRUM) = 21837
@@ -70,17 +75,110 @@ impl Node {
     pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>) -> Result<Node, NodeError> {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip)?;
+        for seed_ip in seeds_nodes.clone() {
+            if seed_ip != ip {
+                partitioner.add_node(seed_ip)?;
+            }
+        }
 
         Ok(Node {
             ip,
-            seeds_nodes,
+            seeds_nodes: seeds_nodes.clone(),
             partitioner,
             open_query_handler: OpenQueryHandler::new(),
             keyspaces: vec![],
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
-            gossiper: Gossiper::new(),
+            gossiper: Gossiper::new()
+                .with_endpoint_state(ip)
+                .with_seeds(seeds_nodes),
         })
+    }
+
+    /// Starts the gossip process for the node.
+    /// Opens 3 connections with 3 other nodes.
+    pub fn start_gossip(
+        node: Arc<Mutex<Node>>,
+        connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+    ) -> Result<(), NodeError> {
+        let handle = thread::spawn(move || {
+            let initial_gossip = Instant::now();
+
+            loop {
+                {
+                    {
+                        let mut node_guard = node.lock().unwrap();
+                        let ip = node_guard.ip;
+
+                        if initial_gossip.elapsed().as_millis() > 1500 {
+                            node_guard
+                                .gossiper
+                                .change_status(ip, NodeStatus::Normal)
+                                .ok();
+                        }
+
+                        node_guard.gossiper.heartbeat(ip);
+                    }
+
+                    let ips: Vec<Ipv4Addr>;
+                    let syn;
+
+                    {
+                        let node_guard = node.lock().unwrap();
+
+                        ips = node_guard
+                            .gossiper
+                            .pick_ips(node_guard.get_ip())
+                            .iter()
+                            .map(|x| **x)
+                            .collect();
+
+                        syn = node_guard.gossiper.create_syn(node_guard.ip);
+                    }
+
+                    let mut node_guard = node.lock().unwrap();
+
+                    for ip in ips {
+                        let connections_clone = Arc::clone(&connections);
+
+                        let msg = InternodeMessage::new(
+                            ip.clone(),
+                            InternodeMessageContent::Gossip(syn.clone()),
+                        );
+
+                        if connect_and_send_message(ip, INTERNODE_PORT, connections_clone, msg)
+                            .is_err()
+                        {
+                            node_guard.gossiper.change_status(ip, NodeStatus::Dead).ok();
+                        }
+                    }
+                }
+
+                // After each gossip round, update the partitioner
+                {
+                    let mut node_guard = node.lock().unwrap();
+                    let endpoints_states = &node_guard.gossiper.endpoints_state.clone();
+                    let partitioner = &mut node_guard.partitioner;
+
+                    for (ip, state) in endpoints_states {
+                        if state.application_state.status.is_dead() {
+                            partitioner.remove_node(*ip).ok();
+                        } else {
+                            partitioner.add_node(*ip).ok();
+                        }
+                    }
+                }
+
+                {
+                    println!("Partitioner: {:?}", node.lock().unwrap().partitioner);
+                }
+
+                thread::sleep(std::time::Duration::from_secs(1));
+            }
+        });
+
+        handle.join().unwrap();
+        Ok(())
     }
 
     /// Adds a new open query in the node.
@@ -376,13 +474,26 @@ impl Node {
         {
             let mut node_guard = node.lock()?;
             self_ip = node_guard.get_ip();
-            for i in 1..=5 {
-                let ip = Ipv4Addr::new(127, 0, 0, i); // Genera la dirección IP como Ipv4Addr
-                if ip != node_guard.ip {
-                    // Compara con la IP del nodo
-                    node_guard.partitioner.add_node(ip)?; // Agrega al partitioner
-                }
-            }
+
+            // if !is_seed {
+            //     let message = InternodeProtocolHandler::create_protocol_message(
+            //         &node_guard.get_ip_string(),
+            //         0,
+            //         "HANDSHAKE",
+            //         "_",
+            //         true,
+            //         false,
+            //         0,
+            //         "None",
+            //     );
+            //     connect_and_send_message(
+            //         seed_ip,
+            //         INTERNODE_PORT,
+            //         Arc::clone(&connections),
+            //         &message,
+            //     )?;
+            //     node_guard.partitioner.add_node(seed_ip)?;
+            // }
         }
 
         // Creates a thread to handle node connections
@@ -394,6 +505,13 @@ impl Node {
                 .unwrap_or_else(|err| {
                     eprintln!("Error in internode connections: {:?}", err); // Or handle the error as needed
                 });
+        });
+
+        // Creates a thread to handle gossip
+        let gossip_connections = Arc::clone(&connections);
+        let node_gossip = Arc::clone(&node);
+        Self::start_gossip(node_gossip, gossip_connections).unwrap_or_else(|err| {
+            eprintln!("Error in gossip: {:?}", err); // Or handle the error as needed
         });
 
         // Creates a thread to handle client connections
@@ -591,8 +709,15 @@ impl Node {
 
             // Try to read a line
             let bytes_read = reader.read(&mut buffer);
-            let message = InternodeMessage::from_bytes(&buffer)
-                .map_err(|_| NodeError::InternodeProtocolError)?;
+            let result = InternodeMessage::from_bytes(&buffer);
+
+            let message;
+
+            if let Ok(value) = result {
+                message = value;
+            } else {
+                continue;
+            }
 
             match bytes_read {
                 Ok(0) => {
@@ -717,7 +842,7 @@ impl Node {
                 InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     // TODO: convertir el content al content de la response
-                    &InternodeResponse::new(open_query_id as u32, messages::InternodeResponseStatus::Ok, Some(InternodeResponseContent{
+                    &InternodeResponse::new(open_query_id as u32, InternodeResponseStatus::Ok, Some(InternodeResponseContent{
                         columns: complete_columns,
                         select_columns:  select_columns,
                         values: values,
