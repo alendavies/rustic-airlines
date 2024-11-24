@@ -46,6 +46,12 @@ impl HeartbeatState {
 }
 
 #[derive(Clone, PartialEq, Debug, Default)]
+pub struct Schema {
+    pub keyspace: String,
+    pub tables: Vec<String>,
+}
+
+#[derive(Clone, PartialEq, Debug, Default)]
 /// Represents the application state of the endpoint in the cluster at a given point in time.
 ///
 /// ### Fields
@@ -54,6 +60,7 @@ impl HeartbeatState {
 pub struct ApplicationState {
     pub status: NodeStatus,
     pub version: u32,
+    pub schemas: Vec<Schema>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
