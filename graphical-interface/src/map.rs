@@ -5,10 +5,10 @@ use egui_extras::install_image_loaders;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
 use crate::{
-    db::{MockProvider, Provider},
+    db::Provider,
     plugins,
     state::{SelectionState, ViewState},
-    widgets::{WidgetAirport, WidgetAirports, WidgetFlight},
+    widgets::{WidgetAirport, WidgetFlight},
     windows,
 };
 
@@ -62,51 +62,54 @@ impl<P: Provider> eframe::App for MyApp<P> {
 
                 let tiles = self.tiles.as_mut();
 
-                let airport =
+                let airport_plugin =
                     plugins::Airports::new(&self.view_state.airports, self.selection_state.clone());
 
-                let flight =
+                let flight_plugin =
                     plugins::Flights::new(&self.view_state.flights, self.selection_state.clone());
 
                 // In egui, widgets are constructed and consumed in each frame.
                 let map = Map::new(Some(tiles), &mut self.map_memory, my_position)
-                    .with_plugin(airport)
-                    .with_plugin(flight);
+                    .with_plugin(airport_plugin)
+                    .with_plugin(flight_plugin);
 
                 // Add the map widget.
                 ui.add(map);
 
-                // List of airports window.
-                /* ui.add(WidgetAirports::new(
-                    &self.view_state,
-                    &mut self.selection_state.borrow_mut(),
-                )); */
+                let selected_airport = self.selection_state.borrow().airport.clone();
+                let selected_flight = self.selection_state.borrow().flight.clone();
 
                 // Airport window.
-                if let Some(airport) = &self.selection_state.borrow().airport {
+                if let Some(airport) = selected_airport {
                     if let Some(widget) = &mut self.airport_widget {
-                        if widget.selected_airport == *airport {
-                            widget.show(ctx);
+                        if widget.selected_airport == airport {
+                            if !widget.show(ctx) {
+                                self.selection_state.borrow_mut().airport = None;
+                                self.airport_widget = None;
+                            }
                         } else {
-                            self.airport_widget = None;
+                            self.airport_widget = Some(WidgetAirport::new(airport));
                         }
                     } else {
-                        self.airport_widget = Some(WidgetAirport::new(airport.clone()));
+                        self.airport_widget = Some(WidgetAirport::new(airport));
                     }
                 } else {
                     self.airport_widget = None;
                 }
 
                 // Flight window.
-                if let Some(flight) = &self.selection_state.borrow().flight {
+                if let Some(flight) = selected_flight {
                     if let Some(widget) = &mut self.flight_widget {
-                        if widget.selected_flight == *flight {
-                            widget.show(ctx);
+                        if widget.selected_flight == flight {
+                            if !widget.show(ctx) {
+                                self.selection_state.borrow_mut().flight = None;
+                                self.flight_widget = None;
+                            }
                         } else {
                             self.flight_widget = None;
                         }
                     } else {
-                        self.flight_widget = Some(WidgetFlight::new(flight.clone()));
+                        self.flight_widget = Some(WidgetFlight::new(flight));
                     }
                 } else {
                     self.flight_widget = None;
@@ -115,9 +118,12 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 // Draw utility windows.
                 {
                     use windows::*;
-
                     zoom(ui, &mut self.map_memory);
                 }
             });
     }
 }
+
+
+
+

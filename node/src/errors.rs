@@ -37,6 +37,7 @@ pub enum NodeError {
     NativeError(NativeError),
     /// Error related to the storage engine.
     StorageEngineError(StorageEngineError),
+    GossipError,
 }
 
 impl Display for NodeError {
@@ -56,6 +57,7 @@ impl Display for NodeError {
             NodeError::InternodeProtocolError => write!(f, "Internode Protocol Error"),
             NodeError::NativeError(e) => write!(f, "Native Protocol Error: {}", e),
             NodeError::StorageEngineError(e) => write!(f, "Storage Engine Error: {}", e),
+            NodeError::GossipError => write!(f, "Gossip Error"),
         }
     }
 }

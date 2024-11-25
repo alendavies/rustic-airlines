@@ -1,5 +1,6 @@
 use crate::errors::NodeError;
-use crate::messages::{InternodeMessage, InternodeSerializable};
+use crate::internode_protocol::message::InternodeMessage;
+use crate::internode_protocol::InternodeSerializable;
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
@@ -30,8 +31,8 @@ pub fn connect_and_send_message(
     let peer_socket = SocketAddrV4::new(peer_id, port);
     let peer_addr = peer_socket.to_string();
 
-    // Attempt to retrieve and use an existing connection
-    {
+    // Intentar reutilizar una conexión existente
+    if let Some(existing_stream) = {
         let connections_guard = connections.lock().map_err(|_| NodeError::LockError)?;
         if let Some(existing_stream) = connections_guard.get(&peer_addr) {
             // Try to acquire the lock and send the message
@@ -46,27 +47,41 @@ pub fn connect_and_send_message(
                 }
             }
         }
+        return Ok(());
     }
 
-    // Reconnect if no active connection exists or if the previous attempt failed
-    let stream = TcpStream::connect_timeout(&peer_socket.into(), Duration::from_secs(5))
-        .map_err(NodeError::IoError)?;
+    // Si no hay conexión, intentar conectar una vez
+    let stream = TcpStream::connect((peer_id, port))
+        .map_err(|e| {
+            eprintln!("Error al intentar conectar con {:?}: {:?}", peer_addr, e);
+            NodeError::IoError(e)
+        })
+        .unwrap();
     let stream = Arc::new(Mutex::new(stream));
 
-    // Add the new connection to the shared HashMap
-    let mut connections_guard = connections.lock().map_err(|_| NodeError::LockError)?;
-    connections_guard.insert(peer_addr.clone(), Arc::clone(&stream));
+    // Añadir la nueva conexión al HashMap
+    {
+        let mut connections_guard = connections.lock().map_err(|_| NodeError::LockError)?;
+        connections_guard.insert(peer_addr.clone(), Arc::clone(&stream));
+    }
 
-    // Attempt to send the message on the new connection
+    // Intentar enviar el mensaje a través de la nueva conexión
     {
         let mut stream_guard = stream.lock().map_err(|_| NodeError::LockError)?;
         stream_guard
-            // .write_all(message.as_bytes())
-            .write(&message.as_bytes())
-            .map_err(NodeError::IoError)?;
-        // stream_guard.write_all(b"\n").map_err(NodeError::IoError)?;
-        stream_guard.flush().map_err(NodeError::IoError)?;
+            .write_all(&message.as_bytes())
+            .map_err(|e| {
+                eprintln!("Error al escribir en el stream: {:?}", e);
+                NodeError::IoError(e)
+            })
+            .unwrap();
+        stream_guard
+            .flush()
+            .map_err(|e| {
+                eprintln!("Error al hacer flush en el stream: {:?}", e);
+                NodeError::IoError(e)
+            })
+            .unwrap();
     }
-
     Ok(())
 }

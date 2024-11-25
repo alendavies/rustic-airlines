@@ -1,6 +1,7 @@
-use crate::messages::{
-    InternodeMessage, InternodeMessageContent, InternodeQuery, InternodeResponse,
-    InternodeResponseContent, InternodeResponseStatus,
+use crate::internode_protocol::message::{InternodeMessage, InternodeMessageContent};
+use crate::internode_protocol::query::InternodeQuery;
+use crate::internode_protocol::response::{
+    InternodeResponse, InternodeResponseContent, InternodeResponseStatus,
 };
 use crate::utils::connect_and_send_message;
 use crate::NodeError;

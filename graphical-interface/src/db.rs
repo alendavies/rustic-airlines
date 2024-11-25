@@ -1,4 +1,4 @@
-use std::{fs::File, net::Ipv4Addr, path::Path, str::FromStr};
+use std::{env, fs::File, net::Ipv4Addr, path::Path, str::FromStr};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use csv::ReaderBuilder;
@@ -34,6 +34,7 @@ struct CsvAirport {
     iata_code: String,
     latitude_deg: f64,
     longitude_deg: f64,
+    iso_country: String
 }
 
 pub struct MockProvider;
@@ -44,11 +45,29 @@ impl Provider for MockProvider {
     }
 
     fn get_departure_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError> {
-        todo!()
+        let flights = vec![
+            Flight::new(Position::from_lat_lon(-30., -60.), 0.),
+            Flight::new(Position::from_lat_lon(-45., -65.), 90.),
+            Flight::new(Position::from_lat_lon(-40., -70.), 270.),
+            Flight::new(Position::from_lat_lon(-35., -65.), 45.),
+            Flight::new(Position::from_lat_lon(-25., -55.), 290.),
+            Flight::new(Position::from_lat_lon(-30., -75.), 340.),
+        ];
+
+        Ok(flights)
     }
 
     fn get_arrival_flights(airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError> {
-        todo!()
+        let flights = vec![
+            Flight::new(Position::from_lat_lon(-30., -60.), 0.),
+            Flight::new(Position::from_lat_lon(-45., -65.), 90.),
+            Flight::new(Position::from_lat_lon(-40., -70.), 270.),
+            Flight::new(Position::from_lat_lon(-35., -65.), 45.),
+            Flight::new(Position::from_lat_lon(-25., -55.), 290.),
+            Flight::new(Position::from_lat_lon(-30., -75.), 340.),
+        ];
+
+        Ok(flights)
     }
 
     fn get_flight_info(number: &str) -> Result<FlightInfo, DBError> {
@@ -68,8 +87,10 @@ impl Provider for MockProvider {
         Ok(flights)
     }
 
-    fn get_airports() -> Result<Vec<Airport>, DBError> {
-        let path = Path::new("airports_ar.csv");
+    fn get_airports() -> Result<Vec<Airport>, DBError> {      
+        let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+        let path = Path::new(&project_dir).join("airports_ar.csv");
+        println!("{:?}", path);
         let file = File::open(path).unwrap();
 
         let mut rdr = ReaderBuilder::new().has_headers(true).from_reader(file);
@@ -86,7 +107,7 @@ impl Provider for MockProvider {
             .map(|raw| {
                 let pos = Position::from_lat_lon(raw.latitude_deg, raw.longitude_deg);
 
-                Airport::new(raw.name.clone(), raw.iata_code.clone(), pos)
+                Airport::new(raw.name.clone(), raw.iata_code.clone(), pos, raw.iso_country.clone())
             })
             .collect();
 
@@ -484,14 +505,16 @@ pub struct Airport {
     pub name: String,
     pub iata: String,
     pub position: Position,
+    pub country: String
 }
 
 impl Airport {
-    pub fn new(name: String, iata: String, position: Position) -> Self {
+    pub fn new(name: String, iata: String, position: Position, country: String) -> Self {
         Self {
             name,
             iata,
             position,
+            country
         }
     }
 }
@@ -516,17 +539,17 @@ pub struct Flight {
 impl Flight {
     pub fn new(position: Position, heading: f32) -> Self {
         Self {
-            arrival_time: Default::default(),
-            departure_time: Default::default(),
-            destination_airport: Default::default(),
+            arrival_time: 1731486006,
+            departure_time: 1731473166,
+            destination_airport: String::from("EZE"),
             fuel: Default::default(),
-            height: Default::default(),
+            height: 9550.0,
             number: String::from("AR1234"),
-            origin_airport: Default::default(),
+            origin_airport: String::from("AEZ"),
             position,
             heading,
-            status: Default::default(),
-            speed: Default::default(),
+            status: String::from("Departing"),
+            speed: 880,
         }
     }
 }
