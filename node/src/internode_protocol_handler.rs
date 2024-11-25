@@ -106,6 +106,7 @@ impl InternodeProtocolHandler {
         from: Ipv4Addr,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         partitioner: Partitioner,
+        storage_path: PathBuf,
     ) -> Result<(), NodeError> {
         if let Some(open_query) =
             query_handler.add_ok_response_and_get_if_closed(open_query_id, response.clone(), from)
@@ -124,6 +125,7 @@ impl InternodeProtocolHandler {
                     table.clone(),
                     connections,
                     partitioner,
+                    storage_path,
                 )?;
 
                 rows = if let Some(content) = &response.content {
@@ -161,6 +163,7 @@ impl InternodeProtocolHandler {
         table: Table,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         partitioner: Partitioner,
+        storage_path: PathBuf,
     ) -> Result<Vec<String>, NodeError> {
         let primary_key_indices = Self::get_key_indices(&columns, true);
         let clustering_column_indices = Self::get_key_indices(&columns, false);
@@ -182,6 +185,7 @@ impl InternodeProtocolHandler {
             table,
             &connections,
             &partitioner,
+            storage_path,
         )?;
 
         Ok(updated_rows)
@@ -265,6 +269,7 @@ impl InternodeProtocolHandler {
         table: Table,
         connections: &Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         partitioner: &Partitioner,
+        storage_path: PathBuf,
     ) -> Result<Vec<String>, NodeError> {
         let mut updated_rows: Vec<String> = Vec::new();
         let table_name = &table.get_name();
@@ -309,6 +314,7 @@ impl InternodeProtocolHandler {
                                     .map(|v| v.as_str())
                                     .take(latest_value.len() - 1)
                                     .collect();
+
                                 Self::update_this_node(
                                     self_ip,
                                     keyspace_name,
@@ -317,7 +323,7 @@ impl InternodeProtocolHandler {
                                     latest_values,
                                     table.get_clustering_column_in_order(),
                                     columns,
-                                    PathBuf::new(),
+                                    storage_path.clone(),
                                 )?;
                                 // Opcional: manejar lógica para actualizar el propio nodo si es necesario
                             }
@@ -522,7 +528,11 @@ impl InternodeProtocolHandler {
             }
         }
 
-        let self_ip = { node.lock()?.get_ip() };
+        let self_ip;
+        {
+            let guard_node = node.lock()?;
+            self_ip = guard_node.get_ip();
+        };
         let query_split: Vec<&str> = query.query_string.split_whitespace().collect();
 
         let result: Result<Option<((i32, i32), InternodeResponse)>, NodeError> =
@@ -665,10 +675,12 @@ impl InternodeProtocolHandler {
     ) -> Result<(), NodeError> {
         let self_ip;
         let partitioner;
+        let storage_path;
         {
             let guard_node = node.lock()?;
             self_ip = guard_node.get_ip();
             partitioner = guard_node.get_partitioner();
+            storage_path = guard_node.storage_path.clone();
         }
         let mut guard_node = node.lock()?;
 
@@ -693,6 +705,7 @@ impl InternodeProtocolHandler {
                     from,
                     connections,
                     partitioner,
+                    storage_path.clone(),
                 )?;
             }
             InternodeResponseStatus::Error => {
@@ -740,6 +753,7 @@ impl InternodeProtocolHandler {
         from: Ipv4Addr,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         partitioner: Partitioner,
+        storage_path: PathBuf,
     ) -> Result<(), NodeError> {
         // Obtener la consulta abierta
 
@@ -777,6 +791,7 @@ impl InternodeProtocolHandler {
             from,
             connections,
             partitioner,
+            storage_path,
         )?;
 
         Ok(())
@@ -808,7 +823,8 @@ impl InternodeProtocolHandler {
         timestamp: i64,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Insert::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        let storage_path = { node.lock()?.storage_path.clone() };
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::Insert(query),
             internode,
             replication,
@@ -828,7 +844,8 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = CreateTable::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        let storage_path = { node.lock()?.storage_path.clone() };
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::CreateTable(query),
             internode,
             false,
@@ -848,7 +865,8 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = DropTable::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        let storage_path = { node.lock()?.storage_path.clone() };
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::DropTable(query),
             internode,
             false,
@@ -868,7 +886,8 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = AlterTable::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        let storage_path = { node.lock()?.storage_path.clone() };
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::AlterTable(query),
             internode,
             false,
@@ -887,8 +906,9 @@ impl InternodeProtocolHandler {
         open_query_id: i32,
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
+        let storage_path = { node.lock()?.storage_path.clone() };
         let query = CreateKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::CreateKeyspace(query),
             internode,
             false,
@@ -908,7 +928,8 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = DropKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        let storage_path = { node.lock()?.storage_path.clone() };
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::DropKeyspace(query),
             internode,
             false,
@@ -928,7 +949,8 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = AlterKeyspace::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        let storage_path = { node.lock()?.storage_path.clone() };
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::AlterKeyspace(query),
             internode,
             false,
@@ -950,7 +972,8 @@ impl InternodeProtocolHandler {
         timestamp: i64,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Update::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        let storage_path = { node.lock()?.storage_path.clone() };
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::Update(query),
             internode,
             replication,
@@ -972,7 +995,8 @@ impl InternodeProtocolHandler {
         timestamp: i64,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Delete::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        let storage_path = { node.lock()?.storage_path.clone() };
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::Delete(query),
             internode,
             replication,
@@ -993,7 +1017,8 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Select::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        let storage_path = { node.lock()?.storage_path.clone() };
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::Select(query),
             internode,
             replication,
@@ -1013,7 +1038,8 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = Use::deserialize(structure).map_err(NodeError::CQLError)?;
-        QueryExecution::new(node.clone(), connections)?.execute(
+        let storage_path = { node.lock()?.storage_path.clone() };
+        QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::Use(query),
             internode,
             false,

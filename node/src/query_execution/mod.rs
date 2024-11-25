@@ -22,8 +22,8 @@ use super::storage_engine::StorageEngine;
 use query_creator::errors::CQLError;
 use query_creator::Query;
 use std::collections::HashMap;
-use std::env;
 use std::net::{Ipv4Addr, TcpStream};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 // Si `node` es el módulo raíz
 
@@ -51,18 +51,18 @@ impl QueryExecution {
     pub fn new(
         node_that_execute: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
+        storage_path: PathBuf,
     ) -> Result<QueryExecution, NodeError> {
         let ip = { node_that_execute.lock()?.get_ip_string() };
+
+        let storage_engine = StorageEngine::new(storage_path, ip);
         Ok(QueryExecution {
             node_that_execute,
             connections,
             execution_finished_itself: false,
             execution_replicate_itself: false,
             how_many_nodes_failed: 0,
-            storage_engine: StorageEngine::new(
-                env::current_dir().expect("Failed to get current directory"),
-                ip,
-            ),
+            storage_engine: storage_engine,
         })
     }
 

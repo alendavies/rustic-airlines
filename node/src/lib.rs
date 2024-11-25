@@ -13,6 +13,7 @@ mod utils;
 use std::collections::HashMap;
 use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -41,6 +42,7 @@ use query_creator::errors::CQLError;
 use query_creator::{GetTableName, GetUsedKeyspace, Query};
 use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
+use storage_engine::StorageEngine;
 
 const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
 const INTERNODE_PORT: u16 = 0x554D; // Hexadecimal of "UM" (FERRUM) = 21837
@@ -57,6 +59,7 @@ pub struct Node {
     clients_keyspace: HashMap<i32, Option<String>>,
     last_client_id: i32,
     gossiper: Gossiper,
+    storage_path: PathBuf
 }
 
 impl Node {
@@ -69,10 +72,11 @@ impl Node {
     ///
     /// # Returns
     /// Returns a `Node` instance or a `NodeError` if it fails.
-    pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>) -> Result<Node, NodeError> {
+    pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>, storage_path: PathBuf) -> Result<Node, NodeError> {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip)?;
-
+        let storage_engine = StorageEngine::new(storage_path.clone(), ip.to_string());
+        storage_engine.reset_folders()?;
         Ok(Node {
             ip,
             seeds_nodes,
@@ -82,6 +86,7 @@ impl Node {
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
             gossiper: Gossiper::new(),
+            storage_path
         })
     }
 
@@ -645,6 +650,7 @@ impl Node {
 
         let open_query_id;
         let self_ip: Ipv4Addr;
+        let storage_path;
         {
             let mut guard_node = node.lock()?;
             let keyspace;
@@ -671,11 +677,12 @@ impl Node {
                 keyspace,
             )?;
             self_ip = guard_node.get_ip();
+            storage_path = guard_node.storage_path.clone();
         }
 
         let timestamp = Self::current_timestamp();
 
-        let response = QueryExecution::new(node.clone(), connections.clone())?.execute(
+        let response = QueryExecution::new(node.clone(), connections.clone(), storage_path.clone())?.execute(
             query.clone(),
             false,
             false,
@@ -740,7 +747,8 @@ impl Node {
                     self_ip,
                     self_ip,
                     connections.clone(),
-                    partitioner.clone()
+                    partitioner.clone(),
+                    storage_path.clone()
                     
                 )?;
             }
