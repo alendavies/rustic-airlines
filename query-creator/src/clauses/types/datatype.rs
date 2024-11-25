@@ -13,6 +13,25 @@ pub enum DataType {
     // Blob,
 }
 
+impl std::str::FromStr for DataType {
+    type Err = CQLError;
+
+    // Crea un DataType a partir de una cadena
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "INT" => Ok(DataType::Int),
+            "TEXT" => Ok(DataType::String),
+            "STRING" => Ok(DataType::String),
+            "BOOLEAN" => Ok(DataType::Boolean),
+            "FLOAT" => Ok(DataType::Float),
+            "DOUBLE" => Ok(DataType::Double),
+            "TIMESTAMP" => Ok(DataType::Timestamp),
+            "UUID" => Ok(DataType::Uuid),
+            _ => Err(CQLError::InvalidSyntax),
+        }
+    }
+}
+
 impl DataType {
     /// Devuelve el nombre del tipo de datos como una cadena CQL
     pub fn to_string(&self) -> &str {
@@ -28,7 +47,7 @@ impl DataType {
         }
     }
 
-    pub fn compare(&self, x: &String, y: &String, operator: &Operator) -> Result<bool, CQLError> {
+    pub fn compare(&self, x: &str, y: &str, operator: &Operator) -> Result<bool, CQLError> {
         match self {
             DataType::Int => {
                 let x = x.parse::<i32>().map_err(|_| CQLError::InvalidCondition)?;
@@ -57,8 +76,8 @@ impl DataType {
                 let y = y.parse::<bool>().map_err(|_| CQLError::InvalidCondition)?;
                 match operator {
                     Operator::Equal => Ok(x == y),
-                    Operator::Greater => Ok(x > y),
-                    Operator::Lesser => Ok(x < y),
+                    Operator::Greater => Ok(x & !y),
+                    Operator::Lesser => Ok(!x & y),
                 }
             }
             DataType::Float => {
@@ -83,13 +102,11 @@ impl DataType {
                 let x = x.parse::<i64>().map_err(|_| CQLError::InvalidCondition)?;
                 let y = y.parse::<i64>().map_err(|_| CQLError::InvalidCondition)?;
 
-                let res = match operator {
+                match operator {
                     Operator::Equal => Ok(x == y),
                     Operator::Greater => Ok(x > y),
                     Operator::Lesser => Ok(x < y),
-                };
-
-                res
+                }
             }
             DataType::Uuid => {
                 let x = x
@@ -121,22 +138,6 @@ impl DataType {
             DataType::Uuid => value.parse::<Uuid>().is_ok(),       // Verifica si es un UUID válido
 
                                                                     // DataType::Blob => self.is_valid_blob(value), // Verifica si es un BLOB válido (hexadecimal)
-        }
-    }
-
-    /// Crea un DataType a partir de una cadena
-    pub fn from_str(value: &str) -> Result<Self, CQLError> {
-        match value.to_uppercase().as_str() {
-            "INT" => Ok(DataType::Int),
-            "TEXT" => Ok(DataType::String),
-            "STRING" => Ok(DataType::String),
-            "BOOLEAN" => Ok(DataType::Boolean),
-            "FLOAT" => Ok(DataType::Float),
-            "DOUBLE" => Ok(DataType::Double),
-            "TIMESTAMP" => Ok(DataType::Timestamp),
-            "UUID" => Ok(DataType::Uuid),
-            // "BLOB" => Ok(DataType::Blob),
-            _ => Err(CQLError::InvalidSyntax),
         }
     }
 

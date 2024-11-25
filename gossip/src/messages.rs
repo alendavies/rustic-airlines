@@ -312,11 +312,11 @@ impl Schema {
         for table in &self.tables {
             let table_len = table.len() as u32;
             tables_bytes.extend_from_slice(&table_len.to_be_bytes());
-            tables_bytes.extend_from_slice(&table.as_bytes());
+            tables_bytes.extend_from_slice(table.as_bytes());
         }
 
         bytes.extend_from_slice(&keyspace_len_bytes);
-        bytes.extend_from_slice(&keyspace_bytes);
+        bytes.extend_from_slice(keyspace_bytes);
         bytes.extend_from_slice(&tables_len.to_be_bytes());
         bytes.extend_from_slice(&tables_bytes);
 
@@ -391,7 +391,7 @@ impl ApplicationState {
         let mut bytes = Vec::new();
 
         let status_bytes = (self.status as u16).to_be_bytes();
-        let version_bytes = (self.version as u32).to_be_bytes();
+        let version_bytes = self.version.to_be_bytes();
 
         let schemas_len = self.schemas.len() as u32;
 

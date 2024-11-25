@@ -6,7 +6,7 @@ pub mod server;
 
 use native_protocol::{
     self,
-    frame::{self, Frame},
+    frame::Frame,
     messages::{
         self,
         query::{Consistency, Query, QueryParams},
@@ -25,7 +25,7 @@ pub struct ClientError;
 
 #[derive(Debug)]
 pub enum QueryResult {
-    Result(messages::result::result::Result),
+    Result(messages::result::result_::Result),
     Error(messages::error::Error),
 }
 

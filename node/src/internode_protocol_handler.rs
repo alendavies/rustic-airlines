@@ -1,19 +1,18 @@
-
 // Exportar todos los elementos del módulo query_execution
 
+use crate::internode_protocol::message::{InternodeMessage, InternodeMessageContent};
+use crate::internode_protocol::query::InternodeQuery;
+use crate::internode_protocol::response::{InternodeResponse, InternodeResponseStatus};
 use crate::messages::{
     InternodeMessage, InternodeMessageContent, InternodeQuery, InternodeResponse,
     InternodeResponseStatus,
 };
-use crate::internode_protocol::message::{InternodeMessage, InternodeMessageContent};
-use crate::internode_protocol::query::InternodeQuery;
-use crate::internode_protocol::response::{InternodeResponse, InternodeResponseStatus};
 use crate::open_query_handler::OpenQueryHandler;
 use crate::table::Table;
 use crate::utils::connect_and_send_message;
 use crate::{storage_engine, Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
-use chrono::Utc;
 use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
+use chrono::Utc;
 use gossip::messages::GossipMessage;
 use gossip::structures::NodeStatus;
 use native_protocol::frame::Frame;

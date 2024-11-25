@@ -4,6 +4,7 @@ use crate::clauses::types::datatype::DataType;
 use crate::errors::CQLError;
 use crate::QueryCreator;
 use std::cmp::PartialEq;
+use std::str::FromStr;
 
 #[derive(Debug, Clone)]
 pub struct AlterTable {

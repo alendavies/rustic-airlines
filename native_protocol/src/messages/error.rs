@@ -67,7 +67,8 @@ pub enum Error {
     /// The request cannot be processed because the coordinator node is
     /// overloaded.
     Overloaded(String),
-    ///
+    /// The request cannot be processed because the coordinator node knows it is not
+    /// up-to-date and should not be serving requests.
     UnavailableException(String, UnavailableException),
     /// The request was a read request but the coordinator node is
     /// bootstrapping.

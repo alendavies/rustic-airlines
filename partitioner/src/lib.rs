@@ -11,6 +11,12 @@ pub struct Partitioner {
     nodes: BTreeMap<u64, Ipv4Addr>,
 }
 
+impl Default for Partitioner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Partitioner {
     /// Creates a new, empty `Partitioner`.
     ///
@@ -28,8 +34,7 @@ impl Partitioner {
     /// - `value`: The value to hash, implemented as a reference to an array of bytes.
     ///
     /// # Returns
-    /// * `Result<u64, PartitionerError>` - Returns the hash value as `u64` on success, or
-    /// `PartitionerError::HashError` on failure.
+    /// * `Result<u64, PartitionerError>` - Returns the hash value as `u64` on success, or `PartitionerError::HashError` on failure.
     fn hash_value<T: AsRef<[u8]>>(value: T) -> Result<u64, PartitionerError> {
         let mut hasher = Cursor::new(value);
         murmur3_32(&mut hasher, 0)
@@ -74,13 +79,11 @@ impl Partitioner {
     pub fn remove_node(&mut self, ip: Ipv4Addr) -> Result<Ipv4Addr, PartitionerError> {
         // println!("Removing node...");
         let hash = Self::hash_value(ip.to_string())?;
-        let result = self
-            .nodes
-            .remove(&hash)
-            .ok_or(PartitionerError::NodeNotFound);
-        // println!("el anillo es {:?}", self);
 
-        result
+        self.nodes
+            .remove(&hash)
+            .ok_or(PartitionerError::NodeNotFound)
+        // println!("el anillo es {:?}", self);
     }
 
     /// Retrieves the IP address of the node responsible for a given value.
