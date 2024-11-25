@@ -107,10 +107,7 @@ fn execute_and_verify_select(
                 // println!("comparo {:?} con {:?}", expected_values, actual_values);
                 // expected_values == actual_values
             }
-            a => {
-                println!("recibi {:?}", a);
-                false
-            } // Fails if result type is not Rows
+            _ => false, // Fails if result type is not Rows
         },
         Err(e) => {
             eprintln!("Error executing query: {}\nError: {:?}", query, e);

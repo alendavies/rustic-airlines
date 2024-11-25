@@ -297,7 +297,7 @@ impl NeededResponses for Query {
             Query::CreateTable(_) => NeededResponseCount::AllNodes,
             Query::DropTable(_) => NeededResponseCount::AllNodes,
             Query::AlterTable(_) => NeededResponseCount::AllNodes,
-            Query::CreateKeyspace(_) => NeededResponseCount::AllNodes,
+            Query::CreateKeyspace(_) => NeededResponseCount::Specific(1),
             Query::DropKeyspace(_) => NeededResponseCount::AllNodes,
             Query::AlterKeyspace(_) => NeededResponseCount::AllNodes,
             Query::Use(_) => NeededResponseCount::AllNodes,

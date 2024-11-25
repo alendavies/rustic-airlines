@@ -186,9 +186,10 @@ impl InternodeSerializable for InternodeMessage {
             Opcode::Query => InternodeMessageContent::Query(
                 InternodeQuery::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?,
             ),
-            Opcode::Response => InternodeMessageContent::Response(
-                InternodeResponse::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?,
-            ),
+            Opcode::Response => InternodeMessageContent::Response({
+                println!("es una response");
+                InternodeResponse::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?
+            }),
             Opcode::Gossip => InternodeMessageContent::Gossip(
                 GossipMessage::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?,
             ),

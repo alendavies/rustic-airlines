@@ -34,18 +34,20 @@ pub fn connect_and_send_message(
     // Intentar reutilizar una conexión existente
     if let Some(existing_stream) = {
         let connections_guard = connections.lock().map_err(|_| NodeError::LockError)?;
-        if let Some(existing_stream) = connections_guard.get(&peer_addr) {
-            // Try to acquire the lock and send the message
-            if let Ok(mut stream) = existing_stream.lock() {
-                // if stream.write_all(message.as_bytes()).is_ok()
-                if stream.write_all(&message.as_bytes()).is_ok()
-                    // && stream.write_all(b"\n").is_ok()
-                    && stream.flush().is_ok()
-                {
-                    //println!("Reutilizamos TCP ");
-                    return Ok(());
-                }
-            }
+        connections_guard.get(&peer_addr).cloned()
+    } {
+        let mut stream_guard = existing_stream.lock().map_err(|_| NodeError::LockError)?;
+        if stream_guard.write_all(&message.as_bytes()).is_err() {
+            return Err(NodeError::IoError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Error al escribir en el stream",
+            )));
+        }
+        if stream_guard.flush().is_err() {
+            return Err(NodeError::IoError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Error al hacer flush en el stream",
+            )));
         }
         return Ok(());
     }

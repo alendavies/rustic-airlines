@@ -1,10 +1,5 @@
-
 // Exportar todos los elementos del módulo query_execution
 
-use crate::messages::{
-    InternodeMessage, InternodeMessageContent, InternodeQuery, InternodeResponse,
-    InternodeResponseStatus,
-};
 use crate::internode_protocol::message::{InternodeMessage, InternodeMessageContent};
 use crate::internode_protocol::query::InternodeQuery;
 use crate::internode_protocol::response::{InternodeResponse, InternodeResponseStatus};
@@ -13,9 +8,7 @@ use crate::table::Table;
 use crate::utils::connect_and_send_message;
 use crate::{storage_engine, Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
 use chrono::Utc;
-use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
 use gossip::messages::GossipMessage;
-use gossip::structures::NodeStatus;
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -73,12 +66,13 @@ impl InternodeProtocolHandler {
         message: InternodeMessage,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
-        match message.content {
+        match message.clone().content {
             InternodeMessageContent::Query(query) => {
-                self.handle_query_command(node, query, connections, message.from)?;
+                self.handle_query_command(node, query, connections, message.clone().from)?;
                 Ok(())
             }
             InternodeMessageContent::Response(response) => {
+                println!("recibi una respuesta de una query {:?}", message);
                 self.handle_response_command(node, &response, message.from, connections)?;
                 Ok(())
             }
@@ -118,6 +112,7 @@ impl InternodeProtocolHandler {
         partitioner: Partitioner,
         storage_path: PathBuf,
     ) -> Result<(), NodeError> {
+        println!("sumo respuesta a la query");
         if let Some(open_query) =
             query_handler.add_ok_response_and_get_if_closed(open_query_id, response.clone(), from)
         {
@@ -657,9 +652,10 @@ impl InternodeProtocolHandler {
         let response: Option<((i32, i32), InternodeResponse)> = result?;
 
         if let Some(responses) = response {
-            let (_, value): ((i32, i32), InternodeResponse) = responses;
+            let (_, value): ((i32, i32), InternodeResponse) = responses.clone();
 
             if query.open_query_id != 0 {
+                println!("le voy a mandar a {:?}", node_ip);
                 connect_and_send_message(
                     node_ip,
                     INTERNODE_PORT,
@@ -669,6 +665,10 @@ impl InternodeProtocolHandler {
                         content: InternodeMessageContent::Response(value),
                     },
                 )?;
+                println!(
+                    "se mando la respuesta al nodo coordinador correctamente: {:?}",
+                    responses
+                );
             }
         }
 

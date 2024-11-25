@@ -16,6 +16,7 @@ impl QueryExecution {
     ) -> Result<(), NodeError> {
         // Locks the node to ensure safe concurrent access
 
+        println!("llego a crear el keysapce");
         let mut node = self
             .node_that_execute
             .lock()

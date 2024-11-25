@@ -15,7 +15,7 @@ use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::{primitive, thread};
 use std::time::Instant;
 
 // Internal project libraries
@@ -57,7 +57,6 @@ const INTERNODE_PORT: u16 = 0x554D; // Hexadecimal of "UM" (FERRUM) = 21837
 ///
 pub struct Node {
     ip: Ipv4Addr,
-    seeds_nodes: Vec<Ipv4Addr>,
     partitioner: Partitioner,
     open_query_handler: OpenQueryHandler,
     keyspaces: Vec<Keyspace>,
@@ -92,72 +91,58 @@ impl Node {
 
 
         Ok(Node {
-            ip,
-            seeds_nodes: seeds_nodes.clone(),
+            ip,            
             partitioner,
             open_query_handler: OpenQueryHandler::new(),
             keyspaces: vec![],
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
-            gossiper: Gossiper::new(),
-            storage_path
+            storage_path,
             gossiper: Gossiper::new()
                 .with_endpoint_state(ip)
                 .with_seeds(seeds_nodes),
         })
     }
-
-    /// Starts the gossip process for the node.
+         /// Starts the gossip process for the node.
     /// Opens 3 connections with 3 other nodes.
     pub fn start_gossip(
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
-        let handle = thread::spawn(move || {
+        let _ = thread::spawn(move || {
             let initial_gossip = Instant::now();
-
             loop {
                 {
                     {
                         let mut node_guard = node.lock().unwrap();
                         let ip = node_guard.ip;
-
                         if initial_gossip.elapsed().as_millis() > 1500 {
                             node_guard
                                 .gossiper
                                 .change_status(ip, NodeStatus::Normal)
                                 .ok();
                         }
-
                         node_guard.gossiper.heartbeat(ip);
                     }
-
                     let ips: Vec<Ipv4Addr>;
                     let syn;
-
                     {
                         let node_guard = node.lock().unwrap();
-
                         ips = node_guard
                             .gossiper
                             .pick_ips(node_guard.get_ip())
                             .iter()
                             .map(|x| **x)
                             .collect();
-
                         syn = node_guard.gossiper.create_syn(node_guard.ip);
                     }
-
                     let mut node_guard = node.lock().unwrap();
-
                     for ip in ips {
                         let connections_clone = Arc::clone(&connections);
-
                         let msg = InternodeMessage::new(
                             ip.clone(),
                             InternodeMessageContent::Gossip(syn.clone()),
                         );
-
                         if connect_and_send_message(ip, INTERNODE_PORT, connections_clone, msg)
                             .is_err()
                         {
@@ -165,31 +150,27 @@ impl Node {
                         }
                     }
                 }
-
                 // After each gossip round, update the partitioner
-                {
+                {   
                     let mut node_guard = node.lock().unwrap();
                     let endpoints_states = &node_guard.gossiper.endpoints_state.clone();
                     let partitioner = &mut node_guard.partitioner;
-
                     for (ip, state) in endpoints_states {
                         if state.application_state.status.is_dead() {
                             partitioner.remove_node(*ip).ok();
                         } else {
+                            
                             partitioner.add_node(*ip).ok();
                         }
                     }
                 }
-
                 {
-                    println!("Partitioner: {:?}", node.lock().unwrap().partitioner);
+                    
                 }
-
                 thread::sleep(std::time::Duration::from_secs(1));
             }
         });
-
-        handle.join().unwrap();
+        //handle.join().unwrap();
         Ok(())
     }
 
@@ -484,7 +465,7 @@ impl Node {
     ) -> Result<(), NodeError> {
         let self_ip;
         {
-            let mut node_guard = node.lock()?;
+            let  node_guard = node.lock()?;
             self_ip = node_guard.get_ip();
 
             // if !is_seed {
@@ -557,7 +538,7 @@ impl Node {
     ) -> Result<(), NodeError> {
         let socket = SocketAddrV4::new(self_ip, INTERNODE_PORT);
         let listener = TcpListener::bind(socket)?;
-
+        println!("llega a nodo conexiones");
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -591,7 +572,9 @@ impl Node {
     ) -> Result<(), NodeError> {
         let socket = SocketAddrV4::new(self_ip, CLIENT_NODE_PORT); // Specific port for clients
         let listener = TcpListener::bind(socket)?;
-
+        println!(
+            "llega a conexiones con los clientes"
+        );
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -652,6 +635,7 @@ impl Node {
                     break;
                 }
                 Ok(_) => {
+                    
                     let query = handle_client_request(&buffer);
                     match query {
                         Request::Startup => {
@@ -721,14 +705,19 @@ impl Node {
             // Try to read a line
             let bytes_read = reader.read(&mut buffer);
             let result = InternodeMessage::from_bytes(&buffer);
-
+        
             let message;
 
-            if let Ok(value) = result {
-                message = value;
-            } else {
-                continue;
+            match result {
+                Ok(value) => {
+                    message = value;
+                }
+                Err(e) => {
+                    println!("Error al crear los bytes: {:?}", e);
+                    continue;
+                }
             }
+            
 
             match bytes_read {
                 Ok(0) => {
@@ -736,6 +725,8 @@ impl Node {
                     break;
                 }
                 Ok(_) => {
+                    
+                   
                     // Process the command with the protocol, passing the buffer and the necessary parameters
                     let result = internode_protocol_handler.handle_command(
                         &node,
@@ -809,7 +800,6 @@ impl Node {
             self_ip = guard_node.get_ip();
             storage_path = guard_node.storage_path.clone();
         }
-
         let timestamp = Self::current_timestamp();
 
         let response = QueryExecution::new(node.clone(), connections.clone(), storage_path.clone())?.execute(
@@ -822,6 +812,7 @@ impl Node {
         )?;
 
         if let Some(((finished_responses, failed_nodes), content)) = response {
+            
             let mut guard_node = node.lock()?;
             // Obtener el keyspace especificado o el actual del cliente
 
@@ -850,7 +841,8 @@ impl Node {
                 "".to_string()
             };
 
-            let partitioner = {guard_node.get_partitioner()};
+            
+            let partitioner = guard_node.get_partitioner();
             let query_handler = guard_node.get_open_handle_query();
 
             for _ in 0..finished_responses {
@@ -862,6 +854,7 @@ impl Node {
                     select_columns = cont.select_columns.clone();
                     values = cont.values.clone();
                 }
+
                 InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     // TODO: convertir el content al content de la response

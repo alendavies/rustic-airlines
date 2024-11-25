@@ -301,6 +301,7 @@ impl InternodeSerializable for InternodeResponse {
             _ => return Err(InternodeMessageError),
         };
 
+        println!("el status es {:?}", status);
         let mut content_len_bytes = [0u8; 2];
 
         cursor
@@ -309,6 +310,7 @@ impl InternodeSerializable for InternodeResponse {
 
         let content_len = u16::from_be_bytes(content_len_bytes);
 
+        println!("a punto de obtener el contenido");
         let mut content_bytes = vec![0u8; content_len as usize];
         cursor
             .read_exact(&mut content_bytes)
@@ -321,7 +323,7 @@ impl InternodeSerializable for InternodeResponse {
                     .map_err(|_| InternodeMessageError)?,
             )
         };
-
+        println!("el contenido es {:?}", &content);
         Ok(InternodeResponse {
             open_query_id,
             status,
