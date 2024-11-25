@@ -18,7 +18,7 @@ use clauses::{
 };
 use errors::CQLError;
 use native_protocol::frame::Frame;
-use native_protocol::messages::result::result;
+use native_protocol::messages::result::result_;
 use native_protocol::messages::result::rows::{ColumnType, ColumnValue, Rows};
 use native_protocol::messages::result::schema_change;
 use native_protocol::messages::result::schema_change::SchemaChange;
@@ -230,27 +230,27 @@ impl CreateClientResponse for Query {
 
                 let rows = Rows::new(col_types, records);
 
-                Frame::Result(result::Result::Rows(rows))
+                Frame::Result(result_::Result::Rows(rows))
             }
-            Query::Insert(_) => Frame::Result(result::Result::Void),
-            Query::Update(_) => Frame::Result(result::Result::Void),
-            Query::Delete(_) => Frame::Result(result::Result::Void),
+            Query::Insert(_) => Frame::Result(result_::Result::Void),
+            Query::Update(_) => Frame::Result(result_::Result::Void),
+            Query::Delete(_) => Frame::Result(result_::Result::Void),
             Query::CreateTable(create_table) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                Frame::Result(result_::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Created,
                     schema_change::Target::Table,
                     schema_change::Options::new(keyspace, Some(create_table.get_name())),
                 )))
             }
             Query::DropTable(create_table) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                Frame::Result(result_::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Dropped,
                     schema_change::Target::Table,
                     schema_change::Options::new(keyspace, Some(create_table.get_table_name())),
                 )))
             }
             Query::AlterTable(create_table) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                Frame::Result(result_::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Updated,
                     schema_change::Target::Table,
                     schema_change::Options::new(keyspace, Some(create_table.get_table_name())),
@@ -262,23 +262,23 @@ impl CreateClientResponse for Query {
                     schema_change::Target::Keyspace,
                     schema_change::Options::new(keyspace, None),
                 );
-                Frame::Result(result::Result::SchemaChange(schema_change))
+                Frame::Result(result_::Result::SchemaChange(schema_change))
             }
             Query::DropKeyspace(_) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                Frame::Result(result_::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Dropped,
                     schema_change::Target::Keyspace,
                     schema_change::Options::new(keyspace, None),
                 )))
             }
             Query::AlterKeyspace(_) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                Frame::Result(result_::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Updated,
                     schema_change::Target::Keyspace,
                     schema_change::Options::new(keyspace, None),
                 )))
             }
-            Query::Use(_) => Frame::Result(result::Result::SetKeyspace(keyspace)),
+            Query::Use(_) => Frame::Result(result_::Result::SetKeyspace(keyspace)),
         };
 
         Ok(query_type)

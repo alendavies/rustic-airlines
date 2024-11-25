@@ -879,7 +879,7 @@ impl Node {
                     connections.clone(),
                     partitioner.clone(),
                     storage_path.clone()
-                    
+
                 )?;
             }
             for _ in 0..failed_nodes {

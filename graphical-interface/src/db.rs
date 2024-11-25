@@ -3,7 +3,7 @@ use std::{env, fs::File, net::Ipv4Addr, path::Path, str::FromStr};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use csv::ReaderBuilder;
 use driver::{self, CassandraClient, QueryResult};
-use native_protocol::messages::result::{result, rows};
+use native_protocol::messages::result::{result_, rows};
 use serde::Deserialize;
 use walkers::Position;
 
@@ -34,7 +34,7 @@ struct CsvAirport {
     iata_code: String,
     latitude_deg: f64,
     longitude_deg: f64,
-    iso_country: String
+    iso_country: String,
 }
 
 pub struct MockProvider;
@@ -87,7 +87,7 @@ impl Provider for MockProvider {
         Ok(flights)
     }
 
-    fn get_airports() -> Result<Vec<Airport>, DBError> {      
+    fn get_airports() -> Result<Vec<Airport>, DBError> {
         let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
         let path = Path::new(&project_dir).join("airports_ar.csv");
         println!("{:?}", path);
@@ -107,7 +107,12 @@ impl Provider for MockProvider {
             .map(|raw| {
                 let pos = Position::from_lat_lon(raw.latitude_deg, raw.longitude_deg);
 
-                Airport::new(raw.name.clone(), raw.iata_code.clone(), pos, raw.iso_country.clone())
+                Airport::new(
+                    raw.name.clone(),
+                    raw.iata_code.clone(),
+                    pos,
+                    raw.iso_country.clone(),
+                )
             })
             .collect();
 
@@ -505,7 +510,7 @@ pub struct Airport {
     pub name: String,
     pub iata: String,
     pub position: Position,
-    pub country: String
+    pub country: String,
 }
 
 impl Airport {
@@ -514,7 +519,7 @@ impl Airport {
             name,
             iata,
             position,
-            country
+            country,
         }
     }
 }
