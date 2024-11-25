@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
 
 use egui::Context;
 use egui_extras::install_image_loaders;
@@ -23,13 +23,14 @@ pub struct MyApp<P: Provider> {
     airport_widget: Option<WidgetAirport>,
     flight_widget: Option<WidgetFlight>,
     db: P,
+    last_update: Instant,
+    update_interval: Duration, 
 }
 
 impl<P: Provider> MyApp<P> {
     pub fn new(egui_ctx: Context, db: P) -> Self {
         install_image_loaders(&egui_ctx);
         let mut initial_map_memory = MapMemory::default();
-        // zoom inicial para mostrar argentina y uruguay
         initial_map_memory.set_zoom(5.).unwrap();
 
         Self {
@@ -40,16 +41,30 @@ impl<P: Provider> MyApp<P> {
             )),
             map_memory: initial_map_memory,
             selection_state: Rc::new(RefCell::new(SelectionState::new())),
-            view_state: ViewState::new(),
+            view_state: ViewState::new(
+                P::get_flights().unwrap_or_default(),
+                P::get_airports().unwrap_or_default(),
+            ),
             airport_widget: None,
             flight_widget: None,
             db,
+            last_update: Instant::now(),
+            update_interval: Duration::from_secs(10), // Actualiza cada 10 segundos
+        }
+    }
+
+    fn maybe_update_view_state(&mut self) {
+        if self.last_update.elapsed() >= self.update_interval {
+            self.view_state.update(&self.db);
+            self.last_update = Instant::now();
         }
     }
 }
 
 impl<P: Provider> eframe::App for MyApp<P> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.maybe_update_view_state(); // Llama a la actualización periódica.
+
         let rimless = egui::Frame {
             fill: ctx.style().visuals.panel_fill,
             ..Default::default()
@@ -68,18 +83,15 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 let flight_plugin =
                     plugins::Flights::new(&self.view_state.flights, self.selection_state.clone());
 
-                // In egui, widgets are constructed and consumed in each frame.
                 let map = Map::new(Some(tiles), &mut self.map_memory, my_position)
                     .with_plugin(airport_plugin)
                     .with_plugin(flight_plugin);
 
-                // Add the map widget.
                 ui.add(map);
 
                 let selected_airport = self.selection_state.borrow().airport.clone();
                 let selected_flight = self.selection_state.borrow().flight.clone();
 
-                // Airport window.
                 if let Some(airport) = selected_airport {
                     if let Some(widget) = &mut self.airport_widget {
                         if widget.selected_airport == airport {
@@ -97,7 +109,6 @@ impl<P: Provider> eframe::App for MyApp<P> {
                     self.airport_widget = None;
                 }
 
-                // Flight window.
                 if let Some(flight) = selected_flight {
                     if let Some(widget) = &mut self.flight_widget {
                         if widget.selected_flight == flight {
@@ -115,7 +126,6 @@ impl<P: Provider> eframe::App for MyApp<P> {
                     self.flight_widget = None;
                 }
 
-                // Draw utility windows.
                 {
                     use windows::*;
                     zoom(ui, &mut self.map_memory);

@@ -60,7 +60,7 @@ fn main() {
             arrival_time TIMESTAMP,
             airport TEXT,
             direction TEXT,
-            PRIMARY KEY (direction, airport, departure_time, arrival_time, status)
+            PRIMARY KEY (direction, airport, departure_time, arrival_time)
         )",
 
     "CREATE TABLE flight_info (
@@ -70,11 +70,11 @@ fn main() {
             speed INT,
             origin TEXT,
             destination TEXT,
-            PRIMARY KEY (number, lat)
+            PRIMARY KEY (number)
         )",
 
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR001', 'on time', -34.8222, -58.5358, 239.5, '1730073688', '1730131200', 'EZE', 'arrival')",
-    "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR001', 'ON time', -34.8222, -58.5358, 239.5, '1730073688', '1730131200', 'AEP', 'departure')",
+    "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR001', 'on time', -34.8222, -58.5358, 239.5, '1730073688', '1730131200', 'AEP', 'departure')",
     "INSERT INTO flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR001',  95.0, 10000, 550, 'AEP', 'EZE')",
 
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR101', 'on time', -34.5592, -58.4156, 125.3, '1730073800', '1730131300', 'AEP', 'departure')",

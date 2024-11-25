@@ -1,10 +1,8 @@
-use std::{env, fs::File, net::Ipv4Addr, path::Path, str::FromStr};
+use std::{net::Ipv4Addr, str::FromStr};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use csv::ReaderBuilder;
 use driver::{self, CassandraClient, QueryResult};
 use native_protocol::messages::result::{result, rows};
-use serde::Deserialize;
 use walkers::Position;
 
 #[derive(Debug, Clone)]
@@ -292,32 +290,6 @@ impl Provider for Db {
                         return Err(DBError);
                     }
 
-                    if let (Some(lat), Some(lon)) = (row.get("lat"), row.get("lon")) {
-                        match (lat, lon) {
-                            (
-                                rows::ColumnValue::Double(latitud),
-                                rows::ColumnValue::Double(longitud),
-                            ) => {
-
-                                flight.position = Position::from_lat_lon(*latitud,*longitud);
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(angle) = row.get("angle") {
-                        match angle {
-                            rows::ColumnValue::Float(angle) => {
-                                flight.heading = *angle;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
                     flights.push(flight);
                 }
             }
@@ -339,6 +311,209 @@ impl Provider for Db {
 
         let query = format!(
             "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE direction = 'arrival' AND airport = {airport} AND arrival_time > {from} AND arrival_time < {to}"
+        );
+
+        let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
+
+        let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
+
+        let mut flights: Vec<Flight> = Vec::new();
+
+        match result {
+            QueryResult::Result(result::Result::Rows(res)) => {
+                for row in res.rows_content {
+                    let mut flight = Flight {
+                        number: String::new(),
+                        status: String::new(),
+                        position: Position::from_lat_lon(0.0, 0.0),
+                        heading: 0.0,
+                        departure_time: 0,
+                        arrival_time: 0,
+                        airport: String::new(),
+                        direction: String::new(),
+                    };
+
+                    if let Some(number) = row.get("number") {
+                        match number {
+                            rows::ColumnValue::Ascii(number) => {
+                                flight.number = number.to_string();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    if let Some(status) = row.get("status") {
+                        match status {
+                            rows::ColumnValue::Ascii(status) => {
+                                flight.status = status.to_string();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    if let Some(departure_time) = row.get("departure_time") {
+                        match departure_time {
+                            rows::ColumnValue::Timestamp(departure_time) => {
+                                flight.departure_time = *departure_time;
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    if let Some(arrival_time) = row.get("arrival_time") {
+                        match arrival_time {
+                            rows::ColumnValue::Timestamp(arrival_time) => {
+                                flight.arrival_time = *arrival_time;
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    if let Some(airport) = row.get("airport") {
+                        match airport {
+                            rows::ColumnValue::Ascii(airport) => {
+                                flight.airport = airport.to_string();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    if let Some(direction) = row.get("direction") {
+                        match direction {
+                            rows::ColumnValue::Ascii(direction) => {
+                                flight.direction = direction.to_string();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    flights.push(flight);
+                }
+            }
+            _ => {}
+        }
+
+        Ok(flights)
+    }
+
+    fn get_flight_info(number: &str) -> std::result::Result<FlightInfo, DBError> {
+        let query = format!(
+            "SELECT number, fuel, height, speed, origin, destination FROM flight_info WHERE number = '{number}'"
+        );
+
+        let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
+
+        let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
+
+        let mut flight_info = FlightInfo {
+            number: String::new(),
+            fuel: 0.0,
+            height: 0,
+            speed: 0,
+            origin: Default::default(),
+            destination: Default::default()
+        };
+
+        match result {
+            QueryResult::Result(result::Result::Rows(res)) => {
+                for row in res.rows_content {
+                    if let Some(number) = row.get("number") {
+                        match number {
+                            rows::ColumnValue::Ascii(number) => {
+                                flight_info.number = number.to_string();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    if let Some(fuel) = row.get("fuel") {
+                        match fuel {
+                            rows::ColumnValue::Double(fuel) => {
+                                flight_info.fuel = *fuel;
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    if let Some(height) = row.get("height") {
+                        match height {
+                            rows::ColumnValue::Int(height) => {
+                                flight_info.height = *height;
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    if let Some(speed) = row.get("speed") {
+                        match speed {
+                            rows::ColumnValue::Int(speed) => {
+                                flight_info.speed = *speed;
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    if let Some(origin) = row.get("origin") {
+                        match origin {
+                            rows::ColumnValue::Ascii(origin) => {
+                                flight_info.origin = origin.to_string();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+
+                    if let Some(destination) = row.get("destination") {
+                        match destination {
+                            rows::ColumnValue::Ascii(destination) => {
+                                flight_info.destination = destination.to_string();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(DBError);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        Ok(flight_info)
+    }
+
+    fn get_flights() -> Result<Vec<Flight>, DBError> {
+
+        /* Nos gustaria trabajar con los vuelos de hoy para mostrar, pero por conveniencia vamos por la fecha 0 ahora.
+        let today = Utc::now().date_naive(); 
+        let from = NaiveDateTime::new(today, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+        let from = from.and_utc().timestamp();
+        */
+
+        let from: i64 = 0;
+
+        let query = format!(
+            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE direction = 'arrival' AND departure_time > {from}"
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
@@ -460,104 +635,6 @@ impl Provider for Db {
         }
 
         Ok(flights)
-    }
-
-    fn get_flight_info(number: &str) -> std::result::Result<FlightInfo, DBError> {
-        let query = format!(
-            "SELECT number, fuel, height, speed, origin, destination FROM flight_info WHERE number = '{number}'"
-        );
-
-        let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
-
-        let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
-
-        let mut flight_info = FlightInfo {
-            number: String::new(),
-            fuel: 0.0,
-            height: 0,
-            speed: 0,
-            origin: Default::default(),
-            destination: Default::default()
-        };
-
-        match result {
-            QueryResult::Result(result::Result::Rows(res)) => {
-                for row in res.rows_content {
-                    if let Some(number) = row.get("number") {
-                        match number {
-                            rows::ColumnValue::Ascii(number) => {
-                                flight_info.number = number.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(fuel) = row.get("fuel") {
-                        match fuel {
-                            rows::ColumnValue::Double(fuel) => {
-                                flight_info.fuel = *fuel;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(height) = row.get("height") {
-                        match height {
-                            rows::ColumnValue::Int(height) => {
-                                flight_info.height = *height;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(speed) = row.get("speed") {
-                        match speed {
-                            rows::ColumnValue::Int(speed) => {
-                                flight_info.speed = *speed;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(origin) = row.get("origin") {
-                        match origin {
-                            rows::ColumnValue::Ascii(origin) => {
-                                flight_info.origin = origin.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(destination) = row.get("destination") {
-                        match destination {
-                            rows::ColumnValue::Ascii(destination) => {
-                                flight_info.destination = destination.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-                }
-            }
-            _ => {}
-        }
-
-        Ok(flight_info)
-    }
-
-    fn get_flights() -> Result<Vec<Flight>, DBError> {
-        todo!()
     }
 
     fn get_airports() -> Result<Vec<Airport>, DBError> {

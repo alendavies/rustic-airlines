@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use egui::{include_image, Align2, Color32, FontId, Image, Rect, Response, Stroke, Vec2};
+use egui::{include_image, Image, Rect, Response, Vec2};
 use walkers::{extras::Style, Plugin, Projector};
 
 use crate::{db::Airport, state::SelectionState};
