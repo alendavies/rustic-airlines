@@ -10,7 +10,7 @@ use crate::{
         auth::{AuthChallenge, AuthResponse, AuthSuccess, Authenticate},
         error::Error,
         query::Query,
-        result::result::Result,
+        result::result_::Result,
     },
     types::{Int, Short},
     ByteSerializable, Serializable,
