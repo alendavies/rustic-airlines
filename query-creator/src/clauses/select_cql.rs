@@ -52,10 +52,10 @@ fn parse_table_name(tokens: &[String], i: &mut usize) -> Result<String, CQLError
     }
 }
 
-fn parse_where_orderby_limit<'a>(
-    tokens: &'a [String],
-    i: &mut usize,
-) -> Result<(Vec<&'a str>, Vec<&'a str>, Option<usize>), CQLError> {
+type Tokens<'a> = Vec<&'a str>;
+type ParsedResult<'a> = Result<(Tokens<'a>, Tokens<'a>, Option<usize>), CQLError>;
+
+fn parse_where_orderby_limit<'a>(tokens: &'a [String], i: &mut usize) -> ParsedResult<'a> {
     let mut where_tokens = Vec::new();
     let mut orderby_tokens = Vec::new();
     let mut limit = None;
@@ -179,7 +179,7 @@ impl Select {
 
     pub fn validate_order_by_cql_conditions(
         &mut self,
-        clustering_columns: &Vec<String>,
+        clustering_columns: &[String],
     ) -> Result<(), CQLError> {
         if let Some(mut order_by) = self.orderby_clause.clone() {
             if order_by.columns.len() != 1 {

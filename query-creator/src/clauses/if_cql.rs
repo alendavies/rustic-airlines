@@ -65,11 +65,11 @@ impl If {
     /// * `Ok(())` if the conditions meet the requirements.
     /// * `Err(CQLError::InvalidCondition)` if any of the validations fail.
     pub fn validate_cql_conditions(
-        &self,
+        self,
         partitioner_keys: &Vec<String>,
         clustering_columns: &Vec<String>,
     ) -> Result<(), CQLError> {
-        self.recursive_validate_no_partition_clustering(
+        Self::recursive_validate_no_partition_clustering(
             &self.condition,
             partitioner_keys,
             clustering_columns,
@@ -78,7 +78,6 @@ impl If {
 
     /// Recursive method to validate that conditions do not include partition or clustering keys.
     fn recursive_validate_no_partition_clustering(
-        &self,
         condition: &Condition,
         partitioner_keys: &Vec<String>,
         clustering_columns: &Vec<String>,
@@ -93,13 +92,13 @@ impl If {
             Condition::Complex { left, right, .. } => {
                 // Validate recursively for both left and right conditions
                 if let Some(left_condition) = left.as_ref() {
-                    self.recursive_validate_no_partition_clustering(
+                    Self::recursive_validate_no_partition_clustering(
                         left_condition,
                         partitioner_keys,
                         clustering_columns,
                     )?;
                 }
-                self.recursive_validate_no_partition_clustering(
+                Self::recursive_validate_no_partition_clustering(
                     right,
                     partitioner_keys,
                     clustering_columns,
@@ -130,7 +129,7 @@ impl If {
             Condition::Complex { left, .. } => {
                 // Traverse the left condition
                 if let Some(left_condition) = left.as_ref() {
-                    self.collect_partitioner_key_values(
+                    Self::collect_partitioner_key_values(
                         left_condition,
                         &partitioner_keys,
                         &mut result,
@@ -148,7 +147,6 @@ impl If {
 
     /// Helper method to traverse conditions and collect values of partitioner keys.
     fn collect_partitioner_key_values(
-        &self,
         condition: &Condition,
         partitioner_keys: &[String],
         result: &mut Vec<String>,
@@ -172,13 +170,13 @@ impl If {
                 // Only process if it is a logical AND operator
                 if *operator == LogicalOperator::And {
                     if let Some(left_condition) = left.as_ref() {
-                        self.collect_partitioner_key_values(
+                        Self::collect_partitioner_key_values(
                             left_condition,
                             partitioner_keys,
                             result,
                         );
                     }
-                    self.collect_partitioner_key_values(right, partitioner_keys, result);
+                    Self::collect_partitioner_key_values(right, partitioner_keys, result);
                 }
             }
         }

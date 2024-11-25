@@ -191,7 +191,7 @@ impl CreateClientResponse for Query {
         let query_type = match self {
             Query::Select(_) => {
                 let necessary_columns: Vec<_> = rows
-                    .get(0)
+                    .first()
                     .ok_or(CQLError::InvalidSyntax)?
                     .split(",")
                     .collect();
@@ -204,7 +204,7 @@ impl CreateClientResponse for Query {
                             .find(|col| col.name == *name)
                             .ok_or(CQLError::Error)?;
 
-                        let b = ColumnType::from(a.data_type.clone());
+                        let b = ColumnType::from(a.data_type);
                         Ok((name.to_string(), b))
                     })
                     .collect();
@@ -213,7 +213,7 @@ impl CreateClientResponse for Query {
 
                 let mut records = Vec::new();
 
-                for row in rows[1..].to_vec() {
+                for row in &rows[1..] {
                     let mut record = BTreeMap::new();
 
                     for (idx, value) in row.split(",").enumerate() {
@@ -392,6 +392,12 @@ impl GetUsedKeyspace for Query {
 /// `Query` enum variant.
 #[derive(Debug)]
 pub struct QueryCreator;
+
+impl Default for QueryCreator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl QueryCreator {
     /// Creates a new instance of `QueryCreator`.

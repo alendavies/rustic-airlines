@@ -83,7 +83,7 @@ impl CreateKeyspace {
     }
 
     pub fn get_replication_factor(&self) -> u32 {
-        self.replication_factor.clone()
+        self.replication_factor
     }
 
     pub fn update_replication_class(&mut self, replication_class: String) {

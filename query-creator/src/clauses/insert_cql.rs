@@ -90,10 +90,12 @@ impl Insert {
 
         let mut if_not_exists = false;
 
-        if i < tokens.len() {
-            if tokens[i] == "IF" && tokens[i + 1] == "NOT" && tokens[i + 2] == "EXISTS" {
-                if_not_exists = true;
-            }
+        if i < tokens.len()
+            && tokens[i] == "IF"
+            && tokens[i + 1] == "NOT"
+            && tokens[i + 2] == "EXISTS"
+        {
+            if_not_exists = true;
         }
 
         if into_tokens.is_empty() || values.is_empty() {

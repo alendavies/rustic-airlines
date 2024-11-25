@@ -4,6 +4,7 @@ use crate::errors::CQLError;
 use crate::QueryCreator;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 #[derive(Debug, Clone)]
 pub struct CreateTable {
@@ -217,7 +218,7 @@ impl CreateTable {
             let order_parts: Vec<&str> = clustering_order_def.split(',').collect();
 
             for order_part in order_parts {
-                let parts: Vec<&str> = order_part.trim().split_whitespace().collect();
+                let parts: Vec<&str> = order_part.split_whitespace().collect();
                 if parts.len() == 2 {
                     let col_name = parts[0].trim().to_string();
                     let order = parts[1].trim().to_uppercase();
