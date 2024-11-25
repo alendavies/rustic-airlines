@@ -282,7 +282,7 @@ impl Where {
     pub fn get_value_clustering_column_condition(
         &self,
         clustering_columns: Vec<String>,
-    ) -> Result<Vec<String>, CQLError> {
+    ) -> Option<Vec<String>> {
         let mut result = vec![];
 
         match &self.condition {
@@ -310,9 +310,9 @@ impl Where {
         }
 
         if result.is_empty() {
-            Err(CQLError::InvalidColumn)
+            None
         } else {
-            Ok(result)
+            Some(result)
         }
     }
 
@@ -349,6 +349,60 @@ impl Where {
                         );
                     }
                     self.collect_clustering_column_values(right, clustering_columns, result);
+                }
+            }
+        }
+    }
+
+    /// Obtiene el valor de una clustering column si existe una condición con el operador `=`.
+    ///
+    /// # Arguments
+    ///
+    /// * `clustering_column` - El nombre de la clustering column para la que se desea obtener el valor.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(String))` - Si se encuentra una condición `=`.
+    /// * `Ok(None)` - Si no hay una condición con `=`.
+    /// * `Err(CQLError)` - Si ocurre algún error de validación.
+    pub fn get_value_for_clustering_column(&self, clustering_column: &str) -> Option<String> {
+        self.recursive_find_equal_condition(&self.condition, clustering_column)
+    }
+
+    /// Método recursivo para buscar condiciones `=` para una clustering column específica.
+    fn recursive_find_equal_condition(
+        &self,
+        condition: &Condition,
+        clustering_column: &str,
+    ) -> Option<String> {
+        match condition {
+            Condition::Simple {
+                field,
+                operator,
+                value,
+            } => {
+                if field == clustering_column && *operator == Operator::Equal {
+                    return Some(value.clone());
+                }
+                None
+            }
+            Condition::Complex {
+                left,
+                operator,
+                right,
+            } => {
+                // Solo procesar condiciones unidas por `AND`
+                if *operator == LogicalOperator::And {
+                    if let Some(left_condition) = left {
+                        if let Some(value) =
+                            self.recursive_find_equal_condition(left_condition, clustering_column)
+                        {
+                            return Some(value);
+                        }
+                    }
+                    self.recursive_find_equal_condition(right, clustering_column)
+                } else {
+                    None // Ignorar condiciones con operadores no válidos
                 }
             }
         }
@@ -493,7 +547,7 @@ mod tests {
 
         let where_clause = Where { condition };
         let result = where_clause.get_value_clustering_column_condition(clustering_columns);
-        assert_eq!(result, Ok(vec!["25".to_string()]));
+        assert_eq!(result, Some(vec!["25".to_string()]));
     }
 
     #[test]
@@ -515,7 +569,7 @@ mod tests {
 
         let where_clause = Where { condition };
         let result = where_clause.get_value_clustering_column_condition(clustering_columns);
-        assert_eq!(result, Ok(vec!["25".to_string(), "John".to_string()]));
+        assert_eq!(result, Some(vec!["25".to_string(), "John".to_string()]));
     }
 
     #[test]
@@ -543,6 +597,166 @@ mod tests {
 
         let where_clause = Where { condition };
         let result = where_clause.get_value_clustering_column_condition(clustering_columns);
-        assert_eq!(result, Err(CQLError::InvalidColumn));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_simple_condition_equal() {
+        let where_clause = Where {
+            condition: Condition::Simple {
+                field: "value1".to_string(),
+                operator: Operator::Equal,
+                value: "150".to_string(),
+            },
+        };
+
+        let result = where_clause.get_value_for_clustering_column("value1");
+        assert_eq!(result, Some("150".to_string()));
+    }
+
+    #[test]
+    fn test_simple_condition_non_equal() {
+        let where_clause = Where {
+            condition: Condition::Simple {
+                field: "value1".to_string(),
+                operator: Operator::Greater,
+                value: "300".to_string(),
+            },
+        };
+
+        let result = where_clause.get_value_for_clustering_column("value1");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_simple_condition_different_column() {
+        let where_clause = Where {
+            condition: Condition::Simple {
+                field: "value2".to_string(),
+                operator: Operator::Equal,
+                value: "500".to_string(),
+            },
+        };
+
+        let result = where_clause.get_value_for_clustering_column("value1");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_complex_condition_with_and_equal() {
+        let where_clause = Where {
+            condition: Condition::Complex {
+                left: Some(Box::new(Condition::Simple {
+                    field: "value1".to_string(),
+                    operator: Operator::Equal,
+                    value: "150".to_string(),
+                })),
+                operator: LogicalOperator::And,
+                right: Box::new(Condition::Simple {
+                    field: "value2".to_string(),
+                    operator: Operator::Greater,
+                    value: "300".to_string(),
+                }),
+            },
+        };
+
+        let result = where_clause.get_value_for_clustering_column("value1");
+        assert_eq!(result, Some("150".to_string()));
+
+        let result = where_clause.get_value_for_clustering_column("value2");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_complex_condition_with_multiple_and() {
+        let where_clause = Where {
+            condition: Condition::Complex {
+                left: Some(Box::new(Condition::Simple {
+                    field: "value1".to_string(),
+                    operator: Operator::Equal,
+                    value: "150".to_string(),
+                })),
+                operator: LogicalOperator::And,
+                right: Box::new(Condition::Complex {
+                    left: Some(Box::new(Condition::Simple {
+                        field: "value2".to_string(),
+                        operator: Operator::Equal,
+                        value: "500".to_string(),
+                    })),
+                    operator: LogicalOperator::And,
+                    right: Box::new(Condition::Simple {
+                        field: "value3".to_string(),
+                        operator: Operator::Greater,
+                        value: "40".to_string(),
+                    }),
+                }),
+            },
+        };
+
+        let result = where_clause.get_value_for_clustering_column("value1");
+        assert_eq!(result, Some("150".to_string()));
+
+        let result = where_clause.get_value_for_clustering_column("value2");
+        assert_eq!(result, Some("500".to_string()));
+
+        let result = where_clause.get_value_for_clustering_column("value3");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_complex_condition_with_or() {
+        let where_clause = Where {
+            condition: Condition::Complex {
+                left: Some(Box::new(Condition::Simple {
+                    field: "value1".to_string(),
+                    operator: Operator::Equal,
+                    value: "150".to_string(),
+                })),
+                operator: LogicalOperator::Or,
+                right: Box::new(Condition::Simple {
+                    field: "value2".to_string(),
+                    operator: Operator::Equal,
+                    value: "500".to_string(),
+                }),
+            },
+        };
+
+        let result = where_clause.get_value_for_clustering_column("value1");
+        assert_eq!(result, None);
+
+        let result = where_clause.get_value_for_clustering_column("value2");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_no_conditions() {
+        let where_clause = Where {
+            condition: Condition::Complex {
+                left: None,
+                operator: LogicalOperator::And,
+                right: Box::new(Condition::Simple {
+                    field: "value1".to_string(),
+                    operator: Operator::Greater,
+                    value: "150".to_string(),
+                }),
+            },
+        };
+
+        let result = where_clause.get_value_for_clustering_column("value1");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_invalid_condition_for_column() {
+        let where_clause = Where {
+            condition: Condition::Simple {
+                field: "value4".to_string(),
+                operator: Operator::Equal,
+                value: "999".to_string(),
+            },
+        };
+
+        let result = where_clause.get_value_for_clustering_column("value1");
+        assert_eq!(result, None);
     }
 }

@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::env;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, BufRead};
 use std::net::Ipv4Addr;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -17,18 +18,18 @@ use node::Node; // Assumes that Node is defined in the crate "node"
 /// that communicate with each other. The node is initialized with a given IP address,
 /// provided as a command-line argument, and seed IPs are read from a `seed_nodes.txt` file.
 ///
+/// Optionally, a custom path for the node's storage can be provided as a third argument.
+///
 /// # Usage
 ///
-/// Run the program by providing the node IP as the only argument:
-///
 /// ```sh
-/// cargo run -- <node_ip>
+/// cargo run -- <node_ip> [custom_path]
 /// ```
 ///
 /// # Example Execution
 ///
 /// ```sh
-/// cargo run -- 192.168.1.2
+/// cargo run -- 192.168.1.2 /path/to/node/storage
 /// ```
 ///
 /// # Errors
@@ -37,6 +38,7 @@ use node::Node; // Assumes that Node is defined in the crate "node"
 /// - The number of arguments is incorrect.
 /// - The provided IP address is invalid.
 /// - The seed_nodes.txt file does not exist or cannot be read.
+/// - The custom path (if provided) cannot be created.
 ///
 /// # Return Values
 ///
@@ -46,9 +48,9 @@ fn main() -> Result<(), String> {
     // Collect command-line arguments
     let args: Vec<String> = env::args().collect();
 
-    // Check that exactly one argument (node IP) is provided
-    if args.len() != 2 {
-        return Err("Usage: program <node_ip>".to_string());
+    // Ensure at least one argument (node IP) is provided
+    if args.len() < 2 || args.len() > 3 {
+        return Err("Usage: program <node_ip> [custom_path]".to_string());
     }
 
     // Pause for a brief moment before continuing, allowing other nodes to initialize
@@ -57,12 +59,24 @@ fn main() -> Result<(), String> {
     // Parse the provided node IP address
     let node_ip = Ipv4Addr::from_str(&args[1]).map_err(|_| "Invalid IP address".to_string())?;
 
+    // Determine the path for node storage
+    let path_buf = if args.len() == 3 {
+        let custom_path = PathBuf::from(&args[2]);
+        if !custom_path.exists() {
+            fs::create_dir_all(&custom_path)
+                .map_err(|_| format!("Failed to create directory at {}", custom_path.display()))?;
+        }
+        custom_path
+    } else {
+        env::current_dir().map_err(|_| "Failed to determine the current directory".to_string())?
+    };
+
     // Read seed node IPs from the seed_nodes.txt file
     let seed_ips = read_seed_ips("seed_nodes.txt")?;
 
     // Create the node with the specified IP and the list of seed IPs
     let node = Arc::new(Mutex::new(
-        Node::new(node_ip, seed_ips).map_err(|e| e.to_string())?,
+        Node::new(node_ip, seed_ips, path_buf).map_err(|e| e.to_string())?,
     ));
 
     // Initialize the connections map

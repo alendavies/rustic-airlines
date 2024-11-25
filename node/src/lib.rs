@@ -5,13 +5,15 @@ mod internode_protocol_handler;
 mod keyspace;
 mod open_query_handler;
 mod query_execution;
-mod table;
+pub mod storage_engine;
+pub mod table;
 mod utils;
 
 // Standard libraries
 use std::collections::HashMap;
 use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -20,6 +22,7 @@ use std::time::Instant;
 use crate::table::Table;
 
 // External libraries
+use chrono::Utc;
 use driver::server::{handle_client_request, Request};
 use errors::NodeError;
 use gossip::structures::NodeStatus;
@@ -43,6 +46,7 @@ use query_creator::errors::CQLError;
 use query_creator::{GetTableName, GetUsedKeyspace, Query};
 use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
+use storage_engine::StorageEngine;
 use utils::connect_and_send_message;
 
 const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
@@ -60,6 +64,7 @@ pub struct Node {
     clients_keyspace: HashMap<i32, Option<String>>,
     last_client_id: i32,
     gossiper: Gossiper,
+    storage_path: PathBuf
 }
 
 impl Node {
@@ -72,14 +77,19 @@ impl Node {
     ///
     /// # Returns
     /// Returns a `Node` instance or a `NodeError` if it fails.
-    pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>) -> Result<Node, NodeError> {
+    pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>, storage_path: PathBuf) -> Result<Node, NodeError> {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip)?;
+
+        let storage_engine = StorageEngine::new(storage_path.clone(), ip.to_string());
+        storage_engine.reset_folders()?;
+
         for seed_ip in seeds_nodes.clone() {
             if seed_ip != ip {
                 partitioner.add_node(seed_ip)?;
             }
         }
+
 
         Ok(Node {
             ip,
@@ -89,6 +99,8 @@ impl Node {
             keyspaces: vec![],
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
+            gossiper: Gossiper::new(),
+            storage_path
             gossiper: Gossiper::new()
                 .with_endpoint_state(ip)
                 .with_seeds(seeds_nodes),
@@ -340,18 +352,18 @@ impl Node {
         client_keyspace.get_table(&table_name)
     }
 
-    fn remove_table(&mut self, table_name: String, client_id: i32) -> Result<(), NodeError> {
+    fn remove_table(&mut self, table_name: String, open_query_id: i32) -> Result<(), NodeError> {
         // Obtiene el keyspace actual del cliente
-        let client_keyspace_name = self
-            .clients_keyspace
-            .get_mut(&client_id)
+        let keyspace_name = self
+            .get_open_handle_query()
+            .get_keyspace_of_query(open_query_id)?
             .ok_or(NodeError::KeyspaceError)?
-            .as_mut()
-            .ok_or(NodeError::KeyspaceError)?;
+            .get_name();
+
         let keyspace = self
             .keyspaces
             .iter_mut()
-            .find(|k| &k.get_name() == client_keyspace_name)
+            .find(|k| &k.get_name() == &keyspace_name)
             .ok_or(NodeError::KeyspaceError)?;
         // Remueve la tabla solicitada del keyspace del cliente
         keyspace.remove_table(&table_name)?;
@@ -643,7 +655,6 @@ impl Node {
                     let query = handle_client_request(&buffer);
                     match query {
                         Request::Startup => {
-                            // let mut stream_guard = stream.println!("el keyspace es {}")lock()?;
                             stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
                             stream_guard.flush()?;
                         }
@@ -751,6 +762,10 @@ impl Node {
         Ok(())
     }
 
+    fn current_timestamp() -> i64 {
+        Utc::now().timestamp()
+    }
+
     fn handle_query_execution(
         query_str: &str,
         consistency_level: &str,
@@ -764,6 +779,8 @@ impl Node {
             .map_err(NodeError::CQLError)?;
 
         let open_query_id;
+        let self_ip: Ipv4Addr;
+        let storage_path;
         {
             let mut guard_node = node.lock()?;
             let keyspace;
@@ -789,14 +806,19 @@ impl Node {
                 table,
                 keyspace,
             )?;
+            self_ip = guard_node.get_ip();
+            storage_path = guard_node.storage_path.clone();
         }
 
-        let response = QueryExecution::new(node.clone(), connections.clone()).execute(
+        let timestamp = Self::current_timestamp();
+
+        let response = QueryExecution::new(node.clone(), connections.clone(), storage_path.clone())?.execute(
             query.clone(),
             false,
             false,
             open_query_id,
             client_id,
+            Some(timestamp),
         )?;
 
         if let Some(((finished_responses, failed_nodes), content)) = response {
@@ -815,7 +837,7 @@ impl Node {
                     .and_then(|k| guard_node.get_table(table_name, k).ok())
             });
             let columns: Vec<Column> = {
-                if let Some(table) = table {
+                if let Some(table) = table.clone() {
                     table.get_columns()
                 } else {
                     vec![]
@@ -828,6 +850,7 @@ impl Node {
                 "".to_string()
             };
 
+            let partitioner = {guard_node.get_partitioner()};
             let query_handler = guard_node.get_open_handle_query();
 
             for _ in 0..finished_responses {
@@ -849,7 +872,14 @@ impl Node {
                     })),
                     open_query_id,
                     keyspace_name.clone(),
+                    table.clone(),
                     columns.clone(),
+                    self_ip,
+                    self_ip,
+                    connections.clone(),
+                    partitioner.clone(),
+                    storage_path.clone()
+                    
                 )?;
             }
             for _ in 0..failed_nodes {

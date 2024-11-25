@@ -1,7 +1,7 @@
 ﻿pub mod clauses;
 pub mod errors;
 mod logical_operator;
-mod operator;
+pub mod operator;
 mod utils;
 
 use clauses::keyspace::{
@@ -112,6 +112,33 @@ fn create_column_value_from_type(
     col_type: &ColumnType,
     value: &str,
 ) -> Result<ColumnValue, CQLError> {
+    // Si el valor está vacío, devolver un ColumnValue vacío según el tipo de columna
+    if value.is_empty() {
+        return match col_type {
+            ColumnType::Ascii => Ok(ColumnValue::Ascii(String::new())),
+            ColumnType::Bigint => Ok(ColumnValue::Bigint(0)),
+            // ColumnType::Blob => Ok(ColumnValue::Blob(vec![])),
+            ColumnType::Boolean => Ok(ColumnValue::Boolean(false)),
+            ColumnType::Counter => Ok(ColumnValue::Counter(0)),
+            ColumnType::Decimal => Ok(ColumnValue::Decimal {
+                scale: 0,
+                unscaled: vec![],
+            }),
+            ColumnType::Double => Ok(ColumnValue::Double(0.0)),
+            ColumnType::Float => Ok(ColumnValue::Float(0.0)),
+            ColumnType::Int => Ok(ColumnValue::Int(0)),
+            ColumnType::Timestamp => Ok(ColumnValue::Timestamp(0)),
+            ColumnType::Uuid => {
+                let empty_uuid = uuid::Uuid::nil();
+                Ok(ColumnValue::Uuid(empty_uuid))
+            }
+            ColumnType::Varchar => Ok(ColumnValue::Varchar(String::new())),
+            ColumnType::Varint => Ok(ColumnValue::Varint(vec![])),
+            _ => Err(CQLError::Error),
+        };
+    }
+
+    // Caso normal: procesar el valor según el tipo de columna
     match col_type {
         ColumnType::Ascii => Ok(ColumnValue::Ascii(value.to_string())),
         ColumnType::Bigint => Ok(ColumnValue::Bigint(
@@ -191,8 +218,10 @@ impl CreateClientResponse for Query {
 
                     for (idx, value) in row.split(",").enumerate() {
                         let (name, r#type) = col_types.get(idx).ok_or(CQLError::Error)?;
+
                         let col_value = create_column_value_from_type(r#type, value)
                             .map_err(|_| CQLError::Error)?;
+
                         record.insert(name.to_string(), col_value);
                     }
 
@@ -200,6 +229,7 @@ impl CreateClientResponse for Query {
                 }
 
                 let rows = Rows::new(col_types, records);
+
                 Frame::Result(result::Result::Rows(rows))
             }
             Query::Insert(_) => Frame::Result(result::Result::Void),
@@ -451,13 +481,13 @@ impl QueryCreator {
         let mut tokens = Vec::new();
         let mut current = String::new();
         let mut in_braces = false;
-    
+
         let string = string.replace(";", "");
         let length = string.len();
-    
+
         while index < length {
             let char = string.chars().nth(index).unwrap_or('0');
-    
+
             if char == '{' {
                 tokens.push("{".to_string());
                 in_braces = true;
@@ -497,15 +527,15 @@ impl QueryCreator {
                 index = Self::process_other(&string, index, &mut current, &mut tokens);
             }
         }
-    
+
         if !current.is_empty() {
             tokens.push(current.clone());
         }
-    
+
         tokens.retain(|s| !s.is_empty());
         tokens
     }
-    
+
     fn process_alfa(
         string: &str,
         mut index: usize,
@@ -514,7 +544,7 @@ impl QueryCreator {
     ) -> usize {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            
+
             // Aceptamos cualquier caracter alfanumérico, guiones bajos, arroba, punto o guión
             if char.is_alphanumeric() || char == '_' || char == '@' || char == '.' || char == '-' {
                 current.push(char);
@@ -523,12 +553,12 @@ impl QueryCreator {
                 break;
             }
         }
-        
+
         if !current.is_empty() {
             tokens.push(current.clone());
             current.clear();
         }
-        
+
         index
     }
 

@@ -4,10 +4,10 @@
 use std::fmt::{self, Display};
 use std::io;
 
+use super::storage_engine::errors::StorageEngineError;
 use native_protocol::errors::NativeError;
 use partitioner::errors::PartitionerError;
 use query_creator::errors::CQLError;
-
 /// Enum representing the possible errors that can occur within the `Node` and during query execution (`QueryExecution`).
 #[derive(Debug)]
 pub enum NodeError {
@@ -35,6 +35,8 @@ pub enum NodeError {
     InternodeProtocolError,
     /// Error related to native protocol operations.
     NativeError(NativeError),
+    /// Error related to the storage engine.
+    StorageEngineError(StorageEngineError),
     GossipError,
 }
 
@@ -54,6 +56,7 @@ impl Display for NodeError {
             NodeError::OpenQueryError => write!(f, "Open Query Error"),
             NodeError::InternodeProtocolError => write!(f, "Internode Protocol Error"),
             NodeError::NativeError(e) => write!(f, "Native Protocol Error: {}", e),
+            NodeError::StorageEngineError(e) => write!(f, "Storage Engine Error: {}", e),
             NodeError::GossipError => write!(f, "Gossip Error"),
         }
     }
@@ -91,5 +94,12 @@ impl From<NativeError> for NodeError {
     /// Conversion from `NativeError` to `NodeError`.
     fn from(error: NativeError) -> Self {
         NodeError::NativeError(error)
+    }
+}
+
+impl From<StorageEngineError> for NodeError {
+    /// Conversion from `StorageEngineError` to `NodeError`.
+    fn from(error: StorageEngineError) -> Self {
+        NodeError::StorageEngineError(error)
     }
 }

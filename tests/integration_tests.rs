@@ -95,6 +95,11 @@ fn execute_and_verify_select(
                     })
                     .collect();
 
+                println!(
+                    "los valores expected son {:?} y los valores son {:?}",
+                    expected_values, actual_values
+                );
+
                 expected_values
                     .iter()
                     .all(|value| actual_values.contains(value))
