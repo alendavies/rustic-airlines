@@ -26,6 +26,7 @@ pub struct Gossiper {
 pub enum GossipError {
     SynError,
     NoEndpointStateForIp,
+    NoSuchKeyspace,
 }
 
 impl fmt::Display for GossipError {
@@ -34,6 +35,7 @@ impl fmt::Display for GossipError {
         let description = match self {
             GossipError::SynError => "Syn error occurred",
             GossipError::NoEndpointStateForIp => "There is no endpoint state for the given ip",
+            GossipError::NoSuchKeyspace => "The given keyspace does not exist",
         };
         write!(f, "{}", description)
     }
