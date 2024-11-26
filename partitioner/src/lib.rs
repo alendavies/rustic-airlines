@@ -60,6 +60,7 @@ impl Partitioner {
             return Err(PartitionerError::NodeAlreadyExists);
         }
         self.nodes.insert(hash, ip);
+        println!("Partitioner: {:?}", self);
         // println!("el anillo es {:?}", self);
         Ok(())
     }
@@ -82,7 +83,9 @@ impl Partitioner {
 
         self.nodes
             .remove(&hash)
-            .ok_or(PartitionerError::NodeNotFound)
+            .ok_or(PartitionerError::NodeNotFound);
+        println!("Partitioner: {:?}", self);
+      
         // println!("el anillo es {:?}", self);
     }
 

@@ -3,18 +3,12 @@
 use crate::internode_protocol::message::{InternodeMessage, InternodeMessageContent};
 use crate::internode_protocol::query::InternodeQuery;
 use crate::internode_protocol::response::{InternodeResponse, InternodeResponseStatus};
-use crate::messages::{
-    InternodeMessage, InternodeMessageContent, InternodeQuery, InternodeResponse,
-    InternodeResponseStatus,
-};
 use crate::open_query_handler::OpenQueryHandler;
 use crate::table::Table;
 use crate::utils::connect_and_send_message;
 use crate::{storage_engine, Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
-use crate::{Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
 use chrono::Utc;
 use gossip::messages::GossipMessage;
-use gossip::structures::NodeStatus;
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -72,9 +66,9 @@ impl InternodeProtocolHandler {
         message: InternodeMessage,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
-        match message.content {
+        match message.clone().content {
             InternodeMessageContent::Query(query) => {
-                self.handle_query_command(node, query, connections, message.from)?;
+                self.handle_query_command(node, query, connections, message.clone().from)?;
                 Ok(())
             }
             InternodeMessageContent::Response(response) => {
@@ -656,7 +650,7 @@ impl InternodeProtocolHandler {
         let response: Option<((i32, i32), InternodeResponse)> = result?;
 
         if let Some(responses) = response {
-            let (_, value): ((i32, i32), InternodeResponse) = responses;
+            let (_, value): ((i32, i32), InternodeResponse) = responses.clone();
 
             if query.open_query_id != 0 {
                 connect_and_send_message(

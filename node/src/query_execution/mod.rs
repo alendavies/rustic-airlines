@@ -254,7 +254,7 @@ impl QueryExecution {
                     Ok(_) => response,
 
                     Err(_) => {
-                        println!(
+                        eprintln!(
                             "el error en este nodo es {:?} de la query {:?}",
                             query_result, query
                         );

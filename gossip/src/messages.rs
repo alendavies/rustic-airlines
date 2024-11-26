@@ -137,7 +137,7 @@ impl GossipMessage {
 /// - `Syn`: A `Syn` message.
 /// - `Ack`: An `Ack` message.
 /// - `Ack2`: An `Ack2` message.
-enum PayloadType {
+pub enum PayloadType {
     Syn = 0x00,
     Ack = 0x01,
     Ack2 = 0x02,

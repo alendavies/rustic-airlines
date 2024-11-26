@@ -36,7 +36,7 @@ fn main() {
             i, name
         );
 
-        match client.execute(&insert_query, "any") {
+        match client.execute(&insert_query, "quorum") {
             Ok(frame) => {
                 println!(
                     "la query {:?} dio OK y el frame es {:?}",
