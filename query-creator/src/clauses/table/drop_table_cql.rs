@@ -24,8 +24,8 @@ impl DropTable {
         };
 
         Ok(Self {
-            table_name: table_name,
-            keyspace_used_name: keyspace_used_name,
+            table_name,
+            keyspace_used_name,
         })
     }
 

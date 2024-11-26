@@ -1,6 +1,6 @@
 use super::datatype::DataType;
 
-#[derive(Debug, Clone, Eq, Hash)]
+#[derive(Debug, Clone, Eq)]
 pub struct Column {
     pub name: String,
     pub data_type: DataType,
@@ -8,7 +8,7 @@ pub struct Column {
     pub allows_null: bool,
     pub is_clustering_column: bool,
     pub is_partition_key: bool,
-    pub clustering_order: String
+    pub clustering_order: String,
 }
 
 impl Column {
@@ -20,8 +20,12 @@ impl Column {
             allows_null,
             is_clustering_column: false,
             is_partition_key: false,
-            clustering_order: String::new()
+            clustering_order: String::new(),
         }
+    }
+
+    pub fn get_clustering_order(&self) -> String {
+        self.clustering_order.clone()
     }
 }
 

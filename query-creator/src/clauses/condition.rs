@@ -161,7 +161,6 @@ impl Condition {
                     let col_type = &col.data_type;
                     if col_type.is_valid_value(value) {
                         let comparison = col_type.compare(x, y, operator)?;
-
                         return Ok(comparison);
                     } else {
                         return Err(CQLError::InvalidSyntax);
@@ -252,10 +251,10 @@ impl Condition {
     }
 
     /// Función auxiliar para parsear tokens y crear la `Condition` correspondiente
-    fn parse_tokens(tokens: &[&str], start: usize, end: usize) -> Result<Self, CQLError> {
+    fn parse_tokens(tokens: &[&str], mut start: usize, end: usize) -> Result<Self, CQLError> {
         // Si solo tiene 3 tokens, es una condición simple (e.g., `field = value`)
         if end - start == 3 {
-            return Self::new_simple_from_tokens(tokens, &mut (start as usize));
+            return Self::new_simple_from_tokens(tokens, &mut start);
         }
 
         // Si contiene un operador lógico en el centro, entonces es una condición compleja

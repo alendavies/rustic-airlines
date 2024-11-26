@@ -5,13 +5,15 @@ mod internode_protocol_handler;
 mod keyspace;
 mod open_query_handler;
 mod query_execution;
-mod table;
+pub mod storage_engine;
+pub mod table;
 mod utils;
 
 // Standard libraries
 use std::collections::HashMap;
 use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -20,6 +22,7 @@ use std::time::Instant;
 use crate::table::Table;
 
 // External libraries
+use chrono::Utc;
 use driver::server::{handle_client_request, Request};
 use errors::NodeError;
 use gossip::structures::NodeStatus;
@@ -43,6 +46,7 @@ use query_creator::errors::CQLError;
 use query_creator::{GetTableName, GetUsedKeyspace, Query};
 use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
+use storage_engine::StorageEngine;
 use utils::connect_and_send_message;
 
 const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
@@ -53,13 +57,13 @@ const INTERNODE_PORT: u16 = 0x554D; // Hexadecimal of "UM" (FERRUM) = 21837
 ///
 pub struct Node {
     ip: Ipv4Addr,
-    seeds_nodes: Vec<Ipv4Addr>,
     partitioner: Partitioner,
     open_query_handler: OpenQueryHandler,
     keyspaces: Vec<Keyspace>,
     clients_keyspace: HashMap<i32, Option<String>>,
     last_client_id: i32,
     gossiper: Gossiper,
+    storage_path: PathBuf
 }
 
 impl Node {
@@ -72,80 +76,73 @@ impl Node {
     ///
     /// # Returns
     /// Returns a `Node` instance or a `NodeError` if it fails.
-    pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>) -> Result<Node, NodeError> {
+    pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>, storage_path: PathBuf) -> Result<Node, NodeError> {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip)?;
+
+        let storage_engine = StorageEngine::new(storage_path.clone(), ip.to_string());
+        storage_engine.reset_folders()?;
+
         for seed_ip in seeds_nodes.clone() {
             if seed_ip != ip {
                 partitioner.add_node(seed_ip)?;
             }
         }
 
+
         Ok(Node {
-            ip,
-            seeds_nodes: seeds_nodes.clone(),
+            ip,            
             partitioner,
             open_query_handler: OpenQueryHandler::new(),
             keyspaces: vec![],
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
+            storage_path,
             gossiper: Gossiper::new()
                 .with_endpoint_state(ip)
                 .with_seeds(seeds_nodes),
         })
     }
-
-    /// Starts the gossip process for the node.
+         /// Starts the gossip process for the node.
     /// Opens 3 connections with 3 other nodes.
     pub fn start_gossip(
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
-        let handle = thread::spawn(move || {
+        let _ = thread::spawn(move || {
             let initial_gossip = Instant::now();
-
             loop {
                 {
                     {
                         let mut node_guard = node.lock().unwrap();
                         let ip = node_guard.ip;
-
                         if initial_gossip.elapsed().as_millis() > 1500 {
                             node_guard
                                 .gossiper
                                 .change_status(ip, NodeStatus::Normal)
                                 .ok();
                         }
-
                         node_guard.gossiper.heartbeat(ip);
                     }
-
                     let ips: Vec<Ipv4Addr>;
                     let syn;
-
                     {
                         let node_guard = node.lock().unwrap();
-
                         ips = node_guard
                             .gossiper
                             .pick_ips(node_guard.get_ip())
                             .iter()
                             .map(|x| **x)
                             .collect();
-
                         syn = node_guard.gossiper.create_syn(node_guard.ip);
                     }
-
                     let mut node_guard = node.lock().unwrap();
-
                     for ip in ips {
                         let connections_clone = Arc::clone(&connections);
-
                         let msg = InternodeMessage::new(
                             ip.clone(),
                             InternodeMessageContent::Gossip(syn.clone()),
                         );
-
                         if connect_and_send_message(ip, INTERNODE_PORT, connections_clone, msg)
                             .is_err()
                         {
@@ -153,31 +150,27 @@ impl Node {
                         }
                     }
                 }
-
                 // After each gossip round, update the partitioner
-                {
+                {   
                     let mut node_guard = node.lock().unwrap();
                     let endpoints_states = &node_guard.gossiper.endpoints_state.clone();
                     let partitioner = &mut node_guard.partitioner;
-
                     for (ip, state) in endpoints_states {
                         if state.application_state.status.is_dead() {
                             partitioner.remove_node(*ip).ok();
                         } else {
+                            
                             partitioner.add_node(*ip).ok();
                         }
                     }
                 }
-
                 {
-                    println!("Partitioner: {:?}", node.lock().unwrap().partitioner);
+                    
                 }
-
                 thread::sleep(std::time::Duration::from_secs(1));
             }
         });
-
-        handle.join().unwrap();
+        //handle.join().unwrap();
         Ok(())
     }
 
@@ -209,11 +202,17 @@ impl Node {
         };
 
         let needed_responses = match query.needed_responses() {
-            query_creator::NeededResponseCount::AllNodes => all_nodes,
+            query_creator::NeededResponseCount::One => 1,
             query_creator::NeededResponseCount::Specific(specific_value) => {
-                specific_value as usize * replication_factor as usize
+                let calculated_responses = specific_value as usize * replication_factor as usize;
+                if calculated_responses > all_nodes {
+                    all_nodes
+                } else {
+                    calculated_responses
+                }
             }
         };
+        
         Ok(self.open_query_handler.new_open_query(
             needed_responses as i32,
             connection,
@@ -340,18 +339,18 @@ impl Node {
         client_keyspace.get_table(&table_name)
     }
 
-    fn remove_table(&mut self, table_name: String, client_id: i32) -> Result<(), NodeError> {
+    fn remove_table(&mut self, table_name: String, open_query_id: i32) -> Result<(), NodeError> {
         // Obtiene el keyspace actual del cliente
-        let client_keyspace_name = self
-            .clients_keyspace
-            .get_mut(&client_id)
+        let keyspace_name = self
+            .get_open_handle_query()
+            .get_keyspace_of_query(open_query_id)?
             .ok_or(NodeError::KeyspaceError)?
-            .as_mut()
-            .ok_or(NodeError::KeyspaceError)?;
+            .get_name();
+
         let keyspace = self
             .keyspaces
             .iter_mut()
-            .find(|k| &k.get_name() == client_keyspace_name)
+            .find(|k| &k.get_name() == &keyspace_name)
             .ok_or(NodeError::KeyspaceError)?;
         // Remueve la tabla solicitada del keyspace del cliente
         keyspace.remove_table(&table_name)?;
@@ -472,7 +471,7 @@ impl Node {
     ) -> Result<(), NodeError> {
         let self_ip;
         {
-            let mut node_guard = node.lock()?;
+            let  node_guard = node.lock()?;
             self_ip = node_guard.get_ip();
 
             // if !is_seed {
@@ -545,7 +544,6 @@ impl Node {
     ) -> Result<(), NodeError> {
         let socket = SocketAddrV4::new(self_ip, INTERNODE_PORT);
         let listener = TcpListener::bind(socket)?;
-
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -579,7 +577,6 @@ impl Node {
     ) -> Result<(), NodeError> {
         let socket = SocketAddrV4::new(self_ip, CLIENT_NODE_PORT); // Specific port for clients
         let listener = TcpListener::bind(socket)?;
-
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -640,10 +637,10 @@ impl Node {
                     break;
                 }
                 Ok(_) => {
+                    
                     let query = handle_client_request(&buffer);
                     match query {
                         Request::Startup => {
-                            // let mut stream_guard = stream.println!("el keyspace es {}")lock()?;
                             stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
                             stream_guard.flush()?;
                         }
@@ -710,14 +707,19 @@ impl Node {
             // Try to read a line
             let bytes_read = reader.read(&mut buffer);
             let result = InternodeMessage::from_bytes(&buffer);
-
+        
             let message;
 
-            if let Ok(value) = result {
-                message = value;
-            } else {
-                continue;
+            match result {
+                Ok(value) => {
+                    message = value;
+                }
+                Err(_) => {
+                    // println!("Error al crear los bytes: {:?}", e);
+                    continue;
+                }
             }
+            
 
             match bytes_read {
                 Ok(0) => {
@@ -725,6 +727,8 @@ impl Node {
                     break;
                 }
                 Ok(_) => {
+                    
+                   
                     // Process the command with the protocol, passing the buffer and the necessary parameters
                     let result = internode_protocol_handler.handle_command(
                         &node,
@@ -751,6 +755,10 @@ impl Node {
         Ok(())
     }
 
+    fn current_timestamp() -> i64 {
+        Utc::now().timestamp()
+    }
+
     fn handle_query_execution(
         query_str: &str,
         consistency_level: &str,
@@ -764,6 +772,8 @@ impl Node {
             .map_err(NodeError::CQLError)?;
 
         let open_query_id;
+        let self_ip: Ipv4Addr;
+        let storage_path;
         {
             let mut guard_node = node.lock()?;
             let keyspace;
@@ -773,7 +783,7 @@ impl Node {
             } else {
                 keyspace = guard_node.get_client_keyspace(client_id)?;
             }
-
+            
             // Intentar obtener el nombre de la tabla y buscar la tabla correspondiente en el keyspace
             let table = query.get_table_name().and_then(|table_name| {
                 keyspace
@@ -789,17 +799,22 @@ impl Node {
                 table,
                 keyspace,
             )?;
+            self_ip = guard_node.get_ip();
+            storage_path = guard_node.storage_path.clone();
         }
+        let timestamp = Self::current_timestamp();
 
-        let response = QueryExecution::new(node.clone(), connections.clone()).execute(
+        let response = QueryExecution::new(node.clone(), connections.clone(), storage_path.clone())?.execute(
             query.clone(),
             false,
             false,
             open_query_id,
             client_id,
+            Some(timestamp),
         )?;
 
         if let Some(((finished_responses, failed_nodes), content)) = response {
+            
             let mut guard_node = node.lock()?;
             // Obtener el keyspace especificado o el actual del cliente
 
@@ -815,7 +830,7 @@ impl Node {
                     .and_then(|k| guard_node.get_table(table_name, k).ok())
             });
             let columns: Vec<Column> = {
-                if let Some(table) = table {
+                if let Some(table) = table.clone() {
                     table.get_columns()
                 } else {
                     vec![]
@@ -828,6 +843,8 @@ impl Node {
                 "".to_string()
             };
 
+            
+            let partitioner = guard_node.get_partitioner();
             let query_handler = guard_node.get_open_handle_query();
 
             for _ in 0..finished_responses {
@@ -839,6 +856,7 @@ impl Node {
                     select_columns = cont.select_columns.clone();
                     values = cont.values.clone();
                 }
+
                 InternodeProtocolHandler::add_ok_response_to_open_query_and_send_response_if_closed(
                     query_handler,
                     // TODO: convertir el content al content de la response
@@ -849,7 +867,14 @@ impl Node {
                     })),
                     open_query_id,
                     keyspace_name.clone(),
+                    table.clone(),
                     columns.clone(),
+                    self_ip,
+                    self_ip,
+                    connections.clone(),
+                    partitioner.clone(),
+                    storage_path.clone()
+
                 )?;
             }
             for _ in 0..failed_nodes {

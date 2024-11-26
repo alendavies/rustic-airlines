@@ -1,6 +1,6 @@
 use driver::{CassandraClient, QueryResult};
 use native_protocol::messages::error::Error;
-use native_protocol::messages::result::result::Result;
+use native_protocol::messages::result::result_::Result;
 use native_protocol::messages::result::rows::ColumnValue;
 use native_protocol::messages::result::schema_change;
 use native_protocol::messages::result::schema_change::SchemaChange;
@@ -73,11 +73,6 @@ fn execute_and_verify_select(
     match client.execute(query, "all") {
         Ok(query_result) => match query_result {
             QueryResult::Result(Result::Rows(rows)) => {
-                // println!(
-                //     "se compara {:?} con {:?}",
-                //     rows.rows_content, expected_values
-                // );
-
                 if rows.rows_content.is_empty() {
                     return expected_values.is_empty();
                 }
@@ -95,6 +90,11 @@ fn execute_and_verify_select(
                     })
                     .collect();
 
+                println!(
+                    "los valores expected son {:?} y los valores son {:?}",
+                    expected_values, actual_values
+                );
+
                 expected_values
                     .iter()
                     .all(|value| actual_values.contains(value))
@@ -102,10 +102,7 @@ fn execute_and_verify_select(
                 // println!("comparo {:?} con {:?}", expected_values, actual_values);
                 // expected_values == actual_values
             }
-            a => {
-                println!("recibi {:?}", a);
-                false
-            } // Fails if result type is not Rows
+            _ => false, // Fails if result type is not Rows
         },
         Err(e) => {
             eprintln!("Error executing query: {}\nError: {:?}", query, e);

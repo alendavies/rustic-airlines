@@ -3,7 +3,6 @@ use crate::internode_protocol::query::InternodeQuery;
 use crate::internode_protocol::response::{
     InternodeResponse, InternodeResponseContent, InternodeResponseStatus,
 };
-use crate::table::Table;
 use crate::utils::connect_and_send_message;
 use crate::NodeError;
 use crate::{Node, INTERNODE_PORT};
@@ -20,15 +19,14 @@ pub mod insert;
 pub mod select;
 pub mod update;
 pub mod use_cql;
+use super::storage_engine::StorageEngine;
 use query_creator::errors::CQLError;
 use query_creator::Query;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::BufRead;
-use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+// Si `node` es el módulo raíz
 
 /// Struct for executing various database queries across nodes with support
 /// for distributed communication and replication.
@@ -38,6 +36,7 @@ pub struct QueryExecution {
     execution_finished_itself: bool,
     execution_replicate_itself: bool,
     how_many_nodes_failed: i32,
+    storage_engine: StorageEngine,
 }
 
 impl QueryExecution {
@@ -53,14 +52,19 @@ impl QueryExecution {
     pub fn new(
         node_that_execute: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-    ) -> QueryExecution {
-        QueryExecution {
+        storage_path: PathBuf,
+    ) -> Result<QueryExecution, NodeError> {
+        let ip = { node_that_execute.lock()?.get_ip_string() };
+
+        let storage_engine = StorageEngine::new(storage_path, ip);
+        Ok(QueryExecution {
             node_that_execute,
             connections,
             execution_finished_itself: false,
             execution_replicate_itself: false,
             how_many_nodes_failed: 0,
-        }
+            storage_engine: storage_engine,
+        })
     }
 
     /// Executes a database query by determining the query type and applying the necessary operations
@@ -93,12 +97,14 @@ impl QueryExecution {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
+        timestap: Option<i64>,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let mut response: InternodeResponse = InternodeResponse {
             open_query_id: open_query_id as u32,
             status: InternodeResponseStatus::Ok,
             content: None,
         };
+
         let query_result = {
             match query.clone() {
                 Query::Select(select_query) => {
@@ -110,29 +116,42 @@ impl QueryExecution {
                         client_id,
                     ) {
                         Ok(select_querys) => {
-                            /* let columns: Vec<String> = select_querys
-                            .get(0)
-                            .map(|s| s.split(',').map(String::from).collect())
-                            .unwrap_or_default(); */
-
-                            let select_columns: Vec<String> = select_querys
+                            let columns: Vec<String> = select_querys
                                 .get(0)
                                 .map(|s| s.split(',').map(String::from).collect())
                                 .unwrap_or_default();
 
+                            let select_columns: Vec<String> = select_querys
+                                .get(1)
+                                .map(|s| s.split(',').map(String::from).collect())
+                                .unwrap_or_default();
+
                             let values: Vec<Vec<String>> = if select_querys.len() > 2 {
-                                select_querys[1..]
+                                let result: Vec<Vec<String>> = select_querys[2..]
                                     .iter()
-                                    .map(|s| s.split(',').map(String::from).collect())
-                                    .collect()
+                                    .map(|s| {
+                                        // Dividir en dos partes por ";"
+                                        if let Some((first_part, second_part)) = s.split_once(';') {
+                                            // Dividir la primera parte por "," y agregar la segunda parte
+                                            let mut combined: Vec<String> =
+                                                first_part.split(',').map(String::from).collect();
+                                            combined.push(second_part.to_string()); // Añadir la parte después de ";"
+                                            combined
+                                        } else {
+                                            // Si no hay ";", considerar todo como un único valor
+                                            vec![s.to_string()]
+                                        }
+                                    })
+                                    .collect();
+                                result
                             } else {
                                 Vec::new()
                             };
 
                             response.content = Some(InternodeResponseContent {
-                                columns: Vec::new(),
-                                select_columns,
-                                values,
+                                columns: columns,
+                                select_columns: select_columns,
+                                values: values,
                             });
                             Ok(())
                         }
@@ -143,6 +162,12 @@ impl QueryExecution {
                     }
                 }
                 Query::Insert(insert_query) => {
+                    let timestamp_n;
+                    if let Some(t) = timestap {
+                        timestamp_n = t;
+                    } else {
+                        return Err(NodeError::InternodeProtocolError);
+                    }
                     let table;
                     {
                         let table_name = insert_query.into_clause.table_name.clone();
@@ -161,22 +186,41 @@ impl QueryExecution {
                         replication,
                         open_query_id,
                         client_id,
+                        timestamp_n,
                     )
                 }
-                Query::Update(update_query) => self.execute_update(
-                    update_query,
-                    internode,
-                    replication,
-                    open_query_id,
-                    client_id,
-                ),
-                Query::Delete(delete_query) => self.execute_delete(
-                    delete_query,
-                    internode,
-                    replication,
-                    open_query_id,
-                    client_id,
-                ),
+                Query::Update(update_query) => {
+                    let timestamp_n;
+                    if let Some(t) = timestap {
+                        timestamp_n = t;
+                    } else {
+                        return Err(NodeError::InternodeProtocolError);
+                    }
+                    self.execute_update(
+                        update_query,
+                        internode,
+                        replication,
+                        open_query_id,
+                        client_id,
+                        timestamp_n,
+                    )
+                }
+                Query::Delete(delete_query) => {
+                    let timestamp_n;
+                    if let Some(t) = timestap {
+                        timestamp_n = t;
+                    } else {
+                        return Err(NodeError::InternodeProtocolError);
+                    }
+                    self.execute_delete(
+                        delete_query,
+                        internode,
+                        replication,
+                        open_query_id,
+                        client_id,
+                        timestamp_n,
+                    )
+                }
                 Query::CreateTable(create_table) => {
                     self.execute_create_table(create_table, internode, open_query_id, client_id)
                 }
@@ -210,7 +254,7 @@ impl QueryExecution {
                     Ok(_) => response,
 
                     Err(_) => {
-                        println!(
+                        eprintln!(
                             "el error en este nodo es {:?} de la query {:?}",
                             query_result, query
                         );
@@ -256,6 +300,7 @@ impl QueryExecution {
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
+        timestap: i64,
     ) -> Result<i32, NodeError> {
         let current_ip = local_node.get_ip();
         let message = InternodeMessage::new(
@@ -266,7 +311,7 @@ impl QueryExecution {
                 client_id: client_id as u32,
                 replication: false,
                 keyspace_name: keyspace_name.to_string(),
-                timestamp: 0 as i64,
+                timestamp: timestap,
             }),
         );
 
@@ -297,6 +342,7 @@ impl QueryExecution {
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
+        timestap: i64,
     ) -> Result<i32, NodeError> {
         let message = InternodeMessage::new(
             self_ip,
@@ -306,7 +352,7 @@ impl QueryExecution {
                 client_id: client_id as u32,
                 replication: false,
                 keyspace_name: keyspace_name.to_string(),
-                timestamp: 0 as i64,
+                timestamp: timestap,
             }),
         );
 
@@ -333,6 +379,7 @@ impl QueryExecution {
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
+        timestap: i64,
     ) -> Result<(i32, bool), NodeError> {
         // Serializa el objeto que se quiere enviar
 
@@ -347,7 +394,7 @@ impl QueryExecution {
                 client_id: client_id as u32,
                 replication: true,
                 keyspace_name: keyspace_name.to_string(),
-                timestamp: 0 as i64,
+                timestamp: timestap,
             }),
         );
 
@@ -397,82 +444,5 @@ impl QueryExecution {
             }
         }
         Ok(())
-    }
-
-    /// Obtiene las rutas del archivo principal y del temporal.
-    /// Si `replication` es `true`, coloca los archivos dentro de una carpeta "replication" en el keyspace.
-    fn get_file_paths(
-        &self,
-        table_name: &str,
-        replication: bool,
-        keyspace_name: &str,
-    ) -> Result<(String, String), NodeError> {
-        let node = self
-            .node_that_execute
-            .lock()
-            .map_err(|_| NodeError::LockError)?;
-
-        let add_str = node.get_ip_string().replace(".", "_");
-        let base_folder = format!("keyspaces_{}/{}", add_str, keyspace_name);
-
-        // Agrega la carpeta "replication" si el parámetro es verdadero
-        let folder_name = if replication {
-            format!("{}/replication", base_folder)
-        } else {
-            base_folder
-        };
-
-        let file_path = format!("{}/{}.csv", folder_name, table_name);
-
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_| NodeError::OtherError)?
-            .as_nanos();
-        let temp_file_path = format!("{}.{}.temp", file_path, timestamp);
-
-        Ok((file_path, temp_file_path))
-    }
-
-    /// Crea un mapa de valores de columna para una fila dada.
-    fn create_column_value_map(
-        &self,
-        table: &Table,
-        columns: &[String],
-        only_partitioner_key: bool,
-    ) -> HashMap<String, String> {
-        let mut column_value_map = HashMap::new();
-        for (i, column) in table.get_columns().iter().enumerate() {
-            if let Some(value) = columns.get(i) {
-                if column.is_partition_key || column.is_clustering_column || !only_partitioner_key {
-                    column_value_map.insert(column.name.clone(), value.clone());
-                }
-            }
-        }
-
-        column_value_map
-    }
-
-    fn write_header<R: BufRead>(
-        &self,
-        reader: &mut R,
-        temp_file: &mut File,
-    ) -> Result<(), NodeError> {
-        if let Some(header_line) = reader.lines().next() {
-            writeln!(temp_file, "{}", header_line?).map_err(|e| NodeError::from(e))?;
-        }
-        Ok(())
-    }
-
-    // Funciones auxiliares adicionales (debes agregarlas también en tu implementación)
-    fn create_temp_file(&self, temp_file_path: &str) -> Result<File, NodeError> {
-        File::create(temp_file_path).map_err(NodeError::IoError)
-    }
-
-    fn replace_original_file(
-        &self,
-        temp_file_path: &str,
-        file_path: &str,
-    ) -> Result<(), NodeError> {
-        std::fs::rename(temp_file_path, file_path).map_err(NodeError::from)
     }
 }

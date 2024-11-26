@@ -44,6 +44,7 @@ impl QueryExecution {
                 open_query_id,
                 client_id,
                 &keyspace_name,
+                0,
             )?;
         }
 

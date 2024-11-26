@@ -39,6 +39,12 @@ impl fmt::Display for GossipError {
     }
 }
 
+impl Default for Gossiper {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Gossiper {
     /// Create a new Gossiper instance with an empty state.
     pub fn new() -> Self {
@@ -130,24 +136,34 @@ impl Gossiper {
                 }
 
                 if digest.generation != my_digest.generation {
-                    // Si la generacion del digest es mayor a la mía, entonces el mio está desactualizado
-                    // le mando mi digest
-                    if digest.generation > my_digest.generation {
-                        stale_digests.push(my_digest.clone());
-                    }
-                    // si el de él está desactualizado, le mando la info para que lo actualice
-                    else if digest.generation < my_digest.generation {
-                        updated_info.insert(my_digest.clone(), my_state.application_state.clone());
+                    match digest.generation.cmp(&my_digest.generation) {
+                        std::cmp::Ordering::Greater => {
+                            // Si la generación del digest es mayor a la mía, entonces el mío está desactualizado
+                            // le mando mi digest
+                            stale_digests.push(my_digest);
+                        }
+                        std::cmp::Ordering::Less => {
+                            // Si el de él está desactualizado, le mando la info para que lo actualice
+                            updated_info.insert(my_digest, my_state.application_state.clone());
+                        }
+                        std::cmp::Ordering::Equal => {
+                            // si las generaciones son iguales, no hacemos nada
+                        }
                     }
                 } else {
-                    // Si la versión del digest es mayor a la mía, entonces el mio está desactualizado
-                    // le mando mi digest
-                    if digest.version > my_digest.version {
-                        stale_digests.push(my_digest);
-                    }
-                    // si el de él está desactualizado, le mando la info para que lo actualice
-                    else if digest.version < my_digest.version {
-                        updated_info.insert(my_digest, my_state.application_state.clone());
+                    match digest.version.cmp(&my_digest.version) {
+                        std::cmp::Ordering::Greater => {
+                            // Si la versión del digest es mayor a la mía, entonces el mío está desactualizado
+                            // le mando mi digest
+                            stale_digests.push(my_digest);
+                        }
+                        std::cmp::Ordering::Less => {
+                            // Si el de él está desactualizado, le mando la info para que lo actualice
+                            updated_info.insert(my_digest, my_state.application_state.clone());
+                        }
+                        std::cmp::Ordering::Equal => {
+                            // si las versiones son iguales, no hacemos nada
+                        }
                     }
                 }
             } else {
@@ -177,11 +193,6 @@ impl Gossiper {
 
             if digest.generation == my_digest.generation && digest.version == my_digest.version {
                 continue;
-            }
-
-            // si la generacion en el digest es menor a la mía, le mando la info para que lo actualice
-            if digest.generation < my_digest.generation {
-                updated_info.insert(my_digest, my_state.application_state.clone());
             }
             // si la version en el digest es menor a la mía, le mando la info para que lo actualice
             else if digest.version < my_digest.version {
@@ -242,13 +253,11 @@ impl Gossiper {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use messages::Payload;
-
-    use crate::structures::{ApplicationState, NodeStatus};
-
     use super::*;
+    use crate::structures::{ApplicationState, NodeStatus};
+    use messages::Payload;
+    use std::str::FromStr;
+    use structures::Schema;
 
     #[test]
     fn incoming_syn_same_generation_lower_version() {
@@ -261,7 +270,14 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(NodeStatus::Normal, 6),
+                ApplicationState::new(
+                    NodeStatus::Normal,
+                    6,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
                 HeartbeatState::new(3, 3),
             ),
         )]);
@@ -301,7 +317,14 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(NodeStatus::Normal, 6),
+                ApplicationState::new(
+                    NodeStatus::Normal,
+                    6,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
                 HeartbeatState::new(3, 3),
             ),
         )]);
@@ -341,7 +364,14 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(NodeStatus::Normal, 6),
+                ApplicationState::new(
+                    NodeStatus::Normal,
+                    6,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
                 HeartbeatState::new(4, 8),
             ),
         )]);
@@ -373,7 +403,14 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(NodeStatus::Normal, 6),
+                ApplicationState::new(
+                    NodeStatus::Normal,
+                    6,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
                 HeartbeatState::new(7, 2),
             ),
         )]);
@@ -405,7 +442,14 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(NodeStatus::Normal, 6),
+                ApplicationState::new(
+                    NodeStatus::Normal,
+                    6,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
                 HeartbeatState::new(7, 2),
             ),
         )]);
@@ -442,7 +486,14 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(NodeStatus::Normal, 6),
+                ApplicationState::new(
+                    NodeStatus::Normal,
+                    6,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
                 HeartbeatState::new(7, 3),
             ),
         )]);
@@ -479,7 +530,14 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(NodeStatus::Normal, 6),
+                ApplicationState::new(
+                    NodeStatus::Normal,
+                    6,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
                 HeartbeatState::new(7, 3),
             ),
         )]);
@@ -517,14 +575,28 @@ mod tests {
             Vec::new(),
             BTreeMap::from([(
                 Digest::new(ip, 8, 7),
-                ApplicationState::new(NodeStatus::Leaving, 9),
+                ApplicationState::new(
+                    NodeStatus::Leaving,
+                    9,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
             )]),
         );
 
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(NodeStatus::Normal, 6),
+                ApplicationState::new(
+                    NodeStatus::Normal,
+                    6,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
                 HeartbeatState::new(7, 2),
             ),
         )]);
@@ -542,7 +614,14 @@ mod tests {
         );
         assert_eq!(
             gossiper.endpoints_state.get(&ip).unwrap().application_state,
-            ApplicationState::new(NodeStatus::Leaving, 9)
+            ApplicationState::new(
+                NodeStatus::Leaving,
+                9,
+                Vec::from([Schema {
+                    keyspace: "keyspace".to_string(),
+                    tables: vec!["table1".to_string(), "table2".to_string()],
+                }]),
+            )
         );
     }
 
@@ -556,14 +635,28 @@ mod tests {
             Vec::new(),
             BTreeMap::from([(
                 Digest::new(ip, 7, 7),
-                ApplicationState::new(NodeStatus::Leaving, 9),
+                ApplicationState::new(
+                    NodeStatus::Leaving,
+                    9,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
             )]),
         );
 
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(NodeStatus::Normal, 6),
+                ApplicationState::new(
+                    NodeStatus::Normal,
+                    6,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
                 HeartbeatState::new(7, 2),
             ),
         )]);
@@ -581,7 +674,14 @@ mod tests {
         );
         assert_eq!(
             gossiper.endpoints_state.get(&ip).unwrap().application_state,
-            ApplicationState::new(NodeStatus::Leaving, 9)
+            ApplicationState::new(
+                NodeStatus::Leaving,
+                9,
+                Vec::from([Schema {
+                    keyspace: "keyspace".to_string(),
+                    tables: vec!["table1".to_string(), "table2".to_string()],
+                }]),
+            )
         );
     }
 
@@ -595,7 +695,14 @@ mod tests {
             vec![Digest::new(ip_1, 6, 3)],
             BTreeMap::from([(
                 Digest::new(ip_2, 8, 7),
-                ApplicationState::new(NodeStatus::Removing, 9),
+                ApplicationState::new(
+                    NodeStatus::Removing,
+                    9,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
             )]),
         );
 
@@ -603,14 +710,28 @@ mod tests {
             (
                 ip_1,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Bootstrap, 2),
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        2,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(7, 2),
                 ),
             ),
             (
                 ip_2,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Normal, 6),
+                    ApplicationState::new(
+                        NodeStatus::Normal,
+                        6,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(7, 2),
                 ),
             ),
@@ -649,7 +770,14 @@ mod tests {
                 .get(&ip_2)
                 .unwrap()
                 .application_state,
-            ApplicationState::new(NodeStatus::Removing, 9)
+            ApplicationState::new(
+                NodeStatus::Removing,
+                9,
+                Vec::from([Schema {
+                    keyspace: "keyspace".to_string(),
+                    tables: vec!["table1".to_string(), "table2".to_string()],
+                }]),
+            )
         );
     }
 
@@ -661,11 +789,25 @@ mod tests {
         let ack2 = Ack2::new(BTreeMap::from([
             (
                 Digest::new(ip_1, 7, 6),
-                ApplicationState::new(NodeStatus::Normal, 7),
+                ApplicationState::new(
+                    NodeStatus::Normal,
+                    7,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
             ),
             (
                 Digest::new(ip_2, 8, 7),
-                ApplicationState::new(NodeStatus::Removing, 9),
+                ApplicationState::new(
+                    NodeStatus::Removing,
+                    9,
+                    Vec::from([Schema {
+                        keyspace: "keyspace".to_string(),
+                        tables: vec!["table1".to_string(), "table2".to_string()],
+                    }]),
+                ),
             ),
         ]));
 
@@ -673,14 +815,28 @@ mod tests {
             (
                 ip_1,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Bootstrap, 2),
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        2,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(7, 2),
                 ),
             ),
             (
                 ip_2,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Normal, 6),
+                    ApplicationState::new(
+                        NodeStatus::Normal,
+                        6,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(7, 2),
                 ),
             ),
@@ -703,7 +859,14 @@ mod tests {
                 .get(&ip_1)
                 .unwrap()
                 .application_state,
-            ApplicationState::new(NodeStatus::Normal, 7)
+            ApplicationState::new(
+                NodeStatus::Normal,
+                7,
+                Vec::from([Schema {
+                    keyspace: "keyspace".to_string(),
+                    tables: vec!["table1".to_string(), "table2".to_string()],
+                }]),
+            )
         );
         assert_eq!(
             gossiper.endpoints_state.get(&ip_2).unwrap().heartbeat_state,
@@ -715,7 +878,14 @@ mod tests {
                 .get(&ip_2)
                 .unwrap()
                 .application_state,
-            ApplicationState::new(NodeStatus::Removing, 9)
+            ApplicationState::new(
+                NodeStatus::Removing,
+                9,
+                Vec::from([Schema {
+                    keyspace: "keyspace".to_string(),
+                    tables: vec!["table1".to_string(), "table2".to_string()],
+                }]),
+            )
         );
     }
 
@@ -743,7 +913,14 @@ mod tests {
 
         let ack = Ack2::new(BTreeMap::from([(
             Digest::new(new_ip, 1, 1),
-            ApplicationState::new(NodeStatus::Bootstrap, 1),
+            ApplicationState::new(
+                NodeStatus::Bootstrap,
+                1,
+                Vec::from([Schema {
+                    keyspace: "keyspace".to_string(),
+                    tables: vec!["table1".to_string(), "table2".to_string()],
+                }]),
+            ),
         )]));
 
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::new();
@@ -768,7 +945,14 @@ mod tests {
                 .get(&new_ip)
                 .unwrap()
                 .application_state,
-            ApplicationState::new(NodeStatus::Bootstrap, 1)
+            ApplicationState::new(
+                NodeStatus::Bootstrap,
+                1,
+                Vec::from([Schema {
+                    keyspace: "keyspace".to_string(),
+                    tables: vec!["table1".to_string(), "table2".to_string()],
+                }]),
+            )
         );
     }
 
@@ -783,28 +967,56 @@ mod tests {
             (
                 client_ip,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Bootstrap, 2),
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        2,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(7, 2),
                 ),
             ),
             (
                 server_ip,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Normal, 6),
+                    ApplicationState::new(
+                        NodeStatus::Normal,
+                        6,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(8, 3),
                 ),
             ),
             (
                 another_ip,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Normal, 8),
+                    ApplicationState::new(
+                        NodeStatus::Normal,
+                        8,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(4, 1),
                 ),
             ),
             (
                 new_ip,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Bootstrap, 1),
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        1,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(1, 1),
                 ),
             ),
@@ -814,21 +1026,42 @@ mod tests {
             (
                 client_ip,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Bootstrap, 2),
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        2,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(6, 1),
                 ),
             ),
             (
                 server_ip,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Normal, 7),
+                    ApplicationState::new(
+                        NodeStatus::Normal,
+                        7,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(8, 8),
                 ),
             ),
             (
                 another_ip,
                 EndpointState::new(
-                    ApplicationState::new(NodeStatus::Normal, 8),
+                    ApplicationState::new(
+                        NodeStatus::Normal,
+                        8,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    ),
                     HeartbeatState::new(7, 2),
                 ),
             ),
@@ -856,11 +1089,25 @@ mod tests {
                 BTreeMap::from([
                     (
                         Digest::new(server_ip, 8, 8),
-                        ApplicationState::new(NodeStatus::Normal, 7)
+                        ApplicationState::new(
+                            NodeStatus::Normal,
+                            7,
+                            Vec::from([Schema {
+                                keyspace: "keyspace".to_string(),
+                                tables: vec!["table1".to_string(), "table2".to_string()],
+                            }]),
+                        )
                     ),
                     (
                         Digest::new(another_ip, 7, 2),
-                        ApplicationState::new(NodeStatus::Normal, 8)
+                        ApplicationState::new(
+                            NodeStatus::Normal,
+                            8,
+                            Vec::from([Schema {
+                                keyspace: "keyspace".to_string(),
+                                tables: vec!["table1".to_string(), "table2".to_string()],
+                            }]),
+                        )
                     ),
                 ])
             )
@@ -878,11 +1125,25 @@ mod tests {
             Ack2::new(BTreeMap::from([
                 (
                     Digest::new(client_ip, 7, 2),
-                    ApplicationState::new(NodeStatus::Bootstrap, 2)
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        2,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    )
                 ),
                 (
                     Digest::new(new_ip, 1, 1),
-                    ApplicationState::new(NodeStatus::Bootstrap, 1)
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        1,
+                        Vec::from([Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string(), "table2".to_string()],
+                        }]),
+                    )
                 ),
             ]))
         );

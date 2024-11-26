@@ -6,7 +6,7 @@ pub mod server;
 
 use native_protocol::{
     self,
-    frame::{self, Frame},
+    frame::Frame,
     messages::{
         self,
         query::{Consistency, Query, QueryParams},
@@ -18,14 +18,14 @@ pub struct CassandraClient {
     stream: TcpStream,
 }
 
-const NATIVE_PORT: u16 = 17989;
+const NATIVE_PORT: u16 = 0x4645;
 
 #[derive(Debug)]
 pub struct ClientError;
 
 #[derive(Debug)]
 pub enum QueryResult {
-    Result(messages::result::result::Result),
+    Result(messages::result::result_::Result),
     Error(messages::error::Error),
 }
 
@@ -33,7 +33,10 @@ impl CassandraClient {
     /// Creates a connection with the node at `ip`.
     pub fn connect(ip: Ipv4Addr) -> Result<Self, ClientError> {
         let addr = SocketAddr::new(IpAddr::V4(ip), NATIVE_PORT);
-        let stream = TcpStream::connect(addr).map_err(|_| ClientError)?;
+        let stream = TcpStream::connect(addr).map_err(|e| {
+            eprintln!("Error al conectar: {:?}", e);
+            ClientError
+        })?;
 
         Ok(Self { stream })
     }

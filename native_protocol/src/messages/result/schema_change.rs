@@ -61,7 +61,6 @@ impl Serializable for SchemaChange {
             ChangeType::Created => "CREATED",
             ChangeType::Updated => "UPDATED",
             ChangeType::Dropped => "DROPPED",
-            _ => return Err(NativeError::InvalidVariant),
         };
 
         bytes.extend_from_slice(&(change_type.len() as u16).to_be_bytes());
@@ -71,7 +70,6 @@ impl Serializable for SchemaChange {
             Target::Keyspace => "KEYSPACE",
             Target::Table => "TABLE",
             Target::Type => "TYPE",
-            _ => return Err(NativeError::InvalidVariant),
         };
 
         bytes.extend_from_slice(&(target.len() as u16).to_be_bytes());
@@ -179,7 +177,7 @@ impl Serializable for SchemaChange {
 
 #[cfg(test)]
 mod tests {
-    use crate::messages::result::result::{Result, ResultCode};
+    use crate::messages::result::result_::{Result, ResultCode};
     use crate::messages::result::schema_change::{ChangeType, Options, Target};
 
     use super::*;

@@ -3,7 +3,7 @@ use std::{net::Ipv4Addr, str::FromStr};
 
 fn main() {
     // Dirección IP del servidor Cassandra
-    let server_ip = "127.0.0.4";
+    let server_ip = "127.0.0.1c";
     let ip = Ipv4Addr::from_str(&server_ip).unwrap();
 
     // Conectarse al servidor Cassandra

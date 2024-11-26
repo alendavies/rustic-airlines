@@ -1,7 +1,7 @@
 ﻿pub mod clauses;
 pub mod errors;
 mod logical_operator;
-mod operator;
+pub mod operator;
 mod utils;
 
 use clauses::keyspace::{
@@ -18,7 +18,7 @@ use clauses::{
 };
 use errors::CQLError;
 use native_protocol::frame::Frame;
-use native_protocol::messages::result::result;
+use native_protocol::messages::result::result_;
 use native_protocol::messages::result::rows::{ColumnType, ColumnValue, Rows};
 use native_protocol::messages::result::schema_change;
 use native_protocol::messages::result::schema_change::SchemaChange;
@@ -51,7 +51,7 @@ pub trait GetUsedKeyspace {
 /// or a specific number of nodes based on the query type.
 #[derive(Debug, Clone)]
 pub enum NeededResponseCount {
-    AllNodes,
+    One,
     Specific(u32),
 }
 
@@ -112,6 +112,33 @@ fn create_column_value_from_type(
     col_type: &ColumnType,
     value: &str,
 ) -> Result<ColumnValue, CQLError> {
+    // Si el valor está vacío, devolver un ColumnValue vacío según el tipo de columna
+    if value.is_empty() {
+        return match col_type {
+            ColumnType::Ascii => Ok(ColumnValue::Ascii(String::new())),
+            ColumnType::Bigint => Ok(ColumnValue::Bigint(0)),
+            // ColumnType::Blob => Ok(ColumnValue::Blob(vec![])),
+            ColumnType::Boolean => Ok(ColumnValue::Boolean(false)),
+            ColumnType::Counter => Ok(ColumnValue::Counter(0)),
+            ColumnType::Decimal => Ok(ColumnValue::Decimal {
+                scale: 0,
+                unscaled: vec![],
+            }),
+            ColumnType::Double => Ok(ColumnValue::Double(0.0)),
+            ColumnType::Float => Ok(ColumnValue::Float(0.0)),
+            ColumnType::Int => Ok(ColumnValue::Int(0)),
+            ColumnType::Timestamp => Ok(ColumnValue::Timestamp(0)),
+            ColumnType::Uuid => {
+                let empty_uuid = uuid::Uuid::nil();
+                Ok(ColumnValue::Uuid(empty_uuid))
+            }
+            ColumnType::Varchar => Ok(ColumnValue::Varchar(String::new())),
+            ColumnType::Varint => Ok(ColumnValue::Varint(vec![])),
+            _ => Err(CQLError::Error),
+        };
+    }
+
+    // Caso normal: procesar el valor según el tipo de columna
     match col_type {
         ColumnType::Ascii => Ok(ColumnValue::Ascii(value.to_string())),
         ColumnType::Bigint => Ok(ColumnValue::Bigint(
@@ -164,7 +191,7 @@ impl CreateClientResponse for Query {
         let query_type = match self {
             Query::Select(_) => {
                 let necessary_columns: Vec<_> = rows
-                    .get(0)
+                    .first()
                     .ok_or(CQLError::InvalidSyntax)?
                     .split(",")
                     .collect();
@@ -177,7 +204,7 @@ impl CreateClientResponse for Query {
                             .find(|col| col.name == *name)
                             .ok_or(CQLError::Error)?;
 
-                        let b = ColumnType::from(a.data_type.clone());
+                        let b = ColumnType::from(a.data_type);
                         Ok((name.to_string(), b))
                     })
                     .collect();
@@ -186,13 +213,15 @@ impl CreateClientResponse for Query {
 
                 let mut records = Vec::new();
 
-                for row in rows[1..].to_vec() {
+                for row in &rows[1..] {
                     let mut record = BTreeMap::new();
 
                     for (idx, value) in row.split(",").enumerate() {
                         let (name, r#type) = col_types.get(idx).ok_or(CQLError::Error)?;
+
                         let col_value = create_column_value_from_type(r#type, value)
                             .map_err(|_| CQLError::Error)?;
+
                         record.insert(name.to_string(), col_value);
                     }
 
@@ -200,27 +229,28 @@ impl CreateClientResponse for Query {
                 }
 
                 let rows = Rows::new(col_types, records);
-                Frame::Result(result::Result::Rows(rows))
+
+                Frame::Result(result_::Result::Rows(rows))
             }
-            Query::Insert(_) => Frame::Result(result::Result::Void),
-            Query::Update(_) => Frame::Result(result::Result::Void),
-            Query::Delete(_) => Frame::Result(result::Result::Void),
+            Query::Insert(_) => Frame::Result(result_::Result::Void),
+            Query::Update(_) => Frame::Result(result_::Result::Void),
+            Query::Delete(_) => Frame::Result(result_::Result::Void),
             Query::CreateTable(create_table) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                Frame::Result(result_::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Created,
                     schema_change::Target::Table,
                     schema_change::Options::new(keyspace, Some(create_table.get_name())),
                 )))
             }
             Query::DropTable(create_table) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                Frame::Result(result_::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Dropped,
                     schema_change::Target::Table,
                     schema_change::Options::new(keyspace, Some(create_table.get_table_name())),
                 )))
             }
             Query::AlterTable(create_table) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                Frame::Result(result_::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Updated,
                     schema_change::Target::Table,
                     schema_change::Options::new(keyspace, Some(create_table.get_table_name())),
@@ -232,23 +262,23 @@ impl CreateClientResponse for Query {
                     schema_change::Target::Keyspace,
                     schema_change::Options::new(keyspace, None),
                 );
-                Frame::Result(result::Result::SchemaChange(schema_change))
+                Frame::Result(result_::Result::SchemaChange(schema_change))
             }
             Query::DropKeyspace(_) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                Frame::Result(result_::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Dropped,
                     schema_change::Target::Keyspace,
                     schema_change::Options::new(keyspace, None),
                 )))
             }
             Query::AlterKeyspace(_) => {
-                Frame::Result(result::Result::SchemaChange(SchemaChange::new(
+                Frame::Result(result_::Result::SchemaChange(SchemaChange::new(
                     schema_change::ChangeType::Updated,
                     schema_change::Target::Keyspace,
                     schema_change::Options::new(keyspace, None),
                 )))
             }
-            Query::Use(_) => Frame::Result(result::Result::SetKeyspace(keyspace)),
+            Query::Use(_) => Frame::Result(result_::Result::SetKeyspace(keyspace)),
         };
 
         Ok(query_type)
@@ -264,13 +294,13 @@ impl NeededResponses for Query {
             Query::Insert(_) => NeededResponseCount::Specific(1),
             Query::Update(_) => NeededResponseCount::Specific(1),
             Query::Delete(_) => NeededResponseCount::Specific(1),
-            Query::CreateTable(_) => NeededResponseCount::AllNodes,
-            Query::DropTable(_) => NeededResponseCount::AllNodes,
-            Query::AlterTable(_) => NeededResponseCount::AllNodes,
-            Query::CreateKeyspace(_) => NeededResponseCount::AllNodes,
-            Query::DropKeyspace(_) => NeededResponseCount::AllNodes,
-            Query::AlterKeyspace(_) => NeededResponseCount::AllNodes,
-            Query::Use(_) => NeededResponseCount::AllNodes,
+            Query::CreateTable(_) => NeededResponseCount::One,
+            Query::DropTable(_) => NeededResponseCount::One,
+            Query::AlterTable(_) => NeededResponseCount::One,
+            Query::CreateKeyspace(_) => NeededResponseCount::One,
+            Query::DropKeyspace(_) => NeededResponseCount::One,
+            Query::AlterKeyspace(_) => NeededResponseCount::One,
+            Query::Use(_) => NeededResponseCount::One,
         }
     }
 }
@@ -363,6 +393,12 @@ impl GetUsedKeyspace for Query {
 #[derive(Debug)]
 pub struct QueryCreator;
 
+impl Default for QueryCreator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QueryCreator {
     /// Creates a new instance of `QueryCreator`.
     pub fn new() -> QueryCreator {
@@ -451,13 +487,13 @@ impl QueryCreator {
         let mut tokens = Vec::new();
         let mut current = String::new();
         let mut in_braces = false;
-    
+
         let string = string.replace(";", "");
         let length = string.len();
-    
+
         while index < length {
             let char = string.chars().nth(index).unwrap_or('0');
-    
+
             if char == '{' {
                 tokens.push("{".to_string());
                 in_braces = true;
@@ -497,15 +533,15 @@ impl QueryCreator {
                 index = Self::process_other(&string, index, &mut current, &mut tokens);
             }
         }
-    
+
         if !current.is_empty() {
             tokens.push(current.clone());
         }
-    
+
         tokens.retain(|s| !s.is_empty());
         tokens
     }
-    
+
     fn process_alfa(
         string: &str,
         mut index: usize,
@@ -514,7 +550,7 @@ impl QueryCreator {
     ) -> usize {
         while index < string.len() {
             let char = string.chars().nth(index).unwrap_or('0');
-            
+
             // Aceptamos cualquier caracter alfanumérico, guiones bajos, arroba, punto o guión
             if char.is_alphanumeric() || char == '_' || char == '@' || char == '.' || char == '-' {
                 current.push(char);
@@ -523,12 +559,12 @@ impl QueryCreator {
                 break;
             }
         }
-        
+
         if !current.is_empty() {
             tokens.push(current.clone());
             current.clear();
         }
-        
+
         index
     }
 
@@ -621,7 +657,7 @@ mod tests {
         if let Ok(query) = result {
             assert!(matches!(
                 query.needed_responses(),
-                NeededResponseCount::AllNodes
+                NeededResponseCount::Specific(1)
             ));
         }
     }
@@ -680,10 +716,7 @@ mod tests {
         assert!(matches!(result, Ok(Query::CreateTable(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(
-                query.needed_responses(),
-                NeededResponseCount::AllNodes
-            ));
+            assert!(matches!(query.needed_responses(), NeededResponseCount::One));
         }
     }
 
@@ -697,7 +730,7 @@ mod tests {
         if let Ok(query) = result {
             assert!(matches!(
                 query.needed_responses(),
-                NeededResponseCount::AllNodes
+                NeededResponseCount::Specific(1)
             ));
         }
     }
@@ -710,10 +743,7 @@ mod tests {
         assert!(matches!(result, Ok(Query::DropKeyspace(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(
-                query.needed_responses(),
-                NeededResponseCount::AllNodes
-            ));
+            assert!(matches!(query.needed_responses(), NeededResponseCount::One));
         }
     }
 
@@ -725,10 +755,7 @@ mod tests {
         assert!(matches!(result, Ok(Query::AlterKeyspace(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(
-                query.needed_responses(),
-                NeededResponseCount::AllNodes
-            ));
+            assert!(matches!(query.needed_responses(), NeededResponseCount::One));
         }
     }
 }
