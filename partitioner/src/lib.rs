@@ -81,11 +81,11 @@ impl Partitioner {
         // println!("Removing node...");
         let hash = Self::hash_value(ip.to_string())?;
 
+        println!("Partitioner: {:?}", self);
         self.nodes
             .remove(&hash)
-            .ok_or(PartitionerError::NodeNotFound);
-        println!("Partitioner: {:?}", self);
-      
+            .ok_or(PartitionerError::NodeNotFound)
+
         // println!("el anillo es {:?}", self);
     }
 
