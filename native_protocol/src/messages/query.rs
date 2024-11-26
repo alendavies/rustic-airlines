@@ -222,7 +222,7 @@ impl Query {
     }
 
     pub fn get_consistency(&self) -> &str {
-        &self.params.consistency.to_string()
+        self.params.consistency.to_string()
     }
 }
 

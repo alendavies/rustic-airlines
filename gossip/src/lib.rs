@@ -39,6 +39,12 @@ impl fmt::Display for GossipError {
     }
 }
 
+impl Default for Gossiper {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Gossiper {
     /// Create a new Gossiper instance with an empty state.
     pub fn new() -> Self {
@@ -130,24 +136,34 @@ impl Gossiper {
                 }
 
                 if digest.generation != my_digest.generation {
-                    // Si la generacion del digest es mayor a la mía, entonces el mio está desactualizado
-                    // le mando mi digest
-                    if digest.generation > my_digest.generation {
-                        stale_digests.push(my_digest.clone());
-                    }
-                    // si el de él está desactualizado, le mando la info para que lo actualice
-                    else if digest.generation < my_digest.generation {
-                        updated_info.insert(my_digest.clone(), my_state.application_state.clone());
+                    match digest.generation.cmp(&my_digest.generation) {
+                        std::cmp::Ordering::Greater => {
+                            // Si la generación del digest es mayor a la mía, entonces el mío está desactualizado
+                            // le mando mi digest
+                            stale_digests.push(my_digest);
+                        }
+                        std::cmp::Ordering::Less => {
+                            // Si el de él está desactualizado, le mando la info para que lo actualice
+                            updated_info.insert(my_digest, my_state.application_state.clone());
+                        }
+                        std::cmp::Ordering::Equal => {
+                            // si las generaciones son iguales, no hacemos nada
+                        }
                     }
                 } else {
-                    // Si la versión del digest es mayor a la mía, entonces el mio está desactualizado
-                    // le mando mi digest
-                    if digest.version > my_digest.version {
-                        stale_digests.push(my_digest);
-                    }
-                    // si el de él está desactualizado, le mando la info para que lo actualice
-                    else if digest.version < my_digest.version {
-                        updated_info.insert(my_digest, my_state.application_state.clone());
+                    match digest.version.cmp(&my_digest.version) {
+                        std::cmp::Ordering::Greater => {
+                            // Si la versión del digest es mayor a la mía, entonces el mío está desactualizado
+                            // le mando mi digest
+                            stale_digests.push(my_digest);
+                        }
+                        std::cmp::Ordering::Less => {
+                            // Si el de él está desactualizado, le mando la info para que lo actualice
+                            updated_info.insert(my_digest, my_state.application_state.clone());
+                        }
+                        std::cmp::Ordering::Equal => {
+                            // si las versiones son iguales, no hacemos nada
+                        }
                     }
                 }
             } else {
@@ -177,11 +193,6 @@ impl Gossiper {
 
             if digest.generation == my_digest.generation && digest.version == my_digest.version {
                 continue;
-            }
-
-            // si la generacion en el digest es menor a la mía, le mando la info para que lo actualice
-            if digest.generation < my_digest.generation {
-                updated_info.insert(my_digest, my_state.application_state.clone());
             }
             // si la version en el digest es menor a la mía, le mando la info para que lo actualice
             else if digest.version < my_digest.version {

@@ -1,6 +1,6 @@
 use driver::{CassandraClient, QueryResult};
 use native_protocol::messages::error::Error;
-use native_protocol::messages::result::result::Result;
+use native_protocol::messages::result::result_::Result;
 use native_protocol::messages::result::rows::ColumnValue;
 use native_protocol::messages::result::schema_change;
 use native_protocol::messages::result::schema_change::SchemaChange;

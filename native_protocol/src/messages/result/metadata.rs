@@ -31,30 +31,28 @@ impl ColumnSpec {
             bytes.extend_from_slice("".to_string().to_string_bytes()?.as_slice());
         }
 
-        bytes.extend_from_slice(&self.name.to_string_bytes()?.as_slice());
-        bytes.extend_from_slice(&self.type_.to_option_bytes()?.as_slice());
+        bytes.extend_from_slice(self.name.to_string_bytes()?.as_slice());
+        bytes.extend_from_slice(self.type_.to_option_bytes()?.as_slice());
 
         Ok(bytes)
     }
 
     pub fn from_bytes(cursor: &mut std::io::Cursor<&[u8]>) -> Result<Self, NativeError> {
         let keyspace_string = String::from_string_bytes(cursor)?;
-        let keyspace: Option<String>;
 
-        if keyspace_string.is_empty() {
-            keyspace = None;
+        let keyspace: Option<String> = if keyspace_string.is_empty() {
+            None
         } else {
-            keyspace = Some(keyspace_string);
-        }
+            Some(keyspace_string)
+        };
 
         let table_name_string = String::from_string_bytes(cursor)?;
-        let table_name: Option<String>;
 
-        if table_name_string.is_empty() {
-            table_name = None;
+        let table_name: Option<String> = if table_name_string.is_empty() {
+            None
         } else {
-            table_name = Some(table_name_string);
-        }
+            Some(table_name_string)
+        };
 
         let name = String::from_string_bytes(cursor)?;
 
@@ -184,19 +182,17 @@ impl Metadata {
             .map_err(|_| NativeError::CursorError)?;
         let columns_count = u32::from_be_bytes(columns_count_bytes);
 
-        let global_table_spec: Option<TableSpec>;
-
         let keyspace = String::from_string_bytes(cursor)?;
         let table_name = String::from_string_bytes(cursor)?;
 
-        if keyspace.is_empty() && table_name.is_empty() {
-            global_table_spec = None;
+        let global_table_spec: Option<TableSpec> = if keyspace.is_empty() && table_name.is_empty() {
+            None
         } else {
-            global_table_spec = Some(TableSpec {
+            Some(TableSpec {
                 keyspace,
                 table_name,
-            });
-        }
+            })
+        };
 
         let mut col_spec_i = Vec::new();
         for _ in 0..columns_count {

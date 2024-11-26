@@ -134,7 +134,6 @@ impl Serializable for Result {
             Result::SetKeyspace(_) => ResultCode::SetKeyspace,
             Result::Prepared(_) => ResultCode::Prepared,
             Result::SchemaChange(_) => ResultCode::SchemaChange,
-            _ => return Err(NativeError::InvalidVariant),
         };
 
         bytes.extend_from_slice(&(code as u32).to_be_bytes());
@@ -188,7 +187,6 @@ impl Serializable for Result {
                 let schema_change = SchemaChange::from_bytes(&bytes[4..])?;
                 Ok(Result::SchemaChange(schema_change))
             }
-            _ => Err(NativeError::InvalidCode),
         }
     }
 }

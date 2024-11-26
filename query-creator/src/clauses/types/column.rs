@@ -1,6 +1,6 @@
 use super::datatype::DataType;
 
-#[derive(Debug, Clone, Eq, Hash)]
+#[derive(Debug, Clone, Eq)]
 pub struct Column {
     pub name: String,
     pub data_type: DataType,

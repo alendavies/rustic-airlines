@@ -25,7 +25,7 @@ pub struct ClientError;
 
 #[derive(Debug)]
 pub enum QueryResult {
-    Result(messages::result::result::Result),
+    Result(messages::result::result_::Result),
     Error(messages::error::Error),
 }
 

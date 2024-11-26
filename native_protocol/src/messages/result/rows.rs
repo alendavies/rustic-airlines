@@ -30,9 +30,7 @@ enum ColumnTypeCode {
     Timeuuid = 0x000F,
     Inet = 0x0010,
     List = 0x0020,
-    Map = 0x0021,
     Set = 0x0022,
-    UDT = 0x0030, // Keyspace, UDT name, fields
     Tuple = 0x0031,
 }
 
@@ -373,7 +371,6 @@ impl ColumnValue {
                     bytes.extend_from_slice(&value_bytes);
                 }
             }
-            _ => return Err(NativeError::InvalidVariant),
         }
         Ok(bytes)
     }
@@ -529,7 +526,6 @@ impl ColumnValue {
             ColumnType::Tuple(_) => {
                 todo!()
             }
-            _ => return Err(NativeError::InvalidVariant),
         };
         Ok(value)
     }
@@ -566,40 +562,6 @@ fn list_from_cursor(
         .collect();
 
     elements
-}
-
-#[derive(Debug, PartialEq)]
-struct UserDefinedType {
-    keyspace: String,
-    udt_name: String,
-    num_fields: u16,
-    fields: Vec<(String, ColumnType)>,
-}
-
-fn udt_from_cursor(cursor: &mut std::io::Cursor<&[u8]>) -> Result<UserDefinedType, NativeError> {
-    let keyspace = String::from_string_bytes(cursor)?;
-    let udt_name = String::from_string_bytes(cursor)?;
-
-    let mut num_fields_bytes = [0u8; 2];
-    cursor
-        .read_exact(&mut num_fields_bytes)
-        .map_err(|_| NativeError::CursorError)?;
-
-    let num_fields: u16 = u16::from_be_bytes(num_fields_bytes);
-
-    let mut fields = Vec::new();
-    for _ in 0..num_fields {
-        let field_name = String::from_string_bytes(cursor)?;
-        let field_type = ColumnType::from_option_bytes(cursor)?;
-        fields.push((field_name, field_type));
-    }
-
-    Ok(UserDefinedType {
-        keyspace,
-        udt_name,
-        num_fields,
-        fields,
-    })
 }
 
 // key: column name, value: column value
