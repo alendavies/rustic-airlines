@@ -15,7 +15,7 @@ use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::{primitive, thread};
+use std::thread;
 use std::time::Instant;
 
 // Internal project libraries
@@ -202,11 +202,17 @@ impl Node {
         };
 
         let needed_responses = match query.needed_responses() {
-            query_creator::NeededResponseCount::AllNodes => all_nodes,
+            query_creator::NeededResponseCount::One => 1,
             query_creator::NeededResponseCount::Specific(specific_value) => {
-                specific_value as usize * replication_factor as usize
+                let calculated_responses = specific_value as usize * replication_factor as usize;
+                if calculated_responses > all_nodes {
+                    all_nodes
+                } else {
+                    calculated_responses
+                }
             }
         };
+        
         Ok(self.open_query_handler.new_open_query(
             needed_responses as i32,
             connection,
@@ -538,7 +544,6 @@ impl Node {
     ) -> Result<(), NodeError> {
         let socket = SocketAddrV4::new(self_ip, INTERNODE_PORT);
         let listener = TcpListener::bind(socket)?;
-        println!("llega a nodo conexiones");
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -572,9 +577,6 @@ impl Node {
     ) -> Result<(), NodeError> {
         let socket = SocketAddrV4::new(self_ip, CLIENT_NODE_PORT); // Specific port for clients
         let listener = TcpListener::bind(socket)?;
-        println!(
-            "llega a conexiones con los clientes"
-        );
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -712,8 +714,8 @@ impl Node {
                 Ok(value) => {
                     message = value;
                 }
-                Err(e) => {
-                    println!("Error al crear los bytes: {:?}", e);
+                Err(_) => {
+                    // println!("Error al crear los bytes: {:?}", e);
                     continue;
                 }
             }
@@ -781,7 +783,7 @@ impl Node {
             } else {
                 keyspace = guard_node.get_client_keyspace(client_id)?;
             }
-
+            
             // Intentar obtener el nombre de la tabla y buscar la tabla correspondiente en el keyspace
             let table = query.get_table_name().and_then(|table_name| {
                 keyspace

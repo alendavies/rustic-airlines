@@ -79,6 +79,7 @@ impl Partitioner {
             .nodes
             .remove(&hash)
             .ok_or(PartitionerError::NodeNotFound);
+        println!("Partitioner: {:?}", self);
         // println!("el anillo es {:?}", self);
 
         result

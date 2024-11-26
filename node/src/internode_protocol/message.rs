@@ -187,14 +187,13 @@ impl InternodeSerializable for InternodeMessage {
                 InternodeQuery::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?,
             ),
             Opcode::Response => InternodeMessageContent::Response({
-                println!("es una response");
                 InternodeResponse::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?
             }),
             Opcode::Gossip => InternodeMessageContent::Gossip(
                 GossipMessage::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?,
             ),
         };
-
+        //println!("el content es {:?} y el header es {:?}", content, header);
         let message = InternodeMessage {
             from: header.ip,
             content,

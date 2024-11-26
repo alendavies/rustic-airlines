@@ -73,11 +73,6 @@ fn execute_and_verify_select(
     match client.execute(query, "all") {
         Ok(query_result) => match query_result {
             QueryResult::Result(Result::Rows(rows)) => {
-                // println!(
-                //     "se compara {:?} con {:?}",
-                //     rows.rows_content, expected_values
-                // );
-
                 if rows.rows_content.is_empty() {
                     return expected_values.is_empty();
                 }

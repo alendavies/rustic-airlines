@@ -51,7 +51,7 @@ pub trait GetUsedKeyspace {
 /// or a specific number of nodes based on the query type.
 #[derive(Debug, Clone)]
 pub enum NeededResponseCount {
-    AllNodes,
+    One,
     Specific(u32),
 }
 
@@ -294,13 +294,13 @@ impl NeededResponses for Query {
             Query::Insert(_) => NeededResponseCount::Specific(1),
             Query::Update(_) => NeededResponseCount::Specific(1),
             Query::Delete(_) => NeededResponseCount::Specific(1),
-            Query::CreateTable(_) => NeededResponseCount::AllNodes,
-            Query::DropTable(_) => NeededResponseCount::AllNodes,
-            Query::AlterTable(_) => NeededResponseCount::AllNodes,
-            Query::CreateKeyspace(_) => NeededResponseCount::Specific(1),
-            Query::DropKeyspace(_) => NeededResponseCount::AllNodes,
-            Query::AlterKeyspace(_) => NeededResponseCount::AllNodes,
-            Query::Use(_) => NeededResponseCount::AllNodes,
+            Query::CreateTable(_) => NeededResponseCount::One,
+            Query::DropTable(_) => NeededResponseCount::One,
+            Query::AlterTable(_) => NeededResponseCount::One,
+            Query::CreateKeyspace(_) => NeededResponseCount::One,
+            Query::DropKeyspace(_) => NeededResponseCount::One,
+            Query::AlterKeyspace(_) => NeededResponseCount::One,
+            Query::Use(_) => NeededResponseCount::One,
         }
     }
 }
@@ -651,7 +651,7 @@ mod tests {
         if let Ok(query) = result {
             assert!(matches!(
                 query.needed_responses(),
-                NeededResponseCount::AllNodes
+                NeededResponseCount::Specific(1)
             ));
         }
     }
@@ -710,10 +710,7 @@ mod tests {
         assert!(matches!(result, Ok(Query::CreateTable(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(
-                query.needed_responses(),
-                NeededResponseCount::AllNodes
-            ));
+            assert!(matches!(query.needed_responses(), NeededResponseCount::One));
         }
     }
 
@@ -727,7 +724,7 @@ mod tests {
         if let Ok(query) = result {
             assert!(matches!(
                 query.needed_responses(),
-                NeededResponseCount::AllNodes
+                NeededResponseCount::Specific(1)
             ));
         }
     }
@@ -740,10 +737,7 @@ mod tests {
         assert!(matches!(result, Ok(Query::DropKeyspace(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(
-                query.needed_responses(),
-                NeededResponseCount::AllNodes
-            ));
+            assert!(matches!(query.needed_responses(), NeededResponseCount::One));
         }
     }
 
@@ -755,10 +749,7 @@ mod tests {
         assert!(matches!(result, Ok(Query::AlterKeyspace(_))));
 
         if let Ok(query) = result {
-            assert!(matches!(
-                query.needed_responses(),
-                NeededResponseCount::AllNodes
-            ));
+            assert!(matches!(query.needed_responses(), NeededResponseCount::One));
         }
     }
 }

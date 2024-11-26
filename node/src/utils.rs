@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 /// Attempts to connect to a peer and send a message over the `TcpStream`.
 ///
