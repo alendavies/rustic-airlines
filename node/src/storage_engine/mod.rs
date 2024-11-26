@@ -2,6 +2,7 @@ use std::fs::{self, File};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
+pub mod data_redistribution;
 pub mod delete;
 pub mod errors;
 pub mod insert;

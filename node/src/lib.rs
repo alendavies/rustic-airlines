@@ -15,8 +15,8 @@ use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Instant;
+use std::{thread, vec};
 
 // Internal project libraries
 use crate::table::Table;
@@ -63,7 +63,7 @@ pub struct Node {
     clients_keyspace: HashMap<i32, Option<String>>,
     last_client_id: i32,
     gossiper: Gossiper,
-    storage_path: PathBuf
+    storage_path: PathBuf,
 }
 
 impl Node {
@@ -76,7 +76,11 @@ impl Node {
     ///
     /// # Returns
     /// Returns a `Node` instance or a `NodeError` if it fails.
-    pub fn new(ip: Ipv4Addr, seeds_nodes: Vec<Ipv4Addr>, storage_path: PathBuf) -> Result<Node, NodeError> {
+    pub fn new(
+        ip: Ipv4Addr,
+        seeds_nodes: Vec<Ipv4Addr>,
+        storage_path: PathBuf,
+    ) -> Result<Node, NodeError> {
         let mut partitioner = Partitioner::new();
         partitioner.add_node(ip)?;
 
@@ -89,9 +93,8 @@ impl Node {
             }
         }
 
-
         Ok(Node {
-            ip,            
+            ip,
             partitioner,
             open_query_handler: OpenQueryHandler::new(),
             keyspaces: vec![],
@@ -103,7 +106,7 @@ impl Node {
                 .with_seeds(seeds_nodes),
         })
     }
-         /// Starts the gossip process for the node.
+    /// Starts the gossip process for the node.
     /// Opens 3 connections with 3 other nodes.
     pub fn start_gossip(
         node: Arc<Mutex<Node>>,
@@ -151,22 +154,63 @@ impl Node {
                     }
                 }
                 // After each gossip round, update the partitioner
-                {   
+                {
+                    // Bloqueo del mutex solo para extraer lo necesario
+                    let (storage_path, self_ip, keyspaces) = {
+                        let node_guard = match node.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => return NodeError::LockError,
+                        };
+
+                        (
+                            node_guard.storage_path.clone(), // Clonar el path de almacenamiento
+                            node_guard.get_ip().to_string(), // Clonar el IP
+                            node_guard.keyspaces.clone(), // Clonar los keyspaces desde el guard     // Referencia mutable al particionador
+                        )
+                    };
                     let mut node_guard = node.lock().unwrap();
                     let endpoints_states = &node_guard.gossiper.endpoints_state.clone();
                     let partitioner = &mut node_guard.partitioner;
+                    let mut needs_to_redistribute = false;
+
                     for (ip, state) in endpoints_states {
                         if state.application_state.status.is_dead() {
+                            let result = partitioner.node_already_in_partitioner(ip);
+                            if let Ok(exists) = result {
+                                if exists {
+                                    continue;
+                                }
+                                needs_to_redistribute = true;
+                                partitioner.add_node(*ip).ok();
+                            } else {
+                                return NodeError::PartitionerError(
+                                    partitioner::errors::PartitionerError::HashError,
+                                );
+                            }
+
                             partitioner.remove_node(*ip).ok();
                         } else {
-                            
-                            partitioner.add_node(*ip).ok();
+                            let result = partitioner.node_already_in_partitioner(ip);
+                            if let Ok(exists) = result {
+                                if exists {
+                                    continue;
+                                }
+                                needs_to_redistribute = true;
+                                partitioner.add_node(*ip).ok();
+                            } else {
+                                return NodeError::PartitionerError(
+                                    partitioner::errors::PartitionerError::HashError,
+                                );
+                            }
                         }
                     }
+                    if needs_to_redistribute {
+                        storage_engine::StorageEngine::new(storage_path.clone(), self_ip.clone())
+                            .redistribute_data(keyspaces.clone(), partitioner, connections.clone())
+                            .ok();
+                    }
                 }
-                {
-                    
-                }
+                {}
                 thread::sleep(std::time::Duration::from_secs(1));
             }
         });
@@ -212,7 +256,7 @@ impl Node {
                 }
             }
         };
-        
+
         Ok(self.open_query_handler.new_open_query(
             needed_responses as i32,
             connection,
@@ -471,7 +515,7 @@ impl Node {
     ) -> Result<(), NodeError> {
         let self_ip;
         {
-            let  node_guard = node.lock()?;
+            let node_guard = node.lock()?;
             self_ip = node_guard.get_ip();
 
             // if !is_seed {
@@ -637,7 +681,6 @@ impl Node {
                     break;
                 }
                 Ok(_) => {
-                    
                     let query = handle_client_request(&buffer);
                     match query {
                         Request::Startup => {
@@ -707,7 +750,7 @@ impl Node {
             // Try to read a line
             let bytes_read = reader.read(&mut buffer);
             let result = InternodeMessage::from_bytes(&buffer);
-        
+
             let message;
 
             match result {
@@ -719,7 +762,6 @@ impl Node {
                     continue;
                 }
             }
-            
 
             match bytes_read {
                 Ok(0) => {
@@ -727,8 +769,6 @@ impl Node {
                     break;
                 }
                 Ok(_) => {
-                    
-                   
                     // Process the command with the protocol, passing the buffer and the necessary parameters
                     let result = internode_protocol_handler.handle_command(
                         &node,
@@ -755,7 +795,7 @@ impl Node {
         Ok(())
     }
 
-    fn current_timestamp() -> i64 {
+    pub fn current_timestamp() -> i64 {
         Utc::now().timestamp()
     }
 
@@ -783,7 +823,7 @@ impl Node {
             } else {
                 keyspace = guard_node.get_client_keyspace(client_id)?;
             }
-            
+
             // Intentar obtener el nombre de la tabla y buscar la tabla correspondiente en el keyspace
             let table = query.get_table_name().and_then(|table_name| {
                 keyspace
@@ -804,17 +844,17 @@ impl Node {
         }
         let timestamp = Self::current_timestamp();
 
-        let response = QueryExecution::new(node.clone(), connections.clone(), storage_path.clone())?.execute(
-            query.clone(),
-            false,
-            false,
-            open_query_id,
-            client_id,
-            Some(timestamp),
-        )?;
+        let response =
+            QueryExecution::new(node.clone(), connections.clone(), storage_path.clone())?.execute(
+                query.clone(),
+                false,
+                false,
+                open_query_id,
+                client_id,
+                Some(timestamp),
+            )?;
 
         if let Some(((finished_responses, failed_nodes), content)) = response {
-            
             let mut guard_node = node.lock()?;
             // Obtener el keyspace especificado o el actual del cliente
 
@@ -843,7 +883,6 @@ impl Node {
                 "".to_string()
             };
 
-            
             let partitioner = guard_node.get_partitioner();
             let query_handler = guard_node.get_open_handle_query();
 
