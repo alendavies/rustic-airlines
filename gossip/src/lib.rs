@@ -76,16 +76,21 @@ impl Gossiper {
         self
     }
 
+    /// Changes the status of the application state of the endpoint with the given ip.
     pub fn change_status(&mut self, ip: Ipv4Addr, status: NodeStatus) -> Result<(), GossipError> {
-        self.endpoints_state
+        let app_state = &mut self
+            .endpoints_state
             .get_mut(&ip)
             .ok_or(GossipError::NoEndpointStateForIp)?
-            .application_state
-            .status = status;
+            .application_state;
+
+        app_state.status = status;
+        app_state.version += 1;
 
         Ok(())
     }
 
+    /// Marks the endpoint with the given ip as dead.
     pub fn kill(&mut self, ip: Ipv4Addr) -> Result<(), GossipError> {
         self.change_status(ip, NodeStatus::Dead)
     }
