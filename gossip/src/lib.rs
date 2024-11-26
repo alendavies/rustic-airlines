@@ -8,7 +8,7 @@ use std::{
     fmt,
     net::Ipv4Addr,
 };
-use structures::{EndpointState, HeartbeatState, NodeStatus};
+use structures::{EndpointState, HeartbeatState, NodeStatus, Schema};
 pub mod messages;
 pub mod structures;
 
@@ -103,6 +103,25 @@ impl Gossiper {
         app_state
             .schemas
             .retain(|schema| schema.keyspace != keyspace);
+
+        app_state.version += 1;
+
+        Ok(())
+    }
+
+    /// Adds the keyspace to the application state of the endpoint with the given ip.
+    pub fn add_keyspace(&mut self, ip: Ipv4Addr, keyspace: &str) -> Result<(), GossipError> {
+        let app_state = &mut self
+            .endpoints_state
+            .get_mut(&ip)
+            .ok_or(GossipError::NoEndpointStateForIp)?
+            .application_state;
+
+        // TODO: check if the keyspace already exists
+        app_state.schemas.push(Schema {
+            keyspace: keyspace.to_string(),
+            tables: Vec::new(),
+        });
 
         app_state.version += 1;
 
@@ -1253,6 +1272,58 @@ mod tests {
         };
 
         let result = gossiper.remove_keyspace(ip, "keyspace");
+
+        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    }
+
+    #[test]
+    fn add_keyspace() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Vec::new()),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        gossiper.add_keyspace(ip, "keyspace").unwrap();
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .schemas,
+            vec![Schema {
+                keyspace: "keyspace".to_string(),
+                tables: Vec::new()
+            }]
+        );
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .version,
+            3
+        );
+    }
+
+    #[test]
+    fn add_keyspace_non_existent_ip() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::new(),
+        };
+
+        let result = gossiper.add_keyspace(ip, "keyspace");
 
         assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
     }
