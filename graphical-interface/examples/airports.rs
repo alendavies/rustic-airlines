@@ -60,7 +60,7 @@ fn main() {
             arrival_time TIMESTAMP,
             airport TEXT,
             direction TEXT,
-            PRIMARY KEY (direction, airport, departure_time, arrival_time)
+            PRIMARY KEY (airport, direction, departure_time, arrival_time)
         )",
 
     "CREATE TABLE flight_info (

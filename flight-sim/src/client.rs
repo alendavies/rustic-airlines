@@ -1,8 +1,12 @@
-﻿use std::net::Ipv4Addr;
-use driver::{ClientError,CassandraClient};
+﻿use std::collections::HashMap;
+use std::net::Ipv4Addr;
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
+use driver::{CassandraClient, ClientError, QueryResult};
+use native_protocol::messages::result::{result, rows};
 
 use crate::types::flight::Flight;
 use crate::types::airport::Airport;
+use crate::types::flight_status::FlightStatus;
 
 pub struct Client {
     cassandra_client: CassandraClient,
@@ -39,29 +43,33 @@ impl Client {
             CREATE TABLE sky.flights (
                 number TEXT,
                 status TEXT,
+                lat DOUBLE,
+                lon DOUBLE,
+                angle FLOAT,
                 departure_time TIMESTAMP,
                 arrival_time TIMESTAMP,
                 airport TEXT,
                 direction TEXT,
-                PRIMARY KEY (airport, direction, departure_time, arrival_time)
+                PRIMARY KEY (direction, airport, departure_time, arrival_time, number)
             )
-        "#;
+            "#;
         self.cassandra_client.execute(&create_flights_table, "all")?;
 
         let create_flight_info_table = r#"
             CREATE TABLE sky.flight_info (
-                number TEXT PRIMARY KEY,
-                lat DOUBLE,
-                lon DOUBLE,
+                number TEXT,
                 fuel DOUBLE,
                 height INT,
-                speed DOUBLE
+                speed INT,
+                origin TEXT,
+                destination TEXT,
+                PRIMARY KEY (number)
             )
         "#;
         self.cassandra_client.execute(&create_flight_info_table, "all")?;
 
         let create_airports_table = r#"
-            CREATE TABLE sky.airports (
+            CREATE TABLE airports (
                 iata TEXT,
                 country TEXT,
                 name TEXT,
@@ -95,33 +103,39 @@ impl Client {
     ) -> Result<(), ClientError> {
         // Inserción en la tabla flights para el origen (DEPARTURE)
         let insert_departure_query = format!(
-            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, '{}', 'DEPARTURE');",
+            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'DEPARTURE', {}, {}, {});",
             flight.flight_number,
             flight.status.as_str(),
             flight.departure_time.and_utc().timestamp(),
             flight.arrival_time.and_utc().timestamp(),
             flight.origin.iata_code,
+            flight.latitude,
+            flight.longitude,
+            flight.angle
         );
 
         // Inserción en la tabla flights para el destino (ARRIVAL)
         let insert_arrival_query = format!(
-            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, '{}', 'ARRIVAL');",
+            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'ARRIVAL', {}, {}, {});",
             flight.flight_number,
             flight.status.as_str(),
             flight.departure_time.and_utc().timestamp(),
             flight.arrival_time.and_utc().timestamp(),
             flight.destination.iata_code,
+            flight.latitude,
+            flight.longitude,
+            flight.angle
         );
 
         // Inserción en la tabla flight_info con la información del vuelo
         let insert_flight_info_query = format!(
-            "INSERT INTO sky.flight_info (number, lat, lon, fuel, height, speed) VALUES ('{}', {}, {}, {}, {}, {});",
+            "INSERT INTO sky.flight_info (number, fuel, height, speed, origin, destination) VALUES ('{}', {}, {}, {}, '{}', '{}');",
             flight.flight_number,
-            flight.latitude,
-            flight.longitude,
             flight.fuel_level,
             flight.altitude,
             flight.average_speed,
+            flight.origin.iata_code,
+            flight.destination.iata_code
         );
 
         // Ejecución de las consultas en Cassandra
@@ -139,28 +153,35 @@ impl Client {
         flight: &Flight
     ) -> Result<(), ClientError> {
         let update_query_status_departure = format!(
-                "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {};",
+                "UPDATE sky.flights SET status = '{}', lat = {}, lon = {}, angle = {} WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
                 flight.status.as_str(),
+                flight.latitude,
+                flight.longitude,
+                flight.angle,
                 flight.origin.iata_code,
                 "DEPARTURE",
                 flight.departure_time.and_utc().timestamp(),
                 flight.arrival_time.and_utc().timestamp(),
+                flight.flight_number
             );
         self.cassandra_client.execute(&update_query_status_departure, "all")?;
 
         let update_query_status_arrival = format!(
-                "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {};",
+                "UPDATE sky.flights SET status = '{}', lat = {}, lon = {}, angle = {} WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
                 flight.status.as_str(),
+                flight.latitude,
+                flight.longitude,
+                flight.angle,
                 flight.destination.iata_code,
                 "ARRIVAL",
                 flight.departure_time.and_utc().timestamp(),
                 flight.arrival_time.and_utc().timestamp(),
+                flight.flight_number
             );
         self.cassandra_client.execute(&update_query_status_arrival, "all")?;
         let update_query_flight_info = format!(
-                "UPDATE sky.flight_info SET lat = {}, lon = {}, speed = {}, height = {} WHERE number = '{}';",
-                flight.latitude,
-                flight.longitude,
+                "UPDATE sky.flight_info SET fuel = {}, speed = {}, height = {} WHERE number = '{}';",
+                flight.fuel_level,
                 flight.average_speed,
                 flight.altitude,
                 flight.flight_number
@@ -168,6 +189,154 @@ impl Client {
         self.cassandra_client.execute(&update_query_flight_info, "all")?;
 
         Ok(())
+    }
+
+    pub fn get_all_new_flights(&mut self, date: NaiveDate, airports: &HashMap<String, Airport>) -> Result<Vec<Flight>, ClientError> {
+        
+        let from = NaiveDateTime::new(date, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+        let from = from.and_utc().timestamp();
+
+        let to = NaiveDateTime::new(date, NaiveTime::from_hms_opt(23, 59, 59).unwrap());
+        let to = to.and_utc().timestamp();
+
+        let query = format!(
+            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE direction = 'departure' AND arrival_time > {from} AND arrival_time < {to}"
+        );
+
+        let result = self.cassandra_client.execute(&query, "all")?;
+
+        let mut flights: Vec<Flight> = Vec::new();
+
+        match result {
+            QueryResult::Result(result::Result::Rows(res)) => {
+                for row in res.rows_content {
+                    let mut flight = Flight {
+                        flight_number: "XXXX".to_string(), 
+                        status: FlightStatus::Scheduled, 
+                        departure_time: NaiveDateTime::default(),
+                        arrival_time: NaiveDateTime::default(),   
+                        origin: Airport::default(),      
+                        destination: Airport::default(), 
+                        latitude: 0.0,                  
+                        longitude: 0.0,                 
+                        angle: 0.0,                     
+                        altitude: 0.0,                  
+                        fuel_level: 100.0,              
+                        total_distance: 0.0,            
+                        distance_traveled: 0.0,         
+                        average_speed: 0.0,             
+                    };
+
+                    if let Some(number) = row.get("number") {
+                        match number {
+                            rows::ColumnValue::Ascii(number) => {
+                                flight.flight_number = number.to_string();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(ClientError);
+                    }
+
+                    if let Some(status) = row.get("status") {
+                        match status {
+                            rows::ColumnValue::Ascii(status) => {
+                                match FlightStatus::from_str(status) {
+                                    Ok(status) => flight.status = status,
+                                    Err(_) => return Err(ClientError),
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(ClientError);
+                    }
+
+                    if let Some(departure_time) = row.get("departure_time") {
+                        match departure_time {
+                            rows::ColumnValue::Timestamp(departure_time) => {
+                                if let Some(datetime) = DateTime::from_timestamp(*departure_time, 0) {
+                                    flight.departure_time = datetime.naive_utc()
+                                } else {
+                                    return Err(ClientError);
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(ClientError);
+                    }
+
+                    if let Some(arrival_time) = row.get("arrival_time") {
+                        match arrival_time {
+                            rows::ColumnValue::Timestamp(arrival_time) => {
+                                if let Some(datetime) = DateTime::from_timestamp(*arrival_time, 0) {
+                                    flight.arrival_time = datetime.naive_utc()
+                                } else {
+                                    return Err(ClientError);
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(ClientError);
+                    }
+
+                    if let Some(airport) = row.get("airport") {
+                        match airport {
+                            rows::ColumnValue::Ascii(airport_str) => {
+                                if let Some(airport) = airports.get(airport_str) {
+                                    flight.origin = airport.clone(); 
+                                } else {
+                                    return Err(ClientError); 
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(ClientError);
+                    }
+
+                    if let Some(lat) = row.get("lat") {
+                        match lat {
+                            rows::ColumnValue::Double(lat) => {
+                                flight.latitude = *lat;
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(ClientError);
+                    }
+
+                    if let Some(lon) = row.get("lon") {
+                        match lon {
+                            rows::ColumnValue::Double(lon) => {
+                                flight.longitude = *lon;
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(ClientError);
+                    }
+
+                    if let Some(angle) = row.get("angle") {
+                        match angle {
+                            rows::ColumnValue::Float(angle) => {
+                                flight.angle = *angle;
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        return Err(ClientError);
+                    }
+
+                    flights.push(flight);
+                }
+            }
+            _ => {}
+        }
+
+        Ok(flights)
     }
 
 }

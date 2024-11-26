@@ -20,3 +20,15 @@ impl Airport {
     }
 
 }
+
+impl Default for Airport {
+    fn default() -> Self {
+        Airport {
+            iata_code: "XXX".to_string(), // Código IATA de aeropuerto ficticio
+            country: "XXX".to_string(),
+            name: "Default Airport".to_string(),
+            latitude: 0.0,
+            longitude: 0.0
+        }
+    }
+}

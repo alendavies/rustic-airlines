@@ -18,6 +18,7 @@ pub struct Flight {
     pub destination: Airport,
     pub latitude: f64,
     pub longitude: f64,
+    pub angle: f32,
     pub altitude: f64,
     pub fuel_level: f64,
     pub total_distance: f64,
@@ -57,19 +58,39 @@ impl Flight {
         
         Ok(Flight {
             flight_number: flight_number.to_string(),
-            status: FlightStatus::Pending,
+            status: FlightStatus::Scheduled,
             departure_time,
             arrival_time,
             origin,
             destination,
             latitude: starting_latitude,
             longitude: starting_longitude,
+            angle: 0.0,
             altitude: 35000.0,
             fuel_level: 100.0,
             total_distance,
             distance_traveled: 0.0,
             average_speed,
         })
+    }
+
+    fn calculate_bearing(&self) -> f64 {
+        let lat1 = self.latitude.to_radians();
+        let lon1 = self.longitude.to_radians();
+        let lat2 = self.destination.latitude.to_radians();
+        let lon2 = self.destination.longitude.to_radians();
+
+        let delta_lon = lon2 - lon1;
+
+        // Using the formula to calculate bearing
+        let x = delta_lon.sin() * lat2.cos();
+        let y = lat1.cos() * lat2.sin() - lat1.sin() * lat2.cos() * delta_lon.cos();
+
+        let bearing = y.atan2(x);
+
+        // Convert to degrees and normalize the bearing to be in the range [0, 360)
+        let bearing_degrees = bearing.to_degrees();
+        (bearing_degrees + 360.0) % 360.0
     }
 
     // Calculate current latitude and longitude according to distance traveled (using radians)
@@ -85,17 +106,20 @@ impl Flight {
 
         self.latitude += lat_increment.to_degrees();
         self.longitude += lon_increment.to_degrees();
+
+        // Update the angle (bearing) after updating the position
+        self.angle = self.calculate_bearing() as f32;
     }
 
 
 
     /// Update the position of the flight and its fuel level based on the current time
     pub fn update_position(&mut self, current_time: NaiveDateTime) {
-        if self.status == FlightStatus::Pending && current_time >= self.departure_time {
-            self.status = FlightStatus::InFlight;
+        if self.status == FlightStatus::Scheduled && current_time >= self.departure_time {
+            self.status = FlightStatus::OnTime;
         }
         
-        if self.status == FlightStatus::InFlight {
+        if self.status == FlightStatus::OnTime {
             let elapsed_hours = current_time
                 .signed_duration_since(self.departure_time)
                 .num_seconds() as f64 / 3600.0;

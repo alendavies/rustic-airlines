@@ -1,18 +1,33 @@
+use super::sim_error::SimError;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum FlightStatus {
-    Pending,
-    InFlight,
+    Scheduled,
+    OnTime,
     Delayed,
     Finished,
+    Canceled
 }
 
 impl FlightStatus {
     pub fn as_str(&self) -> &str {
         match self {
-            FlightStatus::Pending => "Pending",
-            FlightStatus::InFlight => "In Flight",
-            FlightStatus::Delayed => "Delayed",
-            FlightStatus::Finished => "Finished",
+            FlightStatus::Scheduled => "scheduled",
+            FlightStatus::OnTime => "on time",
+            FlightStatus::Delayed => "delayed",
+            FlightStatus::Finished => "finished",
+            FlightStatus::Canceled => "canceled"
+        }
+    }
+
+    pub fn from_str(status: &str) -> Result<FlightStatus, SimError> {
+        match status.to_lowercase().as_str() {
+            "scheduled" => Ok(FlightStatus::Scheduled),
+            "on time" => Ok(FlightStatus::OnTime),
+            "delayed" => Ok(FlightStatus::Delayed),
+            "finished" => Ok(FlightStatus::Finished),
+            "canceled" => Ok(FlightStatus::Canceled),
+            _ => Err(SimError::InvalidFlightStatus(status.to_string())),
         }
     }
 }

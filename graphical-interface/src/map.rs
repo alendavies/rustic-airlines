@@ -42,7 +42,7 @@ impl<P: Provider> MyApp<P> {
             map_memory: initial_map_memory,
             selection_state: Rc::new(RefCell::new(SelectionState::new())),
             view_state: ViewState::new(
-                P::get_flights().unwrap_or_default(),
+                vec![],
                 P::get_airports().unwrap_or_default(),
             ),
             airport_widget: None,
@@ -55,7 +55,10 @@ impl<P: Provider> MyApp<P> {
 
     fn maybe_update_view_state(&mut self) {
         if self.last_update.elapsed() >= self.update_interval {
-            self.view_state.update(&self.db);
+            if let Some(selected_airport) = &self.selection_state.borrow().airport {
+                self.view_state.update_flights_by_airport(selected_airport, &self.db);
+            }
+            self.view_state.update_airports(&self.db);
             self.last_update = Instant::now();
         }
     }
@@ -96,14 +99,22 @@ impl<P: Provider> eframe::App for MyApp<P> {
                     if let Some(widget) = &mut self.airport_widget {
                         if widget.selected_airport == airport {
                             if !widget.show(ctx) {
-                                self.selection_state.borrow_mut().airport = None;
+                                self.selection_state
+                                    .borrow_mut()
+                                    .toggle_airport_selection(&airport, &mut self.view_state, &self.db);
                                 self.airport_widget = None;
                             }
                         } else {
-                            self.airport_widget = Some(WidgetAirport::new(airport));
+                            self.airport_widget = Some(WidgetAirport::new(airport.clone()));
+                            self.selection_state
+                                .borrow_mut()
+                                .toggle_airport_selection(&airport, &mut self.view_state, &self.db);
                         }
                     } else {
-                        self.airport_widget = Some(WidgetAirport::new(airport));
+                        self.airport_widget = Some(WidgetAirport::new(airport.clone()));
+                        self.selection_state
+                            .borrow_mut()
+                            .toggle_airport_selection(&airport, &mut self.view_state, &self.db);
                     }
                 } else {
                     self.airport_widget = None;

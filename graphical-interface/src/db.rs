@@ -19,7 +19,7 @@ pub trait Provider {
 
     fn get_flight_info(number: &str) -> Result<FlightInfo, DBError>;
 
-    fn get_flights() -> Result<Vec<Flight>, DBError>;
+    fn get_flights_by_airport(airport: &str) -> Result<Vec<Flight>, DBError>;
 
     fn get_airports() -> Result<Vec<Airport>, DBError>;
 }
@@ -197,11 +197,8 @@ impl Provider for Db {
         let from = NaiveDateTime::new(date, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
         let from = from.and_utc().timestamp();
 
-        let to = NaiveDateTime::new(date, NaiveTime::from_hms_opt(23, 59, 59).unwrap());
-        let to = to.and_utc().timestamp();
-
         let query = format!(
-            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE direction = 'departure' AND airport = '{airport}' AND departure_time > {from}"
+            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE airport = '{airport}' AND direction = 'departure' AND departure_time > {from}"
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
@@ -310,7 +307,7 @@ impl Provider for Db {
         let to = to.and_utc().timestamp();
 
         let query = format!(
-            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE direction = 'arrival' AND airport = {airport} AND arrival_time > {from} AND arrival_time < {to}"
+            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE airport = '{airport}' AND direction = 'arrival' AND arrival_time > {from} AND arrival_time < {to}"
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
@@ -502,7 +499,7 @@ impl Provider for Db {
         Ok(flight_info)
     }
 
-    fn get_flights() -> Result<Vec<Flight>, DBError> {
+    fn get_flights_by_airport(airport: &str) -> Result<Vec<Flight>, DBError> {
 
         /* Nos gustaria trabajar con los vuelos de hoy para mostrar, pero por conveniencia vamos por la fecha 0 ahora.
         let today = Utc::now().date_naive(); 
@@ -513,7 +510,7 @@ impl Provider for Db {
         let from: i64 = 0;
 
         let query = format!(
-            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE direction = 'arrival' AND departure_time > {from}"
+            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE airport = '{airport}' AND departure_time > {from}"
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();

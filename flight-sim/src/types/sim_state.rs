@@ -7,6 +7,7 @@ use std::time::Duration;
 use threadpool::ThreadPool;
 use std::io::{stdin, stdout, Write};
 use std::thread;
+use std::collections::HashSet;
 
 use super::sim_error::SimError;
 
@@ -15,6 +16,7 @@ const TICK_DURATION_SEC : u64 = 1;
 /// Represents the simulation state, including flights, airports, and time management.
 pub struct SimState {
     flights: Vec<Arc<RwLock<Flight>>>,
+    flight_codes: HashSet<String>,  // Vamos a usar este para ver que vuelos ya tenemos
     airports: HashMap<String, Airport>,
     current_time: Arc<Mutex<NaiveDateTime>>,
     time_rate: Arc<Mutex<Duration>>,
@@ -28,6 +30,7 @@ impl SimState {
     pub fn new(client: Client) -> Result<Self, SimError> {
         let state = SimState {
             flights: vec![],
+            flight_codes: HashSet::new(),
             airports: HashMap::new(),
             current_time: Arc::new(Mutex::new(Utc::now().naive_utc())),
             time_rate: Arc::new(Mutex::new(Duration::from_secs(60))),
@@ -43,6 +46,7 @@ impl SimState {
 
     /// Adds a flight to the simulation and inserts it into the database.
     pub fn add_flight(&mut self, flight: Flight) -> Result<(), SimError> {
+        self.flight_codes.insert(flight.flight_number.clone());
         let flight_arc = Arc::new(RwLock::new(flight));
         {
             let mut client = self.client.lock().map_err(|_| SimError::ClientError)?;
@@ -178,10 +182,10 @@ impl SimState {
 
                 if let Ok(mut flight_data) = flight.write() {
                     match flight_data.status {
-                        FlightStatus::Pending if current >= flight_data.departure_time => {
-                            flight_data.status = FlightStatus::InFlight;
+                        FlightStatus::Scheduled if current >= flight_data.departure_time => {
+                            flight_data.status = FlightStatus::OnTime;
                         }
-                        FlightStatus::InFlight | FlightStatus::Delayed => {
+                        FlightStatus::OnTime | FlightStatus::Delayed => {
                             flight_data.update_position(current);
                             
                             if let Ok(mut db_client) = client.lock() {
@@ -191,7 +195,7 @@ impl SimState {
                                 }
                             }
                         }
-                        FlightStatus::Finished => break,
+                        FlightStatus::Finished | FlightStatus::Canceled => break,
                         _ => {}
                     }
                 }
