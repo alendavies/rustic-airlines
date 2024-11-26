@@ -92,6 +92,23 @@ impl Gossiper {
         Ok(())
     }
 
+    /// Removes the keyspace from the application state of the endpoint with the given ip.
+    pub fn remove_keyspace(&mut self, ip: Ipv4Addr, keyspace: &str) -> Result<(), GossipError> {
+        let app_state = &mut self
+            .endpoints_state
+            .get_mut(&ip)
+            .ok_or(GossipError::NoEndpointStateForIp)?
+            .application_state;
+
+        app_state
+            .schemas
+            .retain(|schema| schema.keyspace != keyspace);
+
+        app_state.version += 1;
+
+        Ok(())
+    }
+
     /// Marks the endpoint with the given ip as dead.
     pub fn kill(&mut self, ip: Ipv4Addr) -> Result<(), GossipError> {
         self.change_status(ip, NodeStatus::Dead)
@@ -1184,5 +1201,59 @@ mod tests {
         let string_bytes = string.as_bytes();
 
         assert_eq!(syn_bytes, string_bytes);
+    }
+
+    #[test]
+    fn remove_keyspace() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        2,
+                        vec![Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: Vec::new(),
+                        }],
+                    ),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        gossiper.remove_keyspace(ip, "keyspace").unwrap();
+
+        assert!(gossiper
+            .endpoints_state
+            .get(&ip)
+            .unwrap()
+            .application_state
+            .schemas
+            .is_empty());
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .version,
+            3
+        );
+    }
+
+    #[test]
+    fn remove_keyspace_non_existent_ip() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::new(),
+        };
+
+        let result = gossiper.remove_keyspace(ip, "keyspace");
+
+        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
     }
 }
