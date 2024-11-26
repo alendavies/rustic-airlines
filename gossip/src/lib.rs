@@ -1223,6 +1223,55 @@ mod tests {
     }
 
     #[test]
+    fn change_status() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Vec::new()),
+                    HeartbeatState::default(),
+                ),
+            )]),
+        };
+
+        gossiper.change_status(ip, NodeStatus::Normal).unwrap();
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .status,
+            NodeStatus::Normal
+        );
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .version,
+            3
+        );
+    }
+
+    #[test]
+    fn change_status_non_existent() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::new(),
+        };
+
+        let result = gossiper.change_status(ip, NodeStatus::Normal);
+
+        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    }
+
+    #[test]
     fn remove_keyspace() {
         let ip = Ipv4Addr::new(127, 0, 0, 1);
 
