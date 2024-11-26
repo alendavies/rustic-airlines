@@ -128,6 +128,58 @@ impl Gossiper {
         Ok(())
     }
 
+    /// Add the table to the keyspace of the application state of the endpoint with the given ip.
+    pub fn add_table(
+        &mut self,
+        ip: Ipv4Addr,
+        keyspace: &str,
+        table: &str,
+    ) -> Result<(), GossipError> {
+        let app_state = &mut self
+            .endpoints_state
+            .get_mut(&ip)
+            .ok_or(GossipError::NoEndpointStateForIp)?
+            .application_state;
+
+        if let Some(schema) = app_state
+            .schemas
+            .iter_mut()
+            .find(|schema| schema.keyspace == keyspace)
+        {
+            schema.tables.push(table.to_string());
+            app_state.version += 1;
+            Ok(())
+        } else {
+            Err(GossipError::NoSuchKeyspace)
+        }
+    }
+
+    /// Removes the table from the keyspace of the application state of the endpoint with the given ip.
+    pub fn remove_table(
+        &mut self,
+        ip: Ipv4Addr,
+        keyspace: &str,
+        table: &str,
+    ) -> Result<(), GossipError> {
+        let app_state = &mut self
+            .endpoints_state
+            .get_mut(&ip)
+            .ok_or(GossipError::NoEndpointStateForIp)?
+            .application_state;
+
+        if let Some(schema) = app_state
+            .schemas
+            .iter_mut()
+            .find(|schema| schema.keyspace == keyspace)
+        {
+            schema.tables.retain(|t| t != table);
+            app_state.version += 1;
+            Ok(())
+        } else {
+            Err(GossipError::NoSuchKeyspace)
+        }
+    }
+
     /// Marks the endpoint with the given ip as dead.
     pub fn kill(&mut self, ip: Ipv4Addr) -> Result<(), GossipError> {
         self.change_status(ip, NodeStatus::Dead)
@@ -1375,5 +1427,162 @@ mod tests {
         let result = gossiper.add_keyspace(ip, "keyspace");
 
         assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    }
+
+    #[test]
+    fn remove_table() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        2,
+                        vec![Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: vec!["table1".to_string()],
+                        }],
+                    ),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        gossiper.remove_table(ip, "keyspace", "table1").unwrap();
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .schemas,
+            vec![Schema {
+                keyspace: "keyspace".to_string(),
+                tables: Vec::new()
+            }]
+        );
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .version,
+            3
+        );
+    }
+
+    #[test]
+    fn remove_table_non_existent_ip() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::new(),
+        };
+
+        let result = gossiper.remove_table(ip, "keyspace", "table1");
+
+        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    }
+
+    #[test]
+    fn remove_table_non_existent_keyspace() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Vec::new()),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        let result = gossiper.remove_table(ip, "keyspace", "table1");
+
+        assert!(matches!(result, Err(GossipError::NoSuchKeyspace)));
+    }
+
+    #[test]
+    fn add_table() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        2,
+                        vec![Schema {
+                            keyspace: "keyspace".to_string(),
+                            tables: Vec::new(),
+                        }],
+                    ),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        gossiper.add_table(ip, "keyspace", "table1").unwrap();
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .schemas,
+            vec![Schema {
+                keyspace: "keyspace".to_string(),
+                tables: vec!["table1".to_string()]
+            }]
+        );
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .version,
+            3
+        );
+    }
+
+    #[test]
+    fn add_table_non_existent_ip() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::new(),
+        };
+
+        let result = gossiper.add_table(ip, "keyspace", "table1");
+
+        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    }
+
+    #[test]
+    fn add_table_non_existent_keyspace() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Vec::new()),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        let result = gossiper.add_table(ip, "keyspace", "table1");
+
+        assert!(matches!(result, Err(GossipError::NoSuchKeyspace)));
     }
 }
