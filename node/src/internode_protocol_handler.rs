@@ -662,7 +662,6 @@ impl InternodeProtocolHandler {
                         content: InternodeMessageContent::Response(value),
                     },
                 )?;
-                println!("le respondi correctamente al coordinador");
             }
         }
 

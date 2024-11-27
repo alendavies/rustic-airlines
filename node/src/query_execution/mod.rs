@@ -154,9 +154,9 @@ impl QueryExecution {
                                 select_columns,
                                 values.len()
                             );
-                            for v in &values {
-                                println!("{:?}", v);
-                            }
+                            // for v in &values {
+                            //     println!("{:?}", v);
+                            // }
                             response.content = Some(InternodeResponseContent {
                                 columns: columns,
                                 select_columns: select_columns,

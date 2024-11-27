@@ -10,55 +10,52 @@ fn main() {
     let mut client = CassandraClient::connect(ip).unwrap();
     client.startup().unwrap();
     let queries = vec![
-        // // Creación del keyspace
-        // "CREATE KEYSPACE test_keyspace_simple WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}".to_string(),
-
-        // // Creación de la tabla con solo una clave primaria
-        // "CREATE TABLE test_keyspace_simple.test_table_simple (
-        //     id TEXT,
-        //     value1 INT,
-        //     value2 TEXT,
-        //     value3 FLOAT,
-        //     PRIMARY KEY (id, value1)
-        // )".to_string(),
-
-        // // INSERTs iniciales con valores para la clave primaria
-        // "INSERT INTO test_keyspace_simple.test_table_simple (id, value1, value2, value3) VALUES ('A1', 100, 'test1', 1.5)".to_string(),
-        // "INSERT INTO test_keyspace_simple.test_table_simple (id, value1, value2, value3) VALUES ('A2', 200, 'test2', 2.5)".to_string(),
-        // "INSERT INTO test_keyspace_simple.test_table_simple (id, value1, value2, value3) VALUES ('A3', 300, 'test3', 3.5)".to_string(),
-
-        // // SELECT para verificar los valores iniciales
-        // "SELECT id, value1, value2, value3 FROM test_keyspace_simple.test_table_simple WHERE id = 'A1'".to_string(),
-
-        // UPDATE un registro existente, modificando múltiples columnas
-        "UPDATE test_keyspace_simple.test_table_simple SET value2 = 'updated' WHERE id = 'A1' AND value1 = 100".to_string(),
-
-        // SELECT después del UPDATE para verificar los cambios
-        "SELECT id, value1, value2, value3 FROM test_keyspace_simple.test_table_simple WHERE id = 'A1'".to_string(),
-
-        // UPDATE un registro inexistente
-        //"UPDATE test_keyspace_simple.test_table_simple SET value1 = 500 WHERE id = 'A10'".to_string(),
-
-        // DELETE un registro existente
-        "DELETE FROM test_keyspace_simple.test_table_simple WHERE id = 'A2'".to_string(),
-
-        // SELECT después de DELETE para verificar que el registro fue eliminado
-        "SELECT id, value1, value2, value3 FROM test_keyspace_simple.test_table_simple WHERE id = 'A2'".to_string(),
-
-        // DELETE un registro inexistente
-        "DELETE FROM test_keyspace_simple.test_table_simple WHERE id = 'A11'".to_string(),
-
-        // DELETE de una columna específica de un registro existente
-        "DELETE value3 FROM test_keyspace_simple.test_table_simple WHERE id = 'A3'".to_string(),
-
-        // SELECT después del DELETE de columna para verificar la ausencia de la columna
-        "SELECT id, value1, value2, value3 FROM test_keyspace_simple.test_table_simple WHERE id = 'A3'".to_string(),
-
-        // SELECT con una clave primaria existente para verificar consistencia
-        "SELECT value1, value2 FROM test_keyspace_simple.test_table_simple WHERE id = 'A1'".to_string(),
-
-        // SELECT con una clave primaria inexistente para verificar que no arroje resultados
-        "SELECT value1, value2 FROM test_keyspace_simple.test_table_simple WHERE id = 'A12'".to_string(),
+        // Crear un keyspace
+        "CREATE KEYSPACE IF NOT EXISTS my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};".to_string(),
+    
+        // Crear una tabla
+        "CREATE TABLE IF NOT EXISTS my_keyspace.my_table (
+            id UUID,
+            partition_key TEXT,
+            clustering_key INT,
+            data TEXT,
+            PRIMARY KEY (partition_key, clustering_key)
+        );".to_string(),
+    
+        // Insertar 30 filas con la misma partition_key
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 0, 'data_0');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 1, 'data_1');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 2, 'data_2');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 3, 'data_3');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 4, 'data_4');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 5, 'data_5');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 6, 'data_6');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 7, 'data_7');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 8, 'data_8');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 9, 'data_9');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 10, 'data_10');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 11, 'data_11');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 12, 'data_12');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 13, 'data_13');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 14, 'data_14');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 15, 'data_15');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 16, 'data_16');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 17, 'data_17');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 18, 'data_18');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 19, 'data_19');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 20, 'data_20');".to_string(),
+        //"INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 21, 'data_21');".to_string(),
+        //"INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 22, 'data_22');".to_string(),
+        //"INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 23, 'data_23');".to_string(),
+         //"INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 24, 'data_24');".to_string(),
+         //"INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 25, 'data_25');".to_string(),
+        // "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 26, 'data_26');".to_string(),
+        // "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 27, 'data_27');".to_string(),
+        // "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 28, 'data_28');".to_string(),
+        // "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 29, 'data_29');".to_string(),
+    
+        // Realizar un SELECT para consultar los datos
+        "SELECT * FROM my_keyspace.my_table WHERE partition_key = 'my_partition';".to_string(),
     ];
 
     // Ejecutar cada consulta en un loop
