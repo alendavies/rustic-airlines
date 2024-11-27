@@ -49,24 +49,28 @@ impl<P: Provider> MyApp<P> {
             flight_widget: None,
             db,
             last_update: Instant::now(),
-            update_interval: Duration::from_secs(10), // Actualiza cada 10 segundos
+            update_interval: Duration::from_secs(20), // Actualiza cada 10 segundos
         }
     }
 
     fn maybe_update_view_state(&mut self) {
         if self.last_update.elapsed() >= self.update_interval {
-            if let Some(selected_airport) = &self.selection_state.borrow().airport {
-                self.view_state.update_flights_by_airport(selected_airport, &self.db);
-            }
             self.view_state.update_airports(&self.db);
-            self.last_update = Instant::now();
+            if let Some(selected_airport) = &self.selection_state.borrow().airport {
+                if let Ok(new_flights) = P::get_flights_by_airport(&selected_airport.iata)
+                {
+                    self.view_state.flights = new_flights;
+                }
+                self.last_update = Instant::now();
+            }
         }
+
     }
 }
 
 impl<P: Provider> eframe::App for MyApp<P> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.maybe_update_view_state(); // Llama a la actualización periódica.
+        self.maybe_update_view_state(); // Periodic update for flights based on the selected airport.
 
         let rimless = egui::Frame {
             fill: ctx.style().visuals.panel_fill,
@@ -83,7 +87,7 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 let airport_plugin =
                     plugins::Airports::new(&self.view_state.airports, self.selection_state.clone());
 
-                let flight_plugin =
+                let flight_plugin = 
                     plugins::Flights::new(&self.view_state.flights, self.selection_state.clone());
 
                 let map = Map::new(Some(tiles), &mut self.map_memory, my_position)
@@ -93,33 +97,25 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 ui.add(map);
 
                 let selected_airport = self.selection_state.borrow().airport.clone();
-                let selected_flight = self.selection_state.borrow().flight.clone();
-
                 if let Some(airport) = selected_airport {
                     if let Some(widget) = &mut self.airport_widget {
                         if widget.selected_airport == airport {
                             if !widget.show(ctx) {
-                                self.selection_state
-                                    .borrow_mut()
-                                    .toggle_airport_selection(&airport, &mut self.view_state, &self.db);
+                                self.selection_state.borrow_mut().airport = None;
                                 self.airport_widget = None;
+                                self.view_state.flights.clear(); // Clear flights when the widget is closed
                             }
                         } else {
-                            self.airport_widget = Some(WidgetAirport::new(airport.clone()));
-                            self.selection_state
-                                .borrow_mut()
-                                .toggle_airport_selection(&airport, &mut self.view_state, &self.db);
+                            self.airport_widget = Some(WidgetAirport::new(airport));
                         }
                     } else {
-                        self.airport_widget = Some(WidgetAirport::new(airport.clone()));
-                        self.selection_state
-                            .borrow_mut()
-                            .toggle_airport_selection(&airport, &mut self.view_state, &self.db);
+                        self.airport_widget = Some(WidgetAirport::new(airport));
                     }
                 } else {
                     self.airport_widget = None;
                 }
 
+                let selected_flight = self.selection_state.borrow().flight.clone();
                 if let Some(flight) = selected_flight {
                     if let Some(widget) = &mut self.flight_widget {
                         if widget.selected_flight == flight {

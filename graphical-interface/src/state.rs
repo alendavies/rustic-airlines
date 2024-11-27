@@ -16,27 +16,19 @@ impl SelectionState {
 
     /// If the provided airport is already selected, it will be deselected.
     /// Otherwise, it will be selected.
-    pub fn toggle_airport_selection<P: Provider>(
-        &mut self,
-        airport: &Airport,
-        view_state: &mut ViewState,
-        db: &P,
-    ) {
+    pub fn toggle_airport_selection(&mut self, airport: &Airport) {
         if let Some(selected_airport) = &self.airport {
             if *selected_airport == *airport {
                 self.airport = None;
-                view_state.clear_flights(); // Clear flights if deselecting the airport
             } else {
                 self.airport = Some(airport.clone());
-                view_state.update_flights_by_airport(airport, db); // Load flights for the new airport
             }
         } else {
             self.airport = Some(airport.clone());
-            view_state.update_flights_by_airport(airport, db);
         }
     }
 
-    /* /// If the provided flight is already selected, it will be deselected.
+    /// If the provided flight is already selected, it will be deselected.
     /// Otherwise, it will be selected.
     pub fn toggle_flight_selection(&mut self, flight: &Flight) {
         if let Some(selected_flight) = &self.flight {
@@ -48,7 +40,7 @@ impl SelectionState {
         } else {
             self.flight = Some(flight.clone());
         }
-    } */
+    }
 }
 
 /// Tracks the flights and airports to display.
@@ -59,22 +51,19 @@ pub struct ViewState {
 
 impl ViewState {
     pub fn new(flights: Vec<Flight>, airports: Vec<Airport>) -> Self {
+        println!("{:?}", airports);
         Self { flights, airports }
     }
 
-    pub fn update_flights_by_airport<P: Provider>(&mut self, airport: &Airport, _db: &P) {
-        if let Ok(flights) = P::get_flights_by_airport(&airport.iata) {
-            self.flights = flights; // Replace the flights vector
+    pub fn update_airports<P: Provider>(&mut self, _db: &P) {
+        if let Ok(new_airports) = P::get_airports() {
+            self.airports = new_airports;
         }
     }
 
-    pub fn clear_flights(&mut self) {
-        self.flights.clear(); // Clear flights when no airport is selected
-    }
-
-    pub fn update_airports<P: Provider>(&mut self, _db: &P) {
-        if let Ok(airports) = P::get_airports() {
-            self.airports = airports; 
+    pub fn update_flights<P: Provider>(&mut self, _db: &P, airport: &Airport) {
+        if let Ok(new_flights) = P::get_flights_by_airport(&airport.iata) {
+            self.flights = new_flights;
         }
     }
 }

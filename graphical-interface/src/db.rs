@@ -2,7 +2,7 @@ use std::{net::Ipv4Addr, str::FromStr};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use driver::{self, CassandraClient, QueryResult};
-use native_protocol::messages::result::{result, rows};
+use native_protocol::messages::result::{result_, rows};
 use walkers::Position;
 
 #[derive(Debug, Clone)]
@@ -133,15 +133,24 @@ impl Db {
 impl Provider for Db {
     /// Get the airports from a country from the database to show them in the graphical interface.
     fn get_airports_by_country(country: &str) -> std::result::Result<Vec<Airport>, DBError> {
-        let query = format!("SELECT iata, name, lat, lon FROM airports WHERE country = {country}");
+
+        println!("{:?}", "Hasta aca llega");
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
+        let keyspace_query = format!("USE sky");
+
+        let query = format!("SELECT * FROM airports WHERE country = 'ARG'");
+
+        let _ = driver.execute(&keyspace_query.as_str(), "all").map_err(|_| DBError)?;
+
         let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
+
+        println!("{:?}", result);
 
         let mut airports: Vec<Airport> = Vec::new();
         match result {
-            QueryResult::Result(result::Result::Rows(res)) => {
+            QueryResult::Result(result_::Result::Rows(res)) => {
                 for row in res.rows_content {
                     let mut airport = Airport {
                         name: String::new(),
@@ -203,7 +212,7 @@ impl Provider for Db {
         let from = from.and_utc().timestamp();
 
         let query = format!(
-            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE airport = '{airport}' AND direction = 'departure' AND departure_time > {from}"
+            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND direction = 'departure' AND departure_time > {from}"
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
@@ -213,7 +222,7 @@ impl Provider for Db {
         let mut flights: Vec<Flight> = Vec::new();
 
         match result {
-            QueryResult::Result(result::Result::Rows(res)) => {
+            QueryResult::Result(result_::Result::Rows(res)) => {
                 for row in res.rows_content {
                     let mut flight = Flight {
                         number: String::new(),
@@ -312,7 +321,7 @@ impl Provider for Db {
         let to = to.and_utc().timestamp();
 
         let query = format!(
-            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE airport = '{airport}' AND direction = 'arrival' AND arrival_time > {from} AND arrival_time < {to}"
+            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND direction = 'arrival' AND arrival_time > {from} AND arrival_time < {to}"
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
@@ -322,7 +331,7 @@ impl Provider for Db {
         let mut flights: Vec<Flight> = Vec::new();
 
         match result {
-            QueryResult::Result(result::Result::Rows(res)) => {
+            QueryResult::Result(result_::Result::Rows(res)) => {
                 for row in res.rows_content {
                     let mut flight = Flight {
                         number: String::new(),
@@ -412,7 +421,7 @@ impl Provider for Db {
 
     fn get_flight_info(number: &str) -> std::result::Result<FlightInfo, DBError> {
         let query = format!(
-            "SELECT number, fuel, height, speed, origin, destination FROM flight_info WHERE number = '{number}'"
+            "SELECT number, fuel, height, speed, origin, destination FROM sky.flight_info WHERE number = '{number}'"
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
@@ -429,7 +438,7 @@ impl Provider for Db {
         };
 
         match result {
-            QueryResult::Result(result::Result::Rows(res)) => {
+            QueryResult::Result(result_::Result::Rows(res)) => {
                 for row in res.rows_content {
                     if let Some(number) = row.get("number") {
                         match number {
@@ -515,7 +524,7 @@ impl Provider for Db {
         let from: i64 = 0;
 
         let query = format!(
-            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM flights WHERE airport = '{airport}' AND departure_time > {from}"
+            "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND departure_time > {from}"
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
@@ -525,7 +534,7 @@ impl Provider for Db {
         let mut flights: Vec<Flight> = Vec::new();
 
         match result {
-            QueryResult::Result(result::Result::Rows(res)) => {
+            QueryResult::Result(result_::Result::Rows(res)) => {
                 for row in res.rows_content {
                     let mut flight = Flight {
                         number: String::new(),
