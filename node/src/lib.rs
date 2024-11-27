@@ -174,33 +174,25 @@ impl Node {
                     let mut needs_to_redistribute = false;
 
                     for (ip, state) in endpoints_states {
-                        if state.application_state.status.is_dead() {
-                            let result = partitioner.node_already_in_partitioner(ip);
-                            if let Ok(exists) = result {
-                                if exists {
-                                    continue;
-                                }
-                                needs_to_redistribute = true;
-                                partitioner.add_node(*ip).ok();
-                            } else {
-                                return NodeError::PartitionerError(
-                                    partitioner::errors::PartitionerError::HashError,
-                                );
-                            }
-
-                            partitioner.remove_node(*ip).ok();
+                        let is_in_partitioner: bool;
+                        let result = partitioner.node_already_in_partitioner(ip);
+                        if let Ok(is_in) = result {
+                            is_in_partitioner = is_in;
                         } else {
-                            let result = partitioner.node_already_in_partitioner(ip);
-                            if let Ok(exists) = result {
-                                if exists {
-                                    continue;
-                                }
+                            return NodeError::PartitionerError(
+                                partitioner::errors::PartitionerError::HashError,
+                            );
+                        }
+
+                        if state.application_state.status.is_dead() {
+                            if is_in_partitioner {
+                                needs_to_redistribute = true;
+                                partitioner.remove_node(*ip).ok();
+                            }
+                        } else {
+                            if !is_in_partitioner {
                                 needs_to_redistribute = true;
                                 partitioner.add_node(*ip).ok();
-                            } else {
-                                return NodeError::PartitionerError(
-                                    partitioner::errors::PartitionerError::HashError,
-                                );
                             }
                         }
                     }
@@ -758,6 +750,7 @@ impl Node {
                     message = value;
                 }
                 Err(_) => {
+                    //println!("error al procesar mensaje internodo");
                     // println!("Error al crear los bytes: {:?}", e);
                     continue;
                 }

@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, BufWriter, Write},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -12,7 +12,6 @@ use crate::table::Table;
 use super::{errors::StorageEngineError, StorageEngine};
 
 impl StorageEngine {
-    /// Performs the update operation locally on this node
     pub fn update(
         &self,
         update_query: Update,
@@ -39,6 +38,7 @@ impl StorageEngine {
 
         // Rutas para el archivo original y el archivo temporal
         let file_path = folder_path.join(format!("{}.csv", table_name));
+        let index_file_path = folder_path.join(format!("{}_index.csv", table.get_name()));
         let temp_file_path = folder_path.join(format!(
             "{}.tmp",
             SystemTime::now()
@@ -46,6 +46,27 @@ impl StorageEngine {
                 .map_err(|_| StorageEngineError::TempFileCreationFailed)?
                 .as_nanos()
         ));
+        let mut temp_index = BufWriter::new(
+            File::create(&index_file_path).map_err(|_| StorageEngineError::IoError)?,
+        );
+
+        writeln!(temp_index, "clustering_column,start_byte,end_byte")
+            .map_err(|_| StorageEngineError::IoError)?;
+
+        let columns = table.get_columns();
+        let clustering_key_index = table
+            .get_clustering_column_in_order()
+            .get(0)
+            .and_then(|col_name| {
+                columns
+                    .iter()
+                    .position(|col| col.name == *col_name && col.is_clustering_column)
+            })
+            .ok_or(StorageEngineError::PartitionKeyMismatch)?;
+
+        let mut current_byte_offset: u64 = 0;
+        let mut index_map: std::collections::BTreeMap<String, (u64, u64)> =
+            std::collections::BTreeMap::new();
 
         // Abrir el archivo original, si existe, o crear un nuevo archivo vacío
         let file = if file_path.exists() {
@@ -62,26 +83,49 @@ impl StorageEngine {
         let mut temp_file = File::create(&temp_file_path)
             .map_err(|_| StorageEngineError::TempFileCreationFailed)?;
 
+        // Leer el encabezado sin consumir el iterador
+        let mut header_line = String::new();
+        reader
+            .read_line(&mut header_line)
+            .map_err(|_| StorageEngineError::IoError)?;
+
         // Escribir el encabezado en el archivo temporal
-        self.write_header(&mut reader, &mut temp_file)?;
+        writeln!(temp_file, "{}", header_line.trim_end()) // Eliminar \n innecesario
+            .map_err(|_| StorageEngineError::FileWriteFailed)?;
+        current_byte_offset += header_line.len() as u64; // Contar el tamaño del encabezado
 
         let mut found_match = false;
 
         // Iterar sobre las líneas del archivo original y aplicar la actualización
         for line in reader.lines() {
             let line = line?;
-            found_match |=
-                self.update_or_write_line(&table, &update_query, &line, &mut temp_file, timestamp)?;
+            found_match |= self.update_or_write_line(
+                &table,
+                &update_query,
+                &line,
+                &mut temp_file,
+                &mut index_map,
+                clustering_key_index,
+                &mut current_byte_offset,
+                timestamp,
+            )?;
         }
 
         // Reemplazar el archivo original con el actualizado
         fs::rename(&temp_file_path, &file_path)
             .map_err(|_| StorageEngineError::DirectoryCreationFailed)?;
 
+        // Actualizar el archivo de índices
+        for (key, (start_byte, end_byte)) in index_map {
+            writeln!(temp_index, "{},{},{}", key, start_byte, end_byte)
+                .map_err(|_| StorageEngineError::IoError)?;
+        }
+
         // Si no se encontró ninguna fila que coincida, agregar una nueva
         if !found_match {
             self.add_new_row_in_update(&table, &update_query, keyspace, is_replication, timestamp)?;
         }
+
         Ok(())
     }
 
@@ -110,6 +154,9 @@ impl StorageEngine {
         update_query: &Update,
         line: &str,
         temp_file: &mut File,
+        index_map: &mut std::collections::BTreeMap<String, (u64, u64)>,
+        clustering_key_index: usize,
+        current_byte_offset: &mut u64,
         timestamp: i64,
     ) -> Result<bool, StorageEngineError> {
         let (line, time_of_row) = line.split_once(";").ok_or(StorageEngineError::IoError)?;
@@ -131,6 +178,7 @@ impl StorageEngine {
                         .unwrap_or(false)
                     {
                         writeln!(temp_file, "{};{}", line, time_of_row)?;
+                        *current_byte_offset += line.len() as u64; // Contar el \n
                         return Ok(true);
                     }
                 }
@@ -148,27 +196,34 @@ impl StorageEngine {
 
                     columns[index] = new_value.clone();
                 }
-                writeln!(temp_file, "{};{}", columns.join(","), timestamp)?;
+
+                let updated_line = format!("{};{}", columns.join(","), timestamp);
+                let line_size = updated_line.len() as u64 + 1; // Contar el \n
+                writeln!(temp_file, "{}", updated_line)?;
+
+                // Actualizar el índice de la clustering column
+                let clustering_key = columns[clustering_key_index].clone();
+                index_map.insert(
+                    clustering_key,
+                    (*current_byte_offset, *current_byte_offset + line_size),
+                );
+
+                *current_byte_offset += line_size;
                 return Ok(true);
-            } else {
-                writeln!(temp_file, "{};{}", line, time_of_row)?;
-                if let Some(if_clause) = &update_query.if_clause {
-                    if if_clause
-                        .condition
-                        .execute(&column_value_map, columns_.clone())
-                        .unwrap_or(false)
-                    {
-                        return Ok(false);
-                    } else {
-                        return Ok(true);
-                    }
-                } else {
-                    return Ok(false);
-                }
             }
-        } else {
-            return Err(StorageEngineError::MissingWhereClause);
         }
+
+        // No se cumple la cláusula WHERE, escribir la línea original
+        let line_size = line.len() as u64 + 1; // Contar el \n
+        writeln!(temp_file, "{};{}", line, time_of_row)?;
+
+        let clustering_key = columns[clustering_key_index].clone();
+        index_map
+            .entry(clustering_key)
+            .or_insert((*current_byte_offset, *current_byte_offset + line_size));
+
+        *current_byte_offset += line_size;
+        Ok(false)
     }
 
     fn add_new_row_in_update(

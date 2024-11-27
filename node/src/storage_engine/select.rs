@@ -71,6 +71,7 @@ impl StorageEngine {
             }
         }
 
+        println!("voy a leer de los bytes {:?} a {:?}", start_byte, end_byte);
         // Posicionar el lector en el rango de bytes
         if start_byte > 0 {
             reader.seek(std::io::SeekFrom::Start(start_byte))?;

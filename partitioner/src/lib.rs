@@ -61,7 +61,7 @@ impl Partitioner {
         }
         self.nodes.insert(hash, ip);
         println!("Partitioner: {:?}", self);
-        // println!("el anillo es {:?}", self);
+
         Ok(())
     }
 
@@ -85,8 +85,6 @@ impl Partitioner {
         self.nodes
             .remove(&hash)
             .ok_or(PartitionerError::NodeNotFound)
-
-        // println!("el anillo es {:?}", self);
     }
 
     pub fn node_already_in_partitioner(&mut self, ip: &Ipv4Addr) -> Result<bool, PartitionerError> {

@@ -52,16 +52,4 @@ impl StorageEngine {
         let keyspace_folder = format!("keyspaces_of_{}", ip_str);
         self.root.join(&keyspace_folder).join(keyspace)
     }
-
-    fn write_header<R: BufRead>(
-        &self,
-        reader: &mut R,
-        temp_file: &mut File,
-    ) -> Result<(), StorageEngineError> {
-        if let Some(header_line) = reader.lines().next() {
-            writeln!(temp_file, "{}", header_line?)
-                .map_err(|_| StorageEngineError::FileWriteFailed)?;
-        }
-        Ok(())
-    }
 }

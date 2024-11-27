@@ -662,6 +662,7 @@ impl InternodeProtocolHandler {
                         content: InternodeMessageContent::Response(value),
                     },
                 )?;
+                println!("le respondi correctamente al coordinador");
             }
         }
 
@@ -881,6 +882,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = CreateTable::deserialize(structure).map_err(NodeError::CQLError)?;
+
         let storage_path = { node.lock()?.storage_path.clone() };
         QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::CreateTable(query),
