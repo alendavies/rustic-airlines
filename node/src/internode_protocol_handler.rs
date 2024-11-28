@@ -72,7 +72,8 @@ impl InternodeProtocolHandler {
                 Ok(())
             }
             InternodeMessageContent::Response(response) => {
-                self.handle_response_command(node, &response, message.from, connections)?;
+                let _ = self.handle_response_command(node, &response, message.from, connections);
+
                 Ok(())
             }
             InternodeMessageContent::Gossip(message) => {
@@ -143,16 +144,17 @@ impl InternodeProtocolHandler {
             };
 
             let mut connection = open_query.get_connection();
-
             let frame =
                 open_query
                     .get_query()
                     .create_client_response(columns, keyspace_name, rows)?;
-            println!("Returning frame to client: {:?}", frame);
+            println!(
+                "Returning response to client de la query: {:?}",
+                open_query_id
+            );
 
-            connection.write(&frame.to_bytes()?)?;
+            connection.write(&frame.to_bytes()?).unwrap();
             connection.flush()?;
-
             Ok(())
         } else {
             Ok(())
@@ -498,11 +500,7 @@ impl InternodeProtocolHandler {
         {
             let mut connection = open_query.get_connection();
 
-            let error_frame = Frame::Error(error::Error::ServerError(
-                "A node failed to execute the request of the coordinator.".to_string(),
-            ));
-
-            println!("Returning frame to client: {:?}", error_frame);
+            let error_frame = Frame::Error(error::Error::ServerError(".".to_string()));
 
             connection.write(&error_frame.to_bytes()?)?;
             connection.flush()?;
@@ -859,6 +857,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
         timestamp: i64,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
+    
         let query = Insert::deserialize(structure).map_err(NodeError::CQLError)?;
         let storage_path = { node.lock()?.storage_path.clone() };
         QueryExecution::new(node.clone(), connections, storage_path)?.execute(

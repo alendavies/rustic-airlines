@@ -81,10 +81,12 @@ impl Partitioner {
         // println!("Removing node...");
         let hash = Self::hash_value(ip.to_string())?;
 
-        println!("Partitioner: {:?}", self);
-        self.nodes
+        let a = self
+            .nodes
             .remove(&hash)
-            .ok_or(PartitionerError::NodeNotFound)
+            .ok_or(PartitionerError::NodeNotFound);
+        println!("Partitioner: {:?}", self);
+        a
     }
 
     pub fn node_already_in_partitioner(&mut self, ip: &Ipv4Addr) -> Result<bool, PartitionerError> {

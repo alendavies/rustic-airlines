@@ -11,7 +11,7 @@ fn main() {
     client.startup().unwrap();
     let queries = vec![
         // Crear un keyspace
-        "CREATE KEYSPACE IF NOT EXISTS my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};".to_string(),
+        "CREATE KEYSPACE IF NOT EXISTS my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2};".to_string(),
     
         // Crear una tabla
         "CREATE TABLE IF NOT EXISTS my_keyspace.my_table (
@@ -44,15 +44,15 @@ fn main() {
         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 18, 'data_18');".to_string(),
         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 19, 'data_19');".to_string(),
         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 20, 'data_20');".to_string(),
-        //"INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 21, 'data_21');".to_string(),
-        //"INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 22, 'data_22');".to_string(),
-        //"INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 23, 'data_23');".to_string(),
-         //"INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 24, 'data_24');".to_string(),
-         //"INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 25, 'data_25');".to_string(),
-        // "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 26, 'data_26');".to_string(),
-        // "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 27, 'data_27');".to_string(),
-        // "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 28, 'data_28');".to_string(),
-        // "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 29, 'data_29');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 21, 'data_21');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 22, 'data_22');".to_string(),
+        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 23, 'data_23');".to_string(),
+         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 24, 'data_24');".to_string(),
+         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 25, 'data_25');".to_string(),
+         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 26, 'data_26');".to_string(),
+         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 27, 'data_27');".to_string(),
+         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 28, 'data_28');".to_string(),
+         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 29, 'data_29');".to_string(),
     
         // Realizar un SELECT para consultar los datos
         "SELECT * FROM my_keyspace.my_table WHERE partition_key = 'my_partition';".to_string(),

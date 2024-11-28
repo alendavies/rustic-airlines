@@ -28,7 +28,6 @@ impl StorageEngine {
         partitioner: &Partitioner,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), StorageEngineError> {
-        println!("entro a redistribucion");
         for keyspace in keyspaces {
             let tables = keyspace.clone().get_tables();
 
@@ -45,7 +44,6 @@ impl StorageEngine {
                     self.process_file(
                         &normal_file_path,
                         &partitioner,
-                        false,
                         keyspace.clone(),
                         table.clone(),
                         self.ip.clone(),
@@ -58,7 +56,6 @@ impl StorageEngine {
                     self.process_file(
                         &replication_file_path,
                         &partitioner,
-                        true,
                         keyspace.clone(),
                         table.clone(),
                         self.ip.clone(),
@@ -74,7 +71,6 @@ impl StorageEngine {
         &self,
         file_path: &std::path::Path,
         partitioner: &Partitioner,
-        is_replication: bool,
         keyspace: Keyspace,
         table: Table,
         self_ip: String,
@@ -84,11 +80,7 @@ impl StorageEngine {
             .parse()
             .map_err(|_| StorageEngineError::UnsupportedOperation)?;
 
-        let columns: Vec<String> = table
-            .get_columns() // Obtiene las columnas (puede ser temporal)
-            .iter()
-            .map(|c| c.name.clone()) // Clona el nombre de cada columna
-            .collect();
+        let columns: Vec<String> = table.get_columns().iter().map(|c| c.name.clone()).collect();
 
         let temp_file_path = file_path.with_extension("tmp");
 
@@ -114,7 +106,6 @@ impl StorageEngine {
         let mut index_map: std::collections::BTreeMap<String, (u64, u64)> =
             std::collections::BTreeMap::new();
 
-        // Obtén los índices de las columnas de clave de partición
         let partition_key_indices: Vec<usize> = table
             .get_columns()
             .iter()
@@ -147,81 +138,83 @@ impl StorageEngine {
             let line = line.map_err(|_| StorageEngineError::IoError)?;
             let line_length = line.len() as u64;
 
+            // Escribir encabezado del archivo original
             if i == 0 {
-                println!("salto header: {:?}", line);
                 writeln!(temp_file, "{}", line).map_err(|_| StorageEngineError::IoError)?;
                 current_byte_offset += line_length + 1;
                 continue;
             }
 
+            // Procesar línea de datos
             if let Some((data, timestamp)) = line.split_once(";") {
                 let row: Vec<&str> = data.split(',').collect();
 
+                // Construir la clave de partición
                 let mut partition_key = String::new();
                 for partition_key_index in &partition_key_indices {
-                    partition_key.push_str(row[partition_key_index.clone()]);
+                    partition_key.push_str(row[*partition_key_index]);
                 }
-                println!("estoy por hashear la partition {:?}", partition_key);
-                // Calcula el nodo del hash de la clave de partición
+
+                // Determinar el nodo actual para la clave de partición
                 let current_node = partitioner
-                    .get_ip(partition_key)
+                    .get_ip(partition_key.clone())
                     .map_err(|_| StorageEngineError::UnsupportedOperation)?;
 
-                if !is_replication {
-                    // Verificar si el hash coincide con el nodo actual
-                    if current_node == self_ip {
-                        println!("no hay que reubicar: {:?}", line);
-                        writeln!(temp_file, "{};{}", data, timestamp)
-                            .map_err(|_| StorageEngineError::IoError)?;
+                if current_node == self_ip {
+                    // Si el nodo actual es el dueño de la clave
+                    println!("No hay que reubicar: {:?}", data);
+                    writeln!(temp_file, "{};{}", data, timestamp)
+                        .map_err(|_| StorageEngineError::IoError)?;
 
-                        // Actualizar el índice para la primera columna de clustering
-                        if let Some(&(idx, _)) = clustering_key_indices.first() {
-                            let key = row[idx].to_string();
-                            index_map.insert(
-                                key,
-                                (current_byte_offset, current_byte_offset + line_length),
-                            );
-                        }
-
-                        current_byte_offset += line_length + 1;
-                    } else {
-                        let insert_string = Self::create_cql_insert(
-                            &keyspace.get_name(),
-                            &table.get_name(),
-                            columns.clone(),
-                            row,
-                        )?;
-
-                        println!(
-                            "no es replicacion, reubicamos. Mandamos al nodo {:?} el insert: {:?}",
-                            current_node, insert_string
-                        );
-                        let timestap_n: i64 = timestamp
-                            .parse()
-                            .map_err(|_| StorageEngineError::UnsupportedOperation)?;
-
-                        Self::create_and_send_internode_message(
-                            self_ip,
-                            current_node,
-                            &keyspace.get_name(),
-                            &insert_string,
-                            timestap_n,
-                            false,
-                            connections.clone(),
+                    // Actualizar índice
+                    if let Some(&(idx, _)) = clustering_key_indices.first() {
+                        let key = row[idx].to_string();
+                        index_map.insert(
+                            key,
+                            (current_byte_offset, current_byte_offset + line_length),
                         );
                     }
+                    current_byte_offset += line_length + 1;
                 } else {
-                    //Verificar replicación
+                    // Reubicar la fila al nodo correspondiente
+                    let insert_string = Self::create_cql_insert(
+                        &keyspace.get_name(),
+                        &table.get_name(),
+                        columns.clone(),
+                        row.clone(),
+                    )?;
 
-                    let successors = partitioner
-                        .get_n_successors(current_node, keyspace.get_replication_factor() as usize)
+                    println!(
+                        "Reubicamos. Mandamos al nodo {:?} el insert: {:?}",
+                        current_node, insert_string
+                    );
+
+                    let timestamp_n: i64 = timestamp
+                        .parse()
                         .map_err(|_| StorageEngineError::UnsupportedOperation)?;
 
-                    if successors.contains(&self_ip) {
+                    Self::create_and_send_internode_message(
+                        self_ip,
+                        current_node,
+                        &keyspace.get_name(),
+                        &insert_string,
+                        timestamp_n,
+                        false,
+                        connections.clone(),
+                    );
+                }
+
+                // Manejo de réplicas
+                let successors = partitioner
+                    .get_n_successors(current_node, keyspace.get_replication_factor() as usize)
+                    .map_err(|_| StorageEngineError::UnsupportedOperation)?;
+
+                for rep_ip in successors {
+                    if rep_ip == self_ip {
+                        println!("No reubicamos, escribimos como réplica aquí: {:?}", data);
                         writeln!(temp_file, "{};{}", data, timestamp)
                             .map_err(|_| StorageEngineError::IoError)?;
 
-                        // Actualizar el índice para la primera columna de clustering
                         if let Some(&(idx, _)) = clustering_key_indices.first() {
                             let key = row[idx].to_string();
                             index_map.insert(
@@ -229,26 +222,28 @@ impl StorageEngine {
                                 (current_byte_offset, current_byte_offset + line_length),
                             );
                         }
-
                         current_byte_offset += line_length + 1;
                     } else {
-                        // Aquí escribe tu lógica para enviar a otro nodo
                         let insert_string = Self::create_cql_insert(
                             &keyspace.get_name(),
                             &table.get_name(),
                             columns.clone(),
-                            row,
+                            row.clone(),
                         )?;
-                        let timestap_n: i64 = timestamp
+                        let timestamp_n: i64 = timestamp
                             .parse()
                             .map_err(|_| StorageEngineError::UnsupportedOperation)?;
 
+                        println!(
+                            "Reubicamos como réplica al nodo {:?}: {:?}",
+                            rep_ip, insert_string
+                        );
                         Self::create_and_send_internode_message(
                             self_ip,
-                            current_node,
+                            rep_ip,
                             &keyspace.get_name(),
                             &insert_string,
-                            timestap_n,
+                            timestamp_n,
                             true,
                             connections.clone(),
                         );
@@ -257,8 +252,7 @@ impl StorageEngine {
             }
         }
 
-        // Escribir el archivo de índice
-        println!("escribo el archivo de indices");
+        // Escribir archivo de índice
         let mut sorted_indices: Vec<_> = index_map.into_iter().collect();
         for &(_, ref order) in &clustering_key_indices {
             if order == "ASC" {
@@ -302,7 +296,6 @@ impl StorageEngine {
 
         // Enviar el mensaje al nodo objetivo
         let result = connect_and_send_message(target_ip, INTERNODE_PORT, connections, message);
-
         // Manejar errores o resultados
         _ = result;
     }
@@ -318,7 +311,7 @@ impl StorageEngine {
         }
 
         // Generar la lista de columnas separadas por comas
-        let columns_string = columns.join(",");
+        let columns_string = columns.join(", ");
 
         // Escapar valores si es necesario, rodeándolos con comillas simples
         let values_string = values
@@ -329,7 +322,7 @@ impl StorageEngine {
 
         // Construir la sentencia CQL
         let cql = format!(
-            "INSERT INTO {}.{} ({}) VALUES ({});",
+            "INSERT INTO {}.{} ({}) VALUES ({})",
             keyspace, table, columns_string, values_string
         );
 

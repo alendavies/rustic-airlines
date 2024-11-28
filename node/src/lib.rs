@@ -733,7 +733,7 @@ impl Node {
 
         loop {
             // Clean the buffer
-            let mut buffer = [0u8; 2048];
+            let mut buffer = [0u8; 850000];
 
             // Execute initial inserts if necessary
 
@@ -752,6 +752,7 @@ impl Node {
                 Err(_) => {
                     //println!("error al procesar mensaje internodo");
                     // println!("Error al crear los bytes: {:?}", e);
+
                     continue;
                 }
             }
@@ -768,9 +769,6 @@ impl Node {
                         message.clone(),
                         connections.clone(),
                     );
-
-                    // acá hay que fijarse si se modificó el endpoint state y de alguna forma
-                    // avisarle al partitioner
 
                     // If there's an error handling the command, exit the loop
                     if let Err(e) = result {

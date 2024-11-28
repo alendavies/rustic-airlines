@@ -148,15 +148,6 @@ impl QueryExecution {
                                 Vec::new()
                             };
 
-                            println!(
-                                "voy a devolver columnas {:?}, select_columnas {:?} and {:?} filas",
-                                columns,
-                                select_columns,
-                                values.len()
-                            );
-                            // for v in &values {
-                            //     println!("{:?}", v);
-                            // }
                             response.content = Some(InternodeResponseContent {
                                 columns: columns,
                                 select_columns: select_columns,
