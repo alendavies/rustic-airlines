@@ -119,7 +119,6 @@ impl QueryExecution {
         if replication {
             self.execution_replicate_itself = true;
         }
-
         let results = self.storage_engine.select(
             select_query,
             table,

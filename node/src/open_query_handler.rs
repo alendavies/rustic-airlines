@@ -324,8 +324,8 @@ impl OpenQueryHandler {
                 query.add_ok_response(response, from);
                 if query.is_close() {
                     println!(
-                        "con {:?} OKS y {:?} ERRORS la query se cerro",
-                        query.ok_responses, query.error_responses
+                        "con {:?} / {:?} OKS la query se cerro",
+                        query.ok_responses, query.needed_responses
                     );
 
                     self.queries.remove(&open_query_id)
@@ -347,8 +347,8 @@ impl OpenQueryHandler {
 
                 if query.is_close() {
                     println!(
-                        "con {:?} OKS y {:?} ERRORS la query se cerro",
-                        query.ok_responses, query.error_responses
+                        "con {:?} / {:?} ERRORES la query se cerro",
+                        query.ok_responses, query.needed_responses
                     );
                     self.queries.remove(&open_query_id)
                 } else {
