@@ -157,6 +157,7 @@ impl StorageEngine {
         }
 
         if !inserted {
+        
             writeln!(temp_file, "{};{}", values.join(","), timestamp)
                 .map_err(|_| StorageEngineError::IoError)?;
 

@@ -186,11 +186,13 @@ impl Node {
 
                         if state.application_state.status.is_dead() {
                             if is_in_partitioner {
+                                println!("se acaba de morir un nodo, redistribuyo");
                                 needs_to_redistribute = true;
                                 partitioner.remove_node(*ip).ok();
                             }
                         } else {
                             if !is_in_partitioner {
+                                println!("se acaba de unir un nodo, redistribuyo");
                                 needs_to_redistribute = true;
                                 partitioner.add_node(*ip).ok();
                             }

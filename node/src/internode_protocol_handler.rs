@@ -148,6 +148,7 @@ impl InternodeProtocolHandler {
                 open_query
                     .get_query()
                     .create_client_response(columns, keyspace_name, rows)?;
+
             println!(
                 "Returning response to client de la query: {:?}",
                 open_query_id
@@ -535,7 +536,6 @@ impl InternodeProtocolHandler {
             self_ip = guard_node.get_ip();
         };
         let query_split: Vec<&str> = query.query_string.split_whitespace().collect();
-
         let result: Result<Option<((i32, i32), InternodeResponse)>, NodeError> =
             match query_split[0] {
                 "CREATE" => match query_split[1] {
@@ -769,6 +769,7 @@ impl InternodeProtocolHandler {
                     guard_node.gossiper.kill(gossip_message.from).ok();
                 }
             }
+
             gossip::messages::Payload::Ack2(ack2) => {
                 guard_node.gossiper.handle_ack2(ack2);
             }
@@ -857,7 +858,6 @@ impl InternodeProtocolHandler {
         client_id: i32,
         timestamp: i64,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
-    
         let query = Insert::deserialize(structure).map_err(NodeError::CQLError)?;
         let storage_path = { node.lock()?.storage_path.clone() };
         QueryExecution::new(node.clone(), connections, storage_path)?.execute(

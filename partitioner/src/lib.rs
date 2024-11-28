@@ -78,7 +78,6 @@ impl Partitioner {
     /// - `PartitionerError::HashError` - If there is an issue hashing the IP address.
     /// - `PartitionerError::NodeNotFound` - If the node is not found in the partitioner.
     pub fn remove_node(&mut self, ip: Ipv4Addr) -> Result<Ipv4Addr, PartitionerError> {
-        // println!("Removing node...");
         let hash = Self::hash_value(ip.to_string())?;
 
         let a = self
