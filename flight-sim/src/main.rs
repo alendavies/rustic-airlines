@@ -23,7 +23,7 @@ fn add_flight(sim_state: &mut SimState) -> Result<(), SimError> {
     let arrival_time = prompt_input("Enter the arrival time (DD-MM-YYYY HH:MM:SS): ");
 
     let avg_speed_input = prompt_input("Enter the average speed (in km/h): ");
-    let avg_speed: f64 = match avg_speed_input.parse() {
+    let avg_speed: i32 = match avg_speed_input.parse() {
         Ok(speed) => speed,
         Err(_) => return Err(SimError::InvalidInput),
     };
@@ -167,10 +167,10 @@ fn add_test_data(sim_state: &mut SimState) -> Result<(), SimError> {
     // Add flights (for today)
     let today = Utc::now().naive_utc();
     let flight_data = vec![
-        ("AR1234", "AEP", "MDZ", today, today + chrono::Duration::hours(2), 550.0),
-        ("AR5678", "EZE", "ROS", today, today + chrono::Duration::hours(1), 600.0),
-        ("AR9101", "COR", "EZE", today, today + chrono::Duration::hours(3), 500.0),
-        ("AR1122", "ROS", "AEP", today, today + chrono::Duration::hours(1), 650.0),
+        ("AR1234", "AEP", "MDZ", today, today + chrono::Duration::hours(2), 550),
+        ("AR5678", "EZE", "ROS", today, today + chrono::Duration::hours(1), 600),
+        ("AR9101", "COR", "EZE", today, today + chrono::Duration::hours(3), 500),
+        ("AR1122", "ROS", "AEP", today, today + chrono::Duration::hours(1), 650),
     ];
 
     // Add flights

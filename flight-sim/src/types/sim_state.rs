@@ -7,7 +7,6 @@ use std::time::Duration;
 use threadpool::ThreadPool;
 use std::io::{stdin, stdout, Write};
 use std::thread;
-use std::collections::HashSet;
 
 use super::sim_error::SimError;
 
@@ -15,10 +14,10 @@ const TICK_DURATION_SEC : u64 = 1;
 
 /// Represents the simulation state, including flights, airports, and time management.
 pub struct SimState {
-    flights: Vec<Arc<RwLock<Flight>>>,
-    flight_codes: HashSet<String>,  // Vamos a usar este para ver que vuelos ya tenemos
-    airports: HashMap<String, Airport>,
-    current_time: Arc<Mutex<NaiveDateTime>>,
+    flights: HashMap<String, Arc<RwLock<Flight>>>,
+    pub flight_states: Arc<RwLock<HashMap<String, FlightStatus>>>,  // Vamos a usar este para ver que vuelos ya tenemos
+    pub airports: HashMap<String, Airport>,
+    pub current_time: Arc<Mutex<NaiveDateTime>>,
     time_rate: Arc<Mutex<Duration>>,
     pool: ThreadPool,
     client: Arc<Mutex<Client>>,
@@ -29,8 +28,8 @@ impl SimState {
     /// Creates a new simulation state with the given client.
     pub fn new(client: Client) -> Result<Self, SimError> {
         let state = SimState {
-            flights: vec![],
-            flight_codes: HashSet::new(),
+            flights: HashMap::new(),
+            flight_states: Arc::new(RwLock::new(HashMap::new())),
             airports: HashMap::new(),
             current_time: Arc::new(Mutex::new(Utc::now().naive_utc())),
             time_rate: Arc::new(Mutex::new(Duration::from_secs(60))),
@@ -38,21 +37,22 @@ impl SimState {
             client: Arc::new(Mutex::new(client)),
         };
 
-        // Inicia la actualización continua del tiempo simulado
         state.start_time_update();
-
         Ok(state)
     }
 
     /// Adds a flight to the simulation and inserts it into the database.
     pub fn add_flight(&mut self, flight: Flight) -> Result<(), SimError> {
-        self.flight_codes.insert(flight.flight_number.clone());
+        {
+            let mut flight_states = self.flight_states.write().map_err(|_| SimError::Other("LockError".to_string()))?;
+            flight_states.insert(flight.flight_number.clone(), flight.status.clone());
+        }
         let flight_arc = Arc::new(RwLock::new(flight));
         {
             let mut client = self.client.lock().map_err(|_| SimError::ClientError)?;
             client.insert_flight(&flight_arc.read().unwrap()).map_err(|_| SimError::new("Client Error: Error inserting flight into DB"))?;
         }
-        self.flights.push(Arc::clone(&flight_arc));
+        self.flights.insert(flight_arc.read().unwrap().flight_number.clone(), Arc::clone(&flight_arc)); // Inserción en el HashMap
         self.start_flight_simulation(flight_arc);
         Ok(())
     }
@@ -64,7 +64,6 @@ impl SimState {
         self.airports.insert(airport.iata_code.to_string(), airport);
         Ok(())
     }
-
     
     /// Displays the list of flights in the simulation and allows the user to exit the list view.
     ///
@@ -109,7 +108,6 @@ impl SimState {
             println!("Time rate updated to {} seconds per tick", minutes * 60);
         }
     }
-
     /// Closes the thread pool and waits for all threads to finish.
     pub fn close_pool(&self) {
         self.pool.join();
@@ -119,22 +117,55 @@ impl SimState {
         &self.airports
     }
 
+    /// Updates the status of a flight in the simulation.
+    pub fn update_flight_in_simulation(
+        &self,
+        flight_number: &str,
+        new_status: FlightStatus,
+    ) -> Result<(), SimError> {
+        // Update in flight_states map
+        {
+            let mut flight_states = self
+                .flight_states
+                .write()
+                .map_err(|_| SimError::Other("LockError".to_string()))?;
+            
+            if let Some(status) = flight_states.get_mut(flight_number) {
+                *status = new_status.clone();
+            } else {
+                return Err(SimError::Other(format!("Flight {} not found", flight_number)));
+            }
+        }
+
+        // Update in the flights map
+        if let Some(flight_arc) = self.flights.get(flight_number) {
+            let mut flight = flight_arc
+                .write()
+                .map_err(|_| SimError::Other("LockError".to_string()))?;
+            flight.status = new_status;
+        } else {
+            return Err(SimError::Other(format!("Flight {} not found in simulation", flight_number)));
+        }
+
+        Ok(())
+    }
+
     fn display_flights(&self) {
         print!("\x1B[2J\x1B[1;1H"); // Clear screen
         if self.flights.is_empty() {
             println!("No flights available.");
             return;
         }
-    
+
         let current_time = self.current_time.lock()
             .map(|time| time.format("%d-%m-%Y %H:%M:%S").to_string())
             .unwrap_or_else(|_| "Unknown Time".to_string());
-    
+
         println!("Current Time: {}", current_time);
         println!("\n{:<15} {:<10} {:<10} {:<15} {:<10} {:<10}", 
             "Flight Number", "Status", "Origin", "Destination", "Latitude", "Longitude");
-    
-        let flight_info: Vec<String> = self.flights.iter()
+
+        let flight_info: Vec<String> = self.flights.values() // Iterar sobre los valores del HashMap
             .filter_map(|flight| {
                 match flight.try_read() {
                     Ok(flight_data) => Some(format!(
@@ -150,11 +181,11 @@ impl SimState {
                 }
             })
             .collect();
-    
+
         for info in flight_info {
             println!("{}", info);
         }
-    
+
         println!("\nPress 'q' and Enter to exit list-flights mode");
     }
 
@@ -173,6 +204,7 @@ impl SimState {
     }
 
     fn start_flight_simulation(&self, flight: Arc<RwLock<Flight>>) {
+        let flight_states = Arc::clone(&self.flight_states);
         let client = Arc::clone(&self.client);
         let current_time = Arc::clone(&self.current_time);
         
@@ -183,11 +215,26 @@ impl SimState {
                 if let Ok(mut flight_data) = flight.write() {
                     match flight_data.status {
                         FlightStatus::Scheduled if current >= flight_data.departure_time => {
-                            flight_data.status = FlightStatus::OnTime;
+                            flight_data.update_position(current);
+                            if let Err(e) = update_flight_state(&flight_states, &flight_data.flight_number, FlightStatus::OnTime) {
+                                eprintln!("Failed to update flight state: {:?}", e);
+                            }
                         }
                         FlightStatus::OnTime | FlightStatus::Delayed => {
                             flight_data.update_position(current);
-                            
+
+                            if current >= flight_data.arrival_time {
+
+                                if let Err(e) = update_flight_state(&flight_states, &flight_data.flight_number, FlightStatus::Delayed) {
+                                    eprintln!("Failed to update flight state: {:?}", e);
+                                }
+                            } else if flight_data.distance_traveled >= flight_data.total_distance {
+
+                                if let Err(e) = update_flight_state(&flight_states, &flight_data.flight_number, FlightStatus::Finished) {
+                                    eprintln!("Failed to update flight state: {:?}", e);
+                                }
+                            } 
+
                             if let Ok(mut db_client) = client.lock() {
                                 if let Err(e) = db_client.update_flight(&*flight_data) {
                                     eprintln!("Failed to update flight {}: {:?}", 
@@ -204,4 +251,14 @@ impl SimState {
             }
         });
     }
+}
+
+fn update_flight_state(
+    flight_states: &Arc<RwLock<HashMap<String, FlightStatus>>>,
+    flight_number: &str,
+    new_status: FlightStatus,
+) -> Result<(), SimError> {
+    let mut states = flight_states.write().map_err(|_| SimError::Other("LockError".to_string()))?;
+    states.insert(flight_number.to_string(), new_status);
+    Ok(())
 }

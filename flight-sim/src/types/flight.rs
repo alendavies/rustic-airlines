@@ -19,11 +19,11 @@ pub struct Flight {
     pub latitude: f64,
     pub longitude: f64,
     pub angle: f32,
-    pub altitude: f64,
+    pub altitude: i32,
     pub fuel_level: f64,
     pub total_distance: f64,
     pub distance_traveled: f64,
-    pub average_speed: f64,
+    pub average_speed: i32,
 }
 
 
@@ -36,7 +36,7 @@ impl Flight {
         destination_code: &str,
         departure_time_str: &str,
         arrival_time_str: &str,
-        average_speed: f64,
+        average_speed: i32,
     ) -> Result<Self, SimError> {
         // Look up airports and return error if not found
         let origin = airports.get(origin_code)
@@ -66,7 +66,7 @@ impl Flight {
             latitude: starting_latitude,
             longitude: starting_longitude,
             angle: 0.0,
-            altitude: 35000.0,
+            altitude: 35000,
             fuel_level: 100.0,
             total_distance,
             distance_traveled: 0.0,
@@ -125,14 +125,14 @@ impl Flight {
                 .num_seconds() as f64 / 3600.0;
 
             // Calculate traveled distance and update position
-            let distance_traveled = self.average_speed * elapsed_hours;
+            let distance_traveled = self.average_speed as f64 * elapsed_hours;
             self.update_position_with_direction(distance_traveled);
             self.distance_traveled = distance_traveled.min(self.total_distance);
             self.fuel_level = (100.0 - elapsed_hours * 5.0).max(0.0); // Burn fuel over time
 
             // Update altitude when approaching the destination
             self.altitude = if self.distance_traveled >= self.total_distance * 0.95 {
-                self.altitude - 500.0
+                self.altitude - 500
             } else {
                 self.altitude
             };
@@ -149,7 +149,7 @@ impl Flight {
     // Land the flight
     fn land(&mut self) {
         self.fuel_level = 0.0;
-        self.altitude = 0.0;
+        self.altitude = 0;
         self.status = FlightStatus::Finished;
     }
 

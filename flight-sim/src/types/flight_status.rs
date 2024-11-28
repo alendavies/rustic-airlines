@@ -27,7 +27,7 @@ impl FlightStatus {
             "delayed" => Ok(FlightStatus::Delayed),
             "finished" => Ok(FlightStatus::Finished),
             "canceled" => Ok(FlightStatus::Canceled),
-            _ => Err(SimError::InvalidFlightStatus(status.to_string())),
+            _ => Err(SimError::Other("Invalid flight status".to_string())),
         }
     }
 }

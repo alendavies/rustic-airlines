@@ -115,14 +115,16 @@ fn main() {
 
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR110', 'on time', -36.5883, -64.2757, 198.3, '1730075700', '1730133300', 'RSA', 'departure')",
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR110', 'on time', -36.5883, -64.2757, 198.3, '1730075700', '1730133300', 'BRC', 'arrival')",
-    "INSERT INTO flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR110', 90.5, 11000, 535, 'RSA', 'BRC')"
+    "INSERT INTO flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR110', 90.5, 11000, 535, 'RSA', 'BRC')",
+
+    "SELECT * FROM airports WHERE country = 'ARG'"
 
     ];
 
     let mut contador = 0;
     let len = queries.len();
     for query in queries {
-        match client.execute(&query, "all") {
+        match client.execute(&query, "quorum") {
             Ok(query_result) => {
                 match query_result {
                     driver::QueryResult::Result(_) => {
