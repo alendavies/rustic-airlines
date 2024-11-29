@@ -184,7 +184,12 @@ impl Gossiper {
     }
 
     /// Add the table to the keyspace of the application state of the endpoint with the given ip.
-    pub fn add_table(&mut self, ip: Ipv4Addr, table: CreateTable) -> Result<(), GossipError> {
+    pub fn add_table(
+        &mut self,
+        ip: Ipv4Addr,
+        table: CreateTable,
+        kesyapce_name: &str,
+    ) -> Result<(), GossipError> {
         // Find the app state of the given ip
         let app_state = &mut self
             .endpoints_state
@@ -197,13 +202,13 @@ impl Gossiper {
             .schema
             .keyspaces
             .keys()
-            .any(|k| *k == table.get_used_keyspace());
+            .any(|k| *k == kesyapce_name);
 
         if keyspace_exists {
             let keyspace = app_state
                 .schema
                 .keyspaces
-                .get_mut(&table.get_used_keyspace())
+                .get_mut(kesyapce_name)
                 .ok_or(GossipError::NoSuchKeyspace)?;
 
             // Check if the table already exists
@@ -1388,6 +1393,7 @@ mod tests {
                     columns: Vec::new(),
                     clustering_columns_in_order: Vec::new(),
                 },
+                "keyspace",
             )
             .unwrap();
 
@@ -1449,6 +1455,7 @@ mod tests {
                 columns: Vec::new(),
                 clustering_columns_in_order: Vec::new(),
             },
+            "keyspace",
         );
 
         assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
@@ -1477,6 +1484,7 @@ mod tests {
                 columns: Vec::new(),
                 clustering_columns_in_order: Vec::new(),
             },
+            "keyspace",
         );
 
         assert!(matches!(result, Err(GossipError::NoSuchKeyspace)));

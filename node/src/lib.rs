@@ -292,7 +292,7 @@ impl Node {
                 let new_tables = keyspace.tables;
 
                 for table in new_tables {
-                    if let Some(matched_table) = old_tables
+                    if let Some(_) = old_tables
                         .iter()
                         .find(|old_table| old_table.get_name() == table.get_name())
                     {
@@ -328,7 +328,7 @@ impl Node {
                     .clone();
 
                 for table in old_tables {
-                    if let Some(matched_table) = new_tables
+                    if let Some(_) = new_tables
                         .iter()
                         .find(|new_table| new_table.get_name() == table.get_name())
                     {
@@ -357,7 +357,7 @@ impl Node {
             .schema
             .clone();
 
-        // self.update_schema_in_storage(old_schema);
+        self.update_schema_in_storage(old_schema);
 
         println!("Schema updated: {:?}", self.schema);
     }
@@ -425,7 +425,9 @@ impl Node {
     }
 
     fn add_table(&mut self, new_table: CreateTable, keyspace_name: &str) -> Result<(), NodeError> {
-        self.gossiper.add_table(self.ip, new_table).unwrap();
+        self.gossiper
+            .add_table(self.ip, new_table, keyspace_name)
+            .unwrap();
 
         // We manually update the latest schema right after modification so
         // we don't have to wait for the next gossip round.

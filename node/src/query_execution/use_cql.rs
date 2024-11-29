@@ -26,15 +26,6 @@ impl QueryExecution {
 
         let keyspaces = node.schema.keyspaces.clone();
 
-        // // Buscar el índice del keyspace con el nombre dado
-        // let index = keyspaces
-        //     .iter()
-        //     .position(|keyspace| keyspace.get_name() == keyspace_name)
-        //     .ok_or(NodeError::KeyspaceError)?;
-
-        // node.get_open_handle_query()
-        //     .set_keyspace_of_query(open_query_id, keyspaces[index].clone());
-
         node.get_open_handle_query().set_keyspace_of_query(
             open_query_id,
             KeyspaceSchema::new(keyspaces.get(&keyspace_name).unwrap().inner.clone(), vec![]),

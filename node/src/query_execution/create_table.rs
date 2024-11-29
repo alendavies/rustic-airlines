@@ -12,9 +12,7 @@ impl QueryExecution {
     pub(crate) fn execute_create_table(
         &mut self,
         create_table: CreateTable,
-        internode: bool,
         open_query_id: i32,
-        client_id: i32,
     ) -> Result<(), NodeError> {
         // Add the table to the node
         let mut node = self
@@ -52,19 +50,7 @@ impl QueryExecution {
             TableSchema::new(create_table.clone()),
         )?;
 
-        // // If this is not an internode operation, communicate to other nodes
-        // if !internode {
-        //     // Serialize the `CreateTable` structure
-        //     let serialized_create_table = create_table.serialize();
-        //     self.how_many_nodes_failed = self.send_to_other_nodes(
-        //         node,
-        //         &serialized_create_table,
-        //         open_query_id,
-        //         client_id,
-        //         &client_keyspace.get_name(),
-        //         0,
-        //     )?;
-        // }
+        self.execution_finished_itself = true;
 
         Ok(())
     }

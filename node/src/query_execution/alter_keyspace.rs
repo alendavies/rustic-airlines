@@ -10,9 +10,6 @@ impl QueryExecution {
     pub(crate) fn execute_alter_keyspace(
         &mut self,
         alter_keyspace: AlterKeyspace,
-        internode: bool,
-        open_query_id: i32,
-        client_id: i32,
     ) -> Result<(), NodeError> {
         todo!()
         // // Look for the keyspace in the list of keyspaces
@@ -36,19 +33,6 @@ impl QueryExecution {
         // keyspace.update_replication_class(alter_keyspace.get_replication_class());
         // keyspace.update_replication_factor(alter_keyspace.get_replication_factor());
         // node.update_keyspace(client_id, keyspace);
-
-        // // If not an internode operation, communicate changes to other nodes
-        // if !internode {
-        //     let serialized_alter_keyspace = alter_keyspace.serialize();
-        //     self.how_many_nodes_failed = self.send_to_other_nodes(
-        //         node,
-        //         &serialized_alter_keyspace,
-        //         open_query_id,
-        //         client_id,
-        //         "None",
-        //         0,
-        //     )?;
-        // }
 
         // Ok(())
     }
