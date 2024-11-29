@@ -11,6 +11,60 @@ use crate::table::Table;
 use super::{errors::StorageEngineError, StorageEngine};
 
 impl StorageEngine {
+    /// Deletes rows or specific column values from a table within the specified keyspace.
+    ///
+    /// This function performs deletion operations on a `.csv` file representing a table.
+    /// The deletion can be targeted to specific rows or specific columns within a row based
+    /// on the provided `WHERE` conditions in the `Delete` query.
+    ///
+    /// The function ensures that deletions respect clustering order and creates temporary files
+    /// during operations to maintain atomicity.
+    ///
+    /// # Arguments
+    ///
+    /// - `delete_query`: A `Delete` struct that defines the delete operation, including conditions
+    ///   (`WHERE`) and specific columns to delete.
+    /// - `table`: A `Table` struct representing the schema of the table where the delete operation
+    ///   will occur.
+    /// - `keyspace`: A `&str` that specifies the keyspace containing the table.
+    /// - `is_replication`: A `bool` indicating whether the operation is part of replication.
+    /// - `timestamp`: A `i64` representing the timestamp of the operation, used for tracking updates.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(())`: If the delete operation is successfully completed.
+    /// - `Err(StorageEngineError)`: If an error occurs during the operation, such as:
+    ///   - `DirectoryCreationFailed`: When required directories cannot be created.
+    ///   - `FileNotFound`: When the target file for deletion does not exist.
+    ///   - `IoError`: For issues reading or writing to files.
+    ///   - `TempFileCreationFailed`: If a temporary file cannot be created.
+    ///   - `InvalidQuery`: If the provided query lacks required clauses or is invalid.
+    ///
+    /// # Behavior
+    ///
+    /// - If specific columns are specified in the `Delete` query:
+    ///   - Only the specified columns will be cleared in rows that meet the `WHERE` condition.
+    /// - If no columns are specified:
+    ///   - Entire rows that meet the `WHERE` condition will be deleted.
+    /// - If the table file does not exist:
+    ///   - An error (`FileNotFound`) is returned.
+    /// - Temporary files are created during the operation to avoid corruption of the original file.
+    ///
+    /// # Edge Cases
+    ///
+    /// - **No `WHERE` Clause:** If the `WHERE` clause is missing in the `Delete` query,
+    ///   the function returns an `InvalidQuery` error.
+    /// - **Non-Existing Columns:** If the specified columns do not exist in the table,
+    ///   they are ignored.
+    /// - **Concurrent Writes:** Simultaneous delete operations on the same table may cause
+    ///   unexpected behavior and are not supported.
+    ///
+    /// # Limitations
+    ///
+    /// - The function operates only on `.csv` file formats.
+    /// - The `IF` clause in the `Delete` query is currently ignored and must be set to `None`.
+    /// - Complex conditions are supported via the `WHERE` clause but may require careful schema validation.
+
     pub fn delete(
         &self,
         delete_query: Delete,
@@ -212,5 +266,220 @@ impl StorageEngine {
             // Si falta la cláusula `WHERE`, devolver un error
             return Err(StorageEngineError::InvalidQuery);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use query_creator::clauses::where_cql::Where;
+
+    use super::*;
+    use crate::table::Table;
+    use query_creator::clauses::condition::Condition;
+    use query_creator::clauses::delete_cql::Delete;
+    use query_creator::clauses::table::create_table_cql::CreateTable;
+    use query_creator::logical_operator::LogicalOperator;
+    use query_creator::operator::Operator;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_delete_row_with_table_inner_using_create_table_tokens() {
+        let root = PathBuf::from(format!("/tmp/storage_test_{}", uuid::Uuid::new_v4()));
+        let keyspace = "test_keyspace";
+        let table_name = "test_table";
+        let storage = StorageEngine::new(root.clone(), "127.0.0.1".to_string());
+
+        let table_path = storage
+            .get_keyspace_path(keyspace)
+            .join(format!("{}.csv", table_name));
+        fs::create_dir_all(table_path.parent().unwrap()).unwrap();
+
+        // Crear archivo de prueba con contenido inicial
+        let mut file = File::create(&table_path).unwrap();
+        writeln!(file, "id,name,age;1234567890").unwrap();
+        writeln!(file, "1,John,30;1234567890").unwrap();
+        writeln!(file, "2,Alice,25;1234567890").unwrap();
+
+        // Crear los tokens para `CreateTable`
+        let tokens = vec![
+            "CREATE".to_string(),
+            "TABLE".to_string(),
+            format!("{}.{}", keyspace, table_name),
+            "id INT, name TEXT, age INT, PRIMARY KEY (id)".to_string(),
+        ];
+
+        // Usar `new_from_tokens` para crear el `CreateTable`
+        let create_table = CreateTable::new_from_tokens(tokens).unwrap();
+
+        // Crear el `Table` utilizando el `CreateTable`
+        let table = Table {
+            inner: create_table,
+        };
+
+        // Crear el `Delete` query
+        let delete_query = Delete {
+            table_name: table_name.to_string(),
+            keyspace_used_name: keyspace.to_string(),
+            columns: None,
+            where_clause: Some(Where {
+                condition: Condition::Simple {
+                    field: "id".to_string(),
+                    operator: Operator::Equal,
+                    value: "2".to_string(),
+                },
+            }),
+            if_clause: None,
+            if_exist: false,
+        };
+
+        // Ejecutar el `delete`
+        let result = storage.delete(delete_query, table, keyspace, false, 1234567890);
+        assert!(result.is_ok(), "Delete operation failed");
+
+        // Verificar el contenido del archivo después de la operación
+        let file = File::open(&table_path).unwrap();
+        let reader = BufReader::new(file);
+        let lines: Vec<_> = reader.lines().map(|l| l.unwrap()).collect();
+
+        // La fila con id=2 debería haber sido eliminada
+        assert_eq!(lines.len(), 2); // Header + 1 row
+        assert_eq!(lines[1], "1,John,30;1234567890");
+    }
+
+    #[test]
+    fn test_delete_row_with_multiple_conditions() {
+        let root = PathBuf::from(format!("/tmp/storage_test_{}", uuid::Uuid::new_v4()));
+        let keyspace = "test_keyspace";
+        let table_name = "test_table";
+        let storage = StorageEngine::new(root.clone(), "127.0.0.1".to_string());
+
+        let table_path = storage
+            .get_keyspace_path(keyspace)
+            .join(format!("{}.csv", table_name));
+        fs::create_dir_all(table_path.parent().unwrap()).unwrap();
+
+        // Crear archivo de prueba con contenido inicial
+        let mut file = File::create(&table_path).unwrap();
+        writeln!(file, "id,name,age;1234567890").unwrap();
+        writeln!(file, "1,John,30;1234567890").unwrap();
+        writeln!(file, "2,Alice,25;1234567890").unwrap();
+        writeln!(file, "3,Bob,40;1234567890").unwrap();
+
+        // Crear los tokens para `CreateTable`
+        let tokens = vec![
+            "CREATE".to_string(),
+            "TABLE".to_string(),
+            format!("{}.{}", keyspace, table_name),
+            "id INT, name TEXT, age INT, PRIMARY KEY (id, name, age)".to_string(),
+        ];
+
+        // Usar `new_from_tokens` para crear el `CreateTable`
+        let create_table = CreateTable::new_from_tokens(tokens).unwrap();
+
+        // Crear el `Table` utilizando el `CreateTable`
+        let table = Table {
+            inner: create_table,
+        };
+
+        // Crear el `Delete` query con múltiples condiciones
+        let delete_query = Delete {
+            table_name: table_name.to_string(),
+            keyspace_used_name: keyspace.to_string(),
+            columns: None,
+            where_clause: Some(Where {
+                condition: Condition::Complex {
+                    left: Some(Box::new(Condition::Simple {
+                        field: "name".to_string(),
+                        operator: Operator::Equal,
+                        value: "Alice".to_string(),
+                    })),
+                    operator: LogicalOperator::And,
+                    right: Box::new(Condition::Simple {
+                        field: "age".to_string(),
+                        operator: Operator::Equal,
+                        value: "25".to_string(),
+                    }),
+                },
+            }),
+            if_clause: None,
+            if_exist: false,
+        };
+
+        // Ejecutar el `delete`
+        let result = storage.delete(delete_query, table, keyspace, false, 1234567890);
+        assert!(result.is_ok(), "Delete operation failed");
+
+        // Verificar el contenido del archivo después de la operación
+        let file = File::open(&table_path).unwrap();
+        let reader = BufReader::new(file);
+        let lines: Vec<_> = reader.lines().map(|l| l.unwrap()).collect();
+
+        // La fila con name=Alice y age=25 debería haber sido eliminada
+        assert_eq!(lines.len(), 3); // Header + 2 rows
+        assert_eq!(lines[1], "1,John,30;1234567890");
+        assert_eq!(lines[2], "3,Bob,40;1234567890");
+    }
+
+    #[test]
+    fn test_delete_non_existing_row() {
+        let root = PathBuf::from(format!("/tmp/storage_test_{}", uuid::Uuid::new_v4()));
+        let keyspace = "test_keyspace";
+        let table_name = "test_table";
+        let storage = StorageEngine::new(root.clone(), "127.0.0.1".to_string());
+
+        let table_path = storage
+            .get_keyspace_path(keyspace)
+            .join(format!("{}.csv", table_name));
+        fs::create_dir_all(table_path.parent().unwrap()).unwrap();
+
+        // Crear archivo de prueba con contenido inicial
+        let mut file = File::create(&table_path).unwrap();
+        writeln!(file, "id,name,age;1234567890").unwrap();
+        writeln!(file, "1,John,30;1234567890").unwrap();
+
+        // Crear los tokens para `CreateTable`
+        let tokens = vec![
+            "CREATE".to_string(),
+            "TABLE".to_string(),
+            format!("{}.{}", keyspace, table_name),
+            "id INT, name TEXT, age INT, PRIMARY KEY (id)".to_string(),
+        ];
+
+        // Usar `new_from_tokens` para crear el `CreateTable`
+        let create_table = CreateTable::new_from_tokens(tokens).unwrap();
+
+        // Crear el `Table` utilizando el `CreateTable`
+        let table = Table {
+            inner: create_table,
+        };
+
+        // Crear el `Delete` query para una fila que no existe
+        let delete_query = Delete {
+            table_name: table_name.to_string(),
+            keyspace_used_name: keyspace.to_string(),
+            columns: None,
+            where_clause: Some(Where {
+                condition: Condition::Simple {
+                    field: "id".to_string(),
+                    operator: Operator::Equal,
+                    value: "99".to_string(),
+                },
+            }),
+            if_clause: None,
+            if_exist: false,
+        };
+
+        // Ejecutar el `delete`
+        let result = storage.delete(delete_query, table, keyspace, false, 1234567890);
+        assert!(result.is_ok(), "Delete operation failed");
+
+        // Verificar el contenido del archivo después de la operación
+        let file = File::open(&table_path).unwrap();
+        let reader = BufReader::new(file);
+        let lines: Vec<_> = reader.lines().map(|l| l.unwrap()).collect();
+
+        // La fila no debería haberse modificado
+        assert_eq!(lines.len(), 2); // Header + 1 row
+        assert_eq!(lines[1], "1,John,30;1234567890");
     }
 }

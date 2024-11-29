@@ -5,6 +5,8 @@ use query_creator::clauses::select_cql::Select;
 use query_creator::errors::CQLError;
 
 impl QueryExecution {
+    /// Executes the retrieval of row/rows. This function is public only for internal use
+    /// within the library (defined as `pub(crate)`).
     pub(crate) fn execute_select(
         &mut self,
         mut select_query: Select,
@@ -127,20 +129,4 @@ impl QueryExecution {
         )?;
         Ok(results)
     }
-
-    // /// Extracts the selected columns from a line according to the SELECT query
-    // fn extract_selected_columns(&self, line: &str, table: &Table, select_query: &Select) -> String {
-    //     let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
-    //     let column_value_map = self.create_column_value_map(table, &columns, false);
-
-    //     // Filter only the columns specified in the SELECT query
-    //     let selected_columns: Vec<String> = select_query
-    //         .columns
-    //         .iter()
-    //         .filter_map(|col| column_value_map.get(col).cloned())
-    //         .collect();
-
-    //     // Join the selected columns into a single comma-separated string
-    //     selected_columns.join(",")
-    // }
 }
