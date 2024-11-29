@@ -8,7 +8,7 @@ use query_creator::errors::CQLError;
 /// within the library (defined as `pub(crate)`).
 impl QueryExecution {
     pub(crate) fn execute_drop_table(
-        &self,
+        &mut self,
         drop_table: DropTable,
         open_query_id: i32,
     ) -> Result<(), NodeError> {
@@ -30,6 +30,8 @@ impl QueryExecution {
 
         self.storage_engine
             .drop_table(&client_keyspace.get_name(), &table_name)?;
+
+        self.execution_finished_itself = true;
 
         Ok(())
     }
