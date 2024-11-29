@@ -23,11 +23,7 @@ pub struct TableSchema {
     pub inner: CreateTable,
 }
 
-impl TableSchema {
-    pub fn new(inner: CreateTable) -> Self {
-        TableSchema { inner }
-    }
-}
+impl TableSchema {}
 
 /// Implements `fmt::Debug` for `Table` to provide human-readable information for debugging.
 impl fmt::Debug for TableSchema {
@@ -37,18 +33,9 @@ impl fmt::Debug for TableSchema {
 }
 
 impl TableSchema {
-    // /// Creates a new `Table` instance from a `CreateTable` CQL object.
-    // ///
-    // /// # Parameters
-    // /// - `create_table`: The CQL structure to initialize the table.
-    // ///
-    // /// # Returns
-    // /// A new `Table` instance.
-    // pub fn new(create_table: CreateTable) -> Self {
-    //     Self {
-    //         inner: create_table,
-    //     }
-    // }
+    pub fn new(inner: CreateTable) -> Self {
+        TableSchema { inner }
+    }
 
     /// Gets the name of the table.
     ///
@@ -87,15 +74,16 @@ impl TableSchema {
     /// # Returns
     /// `Ok(true)` if the column is the primary key, `Ok(false)` otherwise, or an error if the column is not found.
     pub fn is_primary_key(&self, column_name: &str) -> Result<bool, SchemaError> {
-        let column_index = self.get_column_index(column_name).unwrap();
-        // .ok_or(NodeError::OtherError)?;
+        let column_index = self
+            .get_column_index(column_name)
+            .ok_or(SchemaError::NoSuchColumn(column_name.to_string()))?;
 
         let columns = self.inner.get_columns();
-        // let column = columns.get(column_index).ok_or(NodeError::OtherError)?;
-        let column = columns.get(column_index).unwrap();
+        let column = columns
+            .get(column_index)
+            .ok_or(SchemaError::NoSuchColumn(column_name.to_string()))?;
 
         Ok(column.is_primary_key)
-        // todo!()
     }
 
     /// Gets the name of the primary key column.
@@ -105,18 +93,16 @@ impl TableSchema {
     pub fn get_partition_keys(&self) -> Result<Vec<String>, SchemaError> {
         let mut partitioner_keys: Vec<String> = vec![];
         let columns = self.get_columns();
+
         for column in columns {
             if column.is_partition_key {
                 partitioner_keys.push(column.name.clone());
             }
         }
-        if partitioner_keys.is_empty() {
-            // Err(NodeError::OtherError)
-            Err(SchemaError::Other)
-        } else {
-            Ok(partitioner_keys)
-        }
-        // todo!()
+
+        assert!(!partitioner_keys.is_empty()); // TODO: there MUST be at least a partition key. Enforce in type system
+
+        Ok(partitioner_keys)
     }
 
     /// Gets the name of the primary key column.
@@ -505,8 +491,9 @@ pub struct KeyspaceSchema {
 
 #[derive(Debug)]
 pub enum SchemaError {
-    InvalidTable,
+    InvalidTable(String),
     Other,
+    NoSuchColumn(String),
 }
 
 impl KeyspaceSchema {
@@ -586,8 +573,7 @@ impl KeyspaceSchema {
     pub fn add_table(&mut self, new_table: TableSchema) -> Result<(), SchemaError> {
         if self.tables.contains(&new_table) {
             dbg!("Table already exists");
-            // return Err(NodeError::CQLError(CQLError::InvalidTable));
-            return Err(SchemaError::InvalidTable);
+            return Err(SchemaError::InvalidTable(new_table.get_name()));
         }
 
         dbg!("Adding table to keyspace");
@@ -617,8 +603,7 @@ impl KeyspaceSchema {
             return Ok(table);
         } else {
             dbg!("Table not found");
-            return Err(SchemaError::InvalidTable);
-            // return Err(NodeError::CQLError(CQLError::InvalidTable));
+            return Err(SchemaError::InvalidTable(table_name.to_string()));
         }
     }
 
@@ -631,13 +616,11 @@ impl KeyspaceSchema {
     /// # Returns
     /// Returns `Ok(())` if the table was successfully removed or a `NodeError` if not found.
     pub fn remove_table(&mut self, table_name: &str) -> Result<(), SchemaError> {
-        // todo!()
         let index = self
             .tables
             .iter()
             .position(|table| table.get_name() == table_name)
-            .unwrap();
-        // .ok_or(NodeError::CQLError(CQLError::InvalidTable))?;
+            .ok_or(SchemaError::InvalidTable(table_name.to_string()))?;
 
         self.tables.remove(index);
         Ok(())

@@ -69,12 +69,14 @@ impl Gossiper {
     }
 
     /// Increment the version of the heartbeat state of the endpoint with the given ip.
-    pub fn heartbeat(&mut self, ip: Ipv4Addr) {
+    pub fn heartbeat(&mut self, ip: Ipv4Addr) -> Result<(), GossipError> {
         self.endpoints_state
             .get_mut(&ip)
-            .unwrap()
+            .ok_or(GossipError::NoEndpointStateForIp)?
             .heartbeat_state
             .inc_version();
+
+        Ok(())
     }
 
     /// Set the application state of the endpoint with the given ip.
@@ -117,14 +119,11 @@ impl Gossiper {
             }
         }
 
-        dbg!(&most_updated_schema);
-
         most_updated_schema.cloned()
     }
 
     /// Removes the keyspace from the application state of the endpoint with the given ip.
     pub fn remove_keyspace(&mut self, ip: Ipv4Addr, keyspace: &str) -> Result<(), GossipError> {
-        dbg!("Removing keyspace");
         // Find the app state of the given ip
         let app_state = &mut self
             .endpoints_state
@@ -132,13 +131,8 @@ impl Gossiper {
             .ok_or(GossipError::NoEndpointStateForIp)?
             .application_state;
 
-        // Remove the keyspace from the schema
-        // TODO: should be Schema method
-        dbg!(&app_state.schema.keyspaces);
+        // TODO: make it an app state or schema method which also alters the timestamp
         app_state.schema.keyspaces.remove(keyspace);
-        // .iter()
-        // .filter(|(k, _)| *k != keyspace);
-        dbg!(&app_state.schema.keyspaces);
 
         app_state.version += 1;
         app_state.schema.timestamp = Utc::now().timestamp_millis();
@@ -349,7 +343,10 @@ impl Gossiper {
         let mut updated_info = BTreeMap::new();
 
         for digest in &ack.stale_digests {
-            let my_state = self.endpoints_state.get(&digest.address).unwrap();
+            let my_state = self
+                .endpoints_state
+                .get(&digest.address)
+                .expect("There MUST be an endpoint state for an IP received in an ACK.");
 
             let my_digest = Digest::from_heartbeat_state(digest.address, &my_state.heartbeat_state);
 
@@ -375,7 +372,10 @@ impl Gossiper {
         }
 
         for (digest, info) in &ack.updated_info {
-            let my_state = self.endpoints_state.get(&digest.address).unwrap();
+            let my_state = self
+                .endpoints_state
+                .get(&digest.address)
+                .expect("There MUST be an endpoint state for an IP received in an ACK.");
 
             // El ACK debe contener info más actualizada que la mía
             assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
