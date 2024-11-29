@@ -196,12 +196,18 @@ impl StorageEngine {
                             values.join(",").len() as u64 + timestamp.to_string().len() as u64 + 2;
                         continue;
                     }
+
                     if if_not_exist {
                         writeln!(temp_file, "{};{}", line_content, time_of_row)
                             .map_err(|_| StorageEngineError::IoError)?;
                         current_byte_offset += line_length + 1;
                         continue;
                     } else {
+                        if clustering_key_indices.len() == 0 {
+                            writeln!(temp_file, "{};{}", line_content, time_of_row)
+                                .map_err(|_| StorageEngineError::IoError)?;
+                            continue;
+                        }
                         writeln!(temp_file, "{};{}", values.join(","), timestamp)
                             .map_err(|_| StorageEngineError::IoError)?;
                         inserted = true;

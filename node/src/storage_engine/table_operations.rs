@@ -3,7 +3,25 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 
 impl StorageEngine {
-    /// Creates a table in `keyspace` with the name `table`.
+    /// Creates a new table in the given keyspace.
+    ///
+    /// # Parameters
+    ///
+    /// * `keyspace`: The name of the keyspace where the table will be stored.
+    /// * `table`: The name of the table to create.
+    /// * `columns`: A vector of strings representing the names of the table columns.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the table is created successfully, or an error if it fails.
+    ///
+    /// # Errors
+    ///
+    /// This function can return the following errors:
+    ///
+    /// * `StorageEngineError::DirectoryCreationFailed` if the directory for the table cannot be created.
+    /// * `StorageEngineError::FileWriteFailed` if writing to the table or replication files fails.
+    /// * `StorageEngineError::IoError` if an I/O error occurs while renaming files.
     pub fn create_table(
         &self,
         keyspace: &str,
@@ -78,7 +96,22 @@ impl StorageEngine {
         Ok(())
     }
 
-    // Drops a table from the storage location.
+    /// Drops a table from storage.
+    ///
+    /// # Parameters
+    ///
+    /// * `keyspace`: The name of the keyspace that contains the table.
+    /// * `table`: The name of the table to drop.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the table is successfully dropped, or an error if it fails.
+    ///
+    /// # Errors
+    ///
+    /// This function can return the following errors:
+    ///
+    /// * `StorageEngineError::FileDeletionFailed` if the table or replication files cannot be deleted.
     pub fn drop_table(&self, keyspace: &str, table: &str) -> Result<(), StorageEngineError> {
         let ip_str = self.ip.replace(".", "_");
         let keyspace_folder = format!("keyspaces_of_{}", ip_str);
@@ -112,6 +145,23 @@ impl StorageEngine {
         Ok(())
     }
 
+    /// Adds a new column to a table in the specified keyspace.
+    ///
+    /// # Parameters
+    ///
+    /// * `keyspace`: The name of the keyspace that contains the table.
+    /// * `table`: The name of the table where the column will be added.
+    /// * `column`: The name of the new column to add.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the column is added successfully, or an error if it fails.
+    ///
+    /// # Errors
+    ///
+    /// This function can return the following errors:
+    ///
+    /// * `StorageEngineError::IoError` if an I/O error occurs when adding the column to the file.
     pub fn add_column_to_table(
         &self,
         keyspace: &str,
@@ -130,6 +180,24 @@ impl StorageEngine {
         Ok(())
     }
 
+    /// Removes a column from a table in the specified keyspace.
+    ///
+    /// # Parameters
+    ///
+    /// * `keyspace`: The name of the keyspace that contains the table.
+    /// * `table`: The name of the table from which the column will be removed.
+    /// * `column`: The name of the column to remove.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the column is removed successfully, or an error if it fails.
+    ///
+    /// # Errors
+    ///
+    /// This function can return the following errors:
+    ///
+    /// * `StorageEngineError::UnsupportedOperation` if the column does not exist or cannot be removed.
+    /// * `StorageEngineError::IoError` if an I/O error occurs when removing the column from the file.
     pub fn remove_column_from_table(
         &self,
         keyspace: &str,
@@ -148,6 +216,24 @@ impl StorageEngine {
         Ok(())
     }
 
+    // Renames a column in a table of the specified keyspace.
+    ///
+    /// # Parameters
+    ///
+    /// * `keyspace`: The name of the keyspace that contains the table.
+    /// * `table`: The name of the table where the column will be renamed.
+    /// * `column`: The current name of the column to rename.
+    /// * `new_column`: The new name for the column.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the column is renamed successfully, or an error if it fails.
+    ///
+    /// # Errors
+    ///
+    /// This function can return the following errors:
+    ///
+    /// * `StorageEngineError::IoError` if an I/O error occurs when renaming the column in the file.
     pub fn rename_column_from_table(
         &self,
         keyspace: &str,
@@ -256,5 +342,176 @@ impl StorageEngine {
         }
 
         fs::rename(temp_path, file_path).map_err(|_| StorageEngineError::IoError)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StorageEngine;
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use std::path::PathBuf;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_create_table() {
+        let root = PathBuf::from(format!("/tmp/storage_test_{}", Uuid::new_v4()));
+        let keyspace = "test_keyspace";
+        let table_name = "test_table";
+        let columns = vec!["id", "name", "age"];
+
+        let storage = StorageEngine::new(root.clone(), "127.0.0.1".to_string());
+
+        // Ejecutar create_table
+        let result = storage.create_table(keyspace, table_name, columns);
+        assert!(result.is_ok(), "Failed to create table");
+
+        let keyspace_path = root.join(format!("keyspaces_of_127_0_0_1")).join(keyspace);
+        let primary_file_path = keyspace_path.join(format!("{}.csv", table_name));
+
+        // Verificar que el archivo de la tabla ha sido creado
+        assert!(primary_file_path.exists(), "Table file not created");
+
+        // Verificar que el archivo de replicación también ha sido creado
+        let replication_path = keyspace_path.join("replication");
+        let replication_file_path = replication_path.join(format!("{}.csv", table_name));
+        assert!(
+            replication_file_path.exists(),
+            "Replication file not created"
+        );
+
+        // Verificar que el archivo de índices ha sido creado
+        let index_file_path = keyspace_path.join(format!("{}_index.csv", table_name));
+        assert!(index_file_path.exists(), "Index file not created");
+    }
+
+    #[test]
+    fn test_drop_table() {
+        let root = PathBuf::from(format!("/tmp/storage_test_{}", Uuid::new_v4()));
+        let keyspace = "test_keyspace";
+        let table_name = "test_table";
+        let columns = vec!["id", "name", "age"];
+
+        let storage = StorageEngine::new(root.clone(), "127.0.0.1".to_string());
+
+        // Crear la tabla primero
+        let result = storage.create_table(keyspace, table_name, columns);
+        assert!(result.is_ok(), "Failed to create table");
+
+        // Ejecutar drop_table
+        let result = storage.drop_table(keyspace, table_name);
+        assert!(result.is_ok(), "Failed to drop table");
+
+        let keyspace_path = root.join(format!("keyspaces_of_127_0_0_1")).join(keyspace);
+        let primary_file_path = keyspace_path.join(format!("{}.csv", table_name));
+
+        // Verificar que el archivo de la tabla ha sido eliminado
+        assert!(!primary_file_path.exists(), "Table file not deleted");
+
+        // Verificar que el archivo de replicación también ha sido eliminado
+        let replication_file_path = keyspace_path
+            .join("replication")
+            .join(format!("{}.csv", table_name));
+        assert!(
+            !replication_file_path.exists(),
+            "Replication file not deleted"
+        );
+
+        // Verificar que el archivo de índices ha sido eliminado
+        let index_file_path = keyspace_path.join(format!("{}_index.csv", table_name));
+        assert!(!index_file_path.exists(), "Index file not deleted");
+    }
+
+    #[test]
+    fn test_add_column_to_table() {
+        let root = PathBuf::from(format!("/tmp/storage_test_{}", Uuid::new_v4()));
+        let keyspace = "test_keyspace";
+        let table_name = "test_table";
+        let columns = vec!["id", "name", "age"];
+
+        let storage = StorageEngine::new(root.clone(), "127.0.0.1".to_string());
+
+        // Crear la tabla primero
+        let result = storage.create_table(keyspace, table_name, columns);
+        assert!(result.is_ok(), "Failed to create table");
+
+        // Agregar una columna a la tabla
+        let result = storage.add_column_to_table(keyspace, table_name, "email");
+        assert!(result.is_ok(), "Failed to add column");
+
+        let keyspace_path = root.join(format!("keyspaces_of_127_0_0_1")).join(keyspace);
+        let file_path = keyspace_path.join(format!("{}.csv", table_name));
+        let file = File::open(file_path).expect("Failed to open table file");
+        let reader = BufReader::new(file);
+        let header = reader
+            .lines()
+            .next()
+            .expect("Failed to read header")
+            .unwrap();
+
+        // Verificar que la nueva columna ha sido añadida al encabezado
+        assert!(header.contains("email"), "Column not added");
+    }
+
+    #[test]
+    fn test_remove_column_from_table() {
+        let root = PathBuf::from(format!("/tmp/storage_test_{}", Uuid::new_v4()));
+        let keyspace = "test_keyspace";
+        let table_name = "test_table";
+        let columns = vec!["id", "name", "age"];
+
+        let storage = StorageEngine::new(root.clone(), "127.0.0.1".to_string());
+
+        // Crear la tabla primero
+        let result = storage.create_table(keyspace, table_name, columns);
+        assert!(result.is_ok(), "Failed to create table");
+
+        // Eliminar una columna de la tabla
+        let result = storage.remove_column_from_table(keyspace, table_name, "age");
+        assert!(result.is_ok(), "Failed to remove column");
+
+        let keyspace_path = root.join(format!("keyspaces_of_127_0_0_1")).join(keyspace);
+        let file_path = keyspace_path.join(format!("{}.csv", table_name));
+        let file = File::open(file_path).expect("Failed to open table file");
+        let reader = BufReader::new(file);
+        let header = reader
+            .lines()
+            .next()
+            .expect("Failed to read header")
+            .unwrap();
+
+        // Verificar que la columna "age" ha sido eliminada del encabezado
+        assert!(!header.contains("age"), "Column not removed");
+    }
+
+    #[test]
+    fn test_rename_column_from_table() {
+        let root = PathBuf::from(format!("/tmp/storage_test_{}", Uuid::new_v4()));
+        let keyspace = "test_keyspace";
+        let table_name = "test_table";
+        let columns = vec!["id", "name", "age"];
+
+        let storage = StorageEngine::new(root.clone(), "127.0.0.1".to_string());
+
+        // Crear la tabla primero
+        let result = storage.create_table(keyspace, table_name, columns);
+        assert!(result.is_ok(), "Failed to create table");
+
+        // Renombrar una columna de la tabla
+        let result = storage.rename_column_from_table(keyspace, table_name, "age", "years");
+        assert!(result.is_ok(), "Failed to rename column");
+
+        let keyspace_path = root.join(format!("keyspaces_of_127_0_0_1")).join(keyspace);
+        let file_path = keyspace_path.join(format!("{}.csv", table_name));
+        let file = File::open(file_path).expect("Failed to open table file");
+        let reader = BufReader::new(file);
+        let header = reader
+            .lines()
+            .next()
+            .expect("Failed to read header")
+            .unwrap();
+
+        // Verificar que la columna "age" ha sido renombrada a "years"
+        assert!(header.contains("years"), "Column not renamed");
     }
 }

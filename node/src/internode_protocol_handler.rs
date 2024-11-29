@@ -511,7 +511,7 @@ impl InternodeProtocolHandler {
         }
     }
 
-    /// Handles a query command received from another node.
+    // Handles a query command received from another node.
     fn handle_query_command(
         &self,
         node: &Arc<Mutex<Node>>,
@@ -717,8 +717,8 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Handles a gossip command from another node.
-    /// This function is responsible for processing the gossip message and responding accordingly.
+    // Handles a gossip command from another node.
+    // This function is responsible for processing the gossip message and responding accordingly.
     fn handle_gossip_command(
         &self,
         node: &Arc<Mutex<Node>>,
@@ -778,7 +778,7 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Procesa la respuesta cuando el estado es "OK"
+    // Procesa la respuesta cuando el estado es "OK"
     fn process_ok_response(
         &self,
         query_handler: &mut OpenQueryHandler,
@@ -833,7 +833,7 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Procesa la respuesta cuando el estado es "OK"
+    // Procesa la respuesta cuando el estado es "OK"
     fn process_error_response(
         &self,
         query_handler: &mut OpenQueryHandler,
@@ -847,7 +847,7 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Handles an `INSERT` command.
+    // Handles an `INSERT` command.
     fn handle_insert_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -870,7 +870,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `CREATE_TABLE` command.
+    // Handles a `CREATE_TABLE` command.
     fn handle_create_table_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -892,7 +892,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `DROP_TABLE` command.
+    // Handles a `DROP_TABLE` command.
     fn handle_drop_table_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -913,7 +913,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles an `ALTER_TABLE` command.
+    // Handles an `ALTER_TABLE` command.
     fn handle_alter_table_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -934,7 +934,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `CREATE_KEYSPACE` command.
+    // Handles a `CREATE_KEYSPACE` command.
     fn handle_create_keyspace_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -955,7 +955,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `DROP_KEYSPACE` command.
+    // Handles a `DROP_KEYSPACE` command.
     fn handle_drop_keyspace_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -976,7 +976,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles an `ALTER_KEYSPACE` command.
+    // Handles an `ALTER_KEYSPACE` command.
     fn handle_alter_keyspace_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -997,7 +997,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles an `UPDATE` command.
+    // Handles an `UPDATE` command.
     fn handle_update_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -1020,7 +1020,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `DELETE` command.
+    // Handles a `DELETE` command.
     fn handle_delete_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -1043,7 +1043,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `SELECT` command.
+    // Handles a `SELECT` command.
     fn handle_select_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -1065,7 +1065,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles an `INSERT` command.
+    // Handles an `INSERT` command.
     fn handle_use_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
