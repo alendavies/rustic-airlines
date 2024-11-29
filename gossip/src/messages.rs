@@ -1,9 +1,10 @@
-use crate::structures::{ApplicationState, HeartbeatState, NodeStatus, Schema};
 use std::{
     collections::BTreeMap,
     io::{Cursor, Read},
     net::Ipv4Addr,
 };
+
+use crate::structures::{application_state::ApplicationState, heartbeat_state::HeartbeatState};
 
 #[derive(Debug)]
 /// Errors that can occur when creating a message.
@@ -17,7 +18,7 @@ pub enum MessageError {
     CursorError,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord, Copy)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Copy)]
 /// A `Digest` used to identify a node in the cluster.
 ///
 /// ### Fields
@@ -30,6 +31,16 @@ pub struct Digest {
     pub version: u32,
 }
 
+impl Ord for Digest {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.generation == other.generation {
+            self.version.cmp(&other.version)
+        } else {
+            self.generation.cmp(&other.generation)
+        }
+    }
+}
+
 impl Digest {
     /// Create a new `Digest` message.
     pub fn new(address: Ipv4Addr, generation: u128, version: u32) -> Self {
@@ -40,12 +51,43 @@ impl Digest {
         }
     }
 
+    pub fn default() -> Self {
+        Digest {
+            address: Ipv4Addr::new(0, 0, 0, 0),
+            generation: 0,
+            version: 0,
+        }
+    }
+
+    pub fn with_generation(&self, generation: u128) -> Self {
+        Digest {
+            address: self.address,
+            generation,
+            version: self.version,
+        }
+    }
+
+    pub fn with_version(&self, version: u32) -> Self {
+        Digest {
+            address: self.address,
+            generation: self.generation,
+            version,
+        }
+    }
+
     /// Create a `Digest` message from a `HeartbeatState`.
     pub fn from_heartbeat_state(address: Ipv4Addr, heartbeat_state: &HeartbeatState) -> Self {
         Digest {
             address,
             generation: heartbeat_state.generation,
             version: heartbeat_state.version,
+        }
+    }
+
+    pub fn get_heartbeat_state(&self) -> HeartbeatState {
+        HeartbeatState {
+            generation: self.generation,
+            version: self.version,
         }
     }
 
@@ -286,175 +328,6 @@ impl Syn {
         }
 
         Ok(Syn { digests })
-    }
-}
-
-impl Schema {
-    /// ```md
-    /// 0    8    16   24   32
-    /// +----+----+----+----+
-    /// |    keyspace       |
-    /// |        ...        |
-    /// +----+----+----+----+
-    /// |     tables        |
-    /// |        ...        |
-    /// +----+----+----+----+
-    /// ```
-    /// Convert the `Schema` message to a byte slice.
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-
-        let keyspace_len_bytes = (self.keyspace.len() as u32).to_be_bytes();
-        let keyspace_bytes = self.keyspace.as_bytes();
-        let tables_len = self.tables.len() as u32;
-        let mut tables_bytes = vec![];
-
-        for table in &self.tables {
-            let table_len = table.len() as u32;
-            tables_bytes.extend_from_slice(&table_len.to_be_bytes());
-            tables_bytes.extend_from_slice(table.as_bytes());
-        }
-
-        bytes.extend_from_slice(&keyspace_len_bytes);
-        bytes.extend_from_slice(keyspace_bytes);
-        bytes.extend_from_slice(&tables_len.to_be_bytes());
-        bytes.extend_from_slice(&tables_bytes);
-
-        bytes
-    }
-
-    /// Create a `Schema` message from a byte slice.
-    pub fn from_bytes(cursor: &mut Cursor<&[u8]>) -> Result<Self, MessageError> {
-        let mut keyspace_len_bytes = [0u8; 4];
-        cursor
-            .read_exact(&mut keyspace_len_bytes)
-            .map_err(|_| MessageError::CursorError)?;
-        let keyspace_len = u32::from_be_bytes(keyspace_len_bytes);
-
-        let mut keyspace_bytes = vec![0u8; keyspace_len as usize];
-        cursor
-            .read_exact(&mut keyspace_bytes)
-            .map_err(|_| MessageError::CursorError)?;
-        let keyspace = String::from_utf8(keyspace_bytes).map_err(|_| MessageError::CursorError)?;
-
-        let mut tables_len_bytes = [0u8; 4];
-        cursor
-            .read_exact(&mut tables_len_bytes)
-            .map_err(|_| MessageError::CursorError)?;
-        let tables_len = u32::from_be_bytes(tables_len_bytes);
-
-        let mut tables = Vec::new();
-
-        for _ in 0..tables_len {
-            let mut table_len_bytes = [0u8; 4];
-            cursor
-                .read_exact(&mut table_len_bytes)
-                .map_err(|_| MessageError::CursorError)?;
-            let table_len = u32::from_be_bytes(table_len_bytes);
-
-            let mut table_bytes = vec![0u8; table_len as usize];
-            cursor
-                .read_exact(&mut table_bytes)
-                .map_err(|_| MessageError::CursorError)?;
-            let table = String::from_utf8(table_bytes).map_err(|_| MessageError::CursorError)?;
-
-            tables.push(table);
-        }
-
-        Ok(Schema { keyspace, tables })
-    }
-}
-
-impl ApplicationState {
-    /// Create a new `ApplicationState` message.
-    pub fn new(status: NodeStatus, version: u32, schemas: Vec<Schema>) -> Self {
-        ApplicationState {
-            status,
-            version,
-            schemas,
-        }
-    }
-
-    /// ```md
-    /// 0    8    16   24   32
-    /// +----+----+----+----+
-    /// |  status |   0x00  |
-    /// +----+----+----+----+
-    /// |       version     |
-    /// +----+----+----+----+
-    /// |       schemas     |
-    /// |        ...        |
-    /// +----+----+----+----+
-    /// ```
-    /// Convert the `ApplicationState` message to a byte slice.
-    pub fn as_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-
-        let status_bytes = (self.status as u16).to_be_bytes();
-        let version_bytes = self.version.to_be_bytes();
-
-        let schemas_len = self.schemas.len() as u32;
-
-        let mut schemas_bytes = vec![];
-
-        for schema in &self.schemas {
-            schemas_bytes.extend_from_slice(&schema.to_bytes());
-        }
-
-        bytes.extend_from_slice(&status_bytes);
-        bytes.extend_from_slice(&version_bytes);
-        bytes.extend_from_slice(&schemas_len.to_be_bytes());
-        bytes.extend_from_slice(&schemas_bytes);
-
-        bytes
-    }
-
-    /// Create an `ApplicationState` message from a byte slice.
-    pub fn from_bytes(cursor: &mut Cursor<&[u8]>) -> Result<Self, MessageError> {
-        let mut status_bytes = [0u8; 2];
-        cursor
-            .read_exact(&mut status_bytes)
-            .map_err(|_| MessageError::CursorError)?;
-        let status_value = u16::from_be_bytes(status_bytes);
-
-        let mut version_bytes = [0u8; 4];
-        cursor
-            .read_exact(&mut version_bytes)
-            .map_err(|_| MessageError::CursorError)?;
-        let version = u32::from_be_bytes(version_bytes);
-
-        let status = match status_value {
-            0 => NodeStatus::Bootstrap,
-            1 => NodeStatus::Normal,
-            2 => NodeStatus::Leaving,
-            3 => NodeStatus::Removing,
-            4 => NodeStatus::Dead,
-            _ => {
-                return Err(MessageError::InvalidValue(format!(
-                    "Invalid NodeStatus value: {}",
-                    status_value
-                )))
-            }
-        };
-
-        let mut schemas_len_bytes = [0u8; 4];
-        cursor
-            .read_exact(&mut schemas_len_bytes)
-            .map_err(|_| MessageError::CursorError)?;
-        let schemas_len = u32::from_be_bytes(schemas_len_bytes);
-
-        let mut schemas = Vec::new();
-
-        for _ in 0..schemas_len {
-            let schema = Schema::from_bytes(cursor).map_err(|_| MessageError::CursorError)?;
-            schemas.push(schema);
-        }
-
-        Ok(ApplicationState {
-            status,
-            version,
-            schemas,
-        })
     }
 }
 
@@ -705,7 +578,18 @@ impl Ack2 {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, str::FromStr};
+    use std::{
+        collections::{BTreeMap, HashMap},
+        str::FromStr,
+    };
+
+    use query_creator::clauses::{
+        keyspace::create_keyspace_cql::CreateKeyspace,
+        table::create_table_cql::CreateTable,
+        types::{column::Column, datatype::DataType},
+    };
+
+    use crate::structures::application_state::{KeyspaceSchema, NodeStatus, Schema, TableSchema};
 
     use super::*;
 
@@ -726,39 +610,6 @@ mod tests {
         bytes.extend_from_slice(&digest.version.to_be_bytes());
 
         assert_eq!(digest_bytes, bytes)
-    }
-
-    #[test]
-    fn application_state_as_bytes_ok() {
-        let state = ApplicationState {
-            status: NodeStatus::Normal,
-            version: 0xffffffff,
-            schemas: vec![Schema {
-                keyspace: "keyspace".to_string(),
-                tables: vec!["table1".to_string(), "table2".to_string()],
-            }],
-        };
-
-        let state_bytes = state.as_bytes();
-
-        let mut bytes = Vec::new();
-
-        let status_bytes = 0x01u16.to_be_bytes();
-        bytes.extend_from_slice(&status_bytes);
-        let version_bytes = state.version.to_be_bytes();
-        bytes.extend_from_slice(&version_bytes);
-        let schemas_len_bytes = 1u32.to_be_bytes();
-        bytes.extend_from_slice(&schemas_len_bytes);
-
-        let mut schema_bytes = Vec::new();
-
-        for schema in &state.schemas {
-            schema_bytes.extend_from_slice(&schema.to_bytes());
-        }
-
-        bytes.extend_from_slice(&schema_bytes);
-
-        assert_eq!(state_bytes.to_vec(), bytes);
     }
 
     #[test]
@@ -823,10 +674,10 @@ mod tests {
         let node3_state = ApplicationState {
             status: NodeStatus::Normal,
             version: 0xffffffff,
-            schemas: vec![Schema {
-                keyspace: "keyspace".to_string(),
-                tables: vec!["table1".to_string(), "table2".to_string()],
-            }],
+            schema: Schema {
+                timestamp: 0,
+                keyspaces: HashMap::new(),
+            },
         };
 
         let mut updated_info = BTreeMap::new();
@@ -872,10 +723,35 @@ mod tests {
         let node1_state = ApplicationState {
             status: NodeStatus::Normal,
             version: 0x1,
-            schemas: vec![Schema {
-                keyspace: "keyspace".to_string(),
-                tables: vec!["table1".to_string(), "table2".to_string()],
-            }],
+            schema: Schema {
+                timestamp: 10,
+                keyspaces: HashMap::from([(
+                    "keyspace".to_string(),
+                    KeyspaceSchema::new(
+                        CreateKeyspace {
+                            name: "keyspace".to_string(),
+                            if_not_exists_clause: false,
+                            replication_class: String::new(),
+                            replication_factor: 1,
+                        },
+                        vec![TableSchema::new(CreateTable {
+                            name: "table1".to_string(),
+                            keyspace_used_name: "keyspace".to_string(),
+                            if_not_exists_clause: false,
+                            columns: vec![Column {
+                                name: "column1".to_string(),
+                                data_type: DataType::Int,
+                                is_primary_key: false,
+                                allows_null: false,
+                                is_clustering_column: false,
+                                is_partition_key: false,
+                                clustering_order: String::new(),
+                            }],
+                            clustering_columns_in_order: vec![],
+                        })],
+                    ),
+                )]),
+            },
         };
 
         let node2 = Digest {
@@ -886,11 +762,36 @@ mod tests {
 
         let node2_state = ApplicationState {
             status: NodeStatus::Normal,
-            version: 0x9,
-            schemas: vec![Schema {
-                keyspace: "keyspace".to_string(),
-                tables: vec!["table1".to_string(), "table2".to_string()],
-            }],
+            version: 0x1,
+            schema: Schema {
+                timestamp: 10,
+                keyspaces: HashMap::from([(
+                    "keyspace".to_string(),
+                    KeyspaceSchema::new(
+                        CreateKeyspace {
+                            name: "keyspace".to_string(),
+                            if_not_exists_clause: false,
+                            replication_class: String::new(),
+                            replication_factor: 1,
+                        },
+                        vec![TableSchema::new(CreateTable {
+                            name: "table1".to_string(),
+                            keyspace_used_name: "keyspace".to_string(),
+                            if_not_exists_clause: false,
+                            columns: vec![Column {
+                                name: "column1".to_string(),
+                                data_type: DataType::Int,
+                                is_primary_key: false,
+                                allows_null: false,
+                                is_clustering_column: false,
+                                is_partition_key: false,
+                                clustering_order: String::new(),
+                            }],
+                            clustering_columns_in_order: vec![],
+                        })],
+                    ),
+                )]),
+            },
         };
 
         let mut updated_info = BTreeMap::new();
@@ -953,26 +854,6 @@ mod tests {
     }
 
     #[test]
-    fn application_state_from_bytes_ok() {
-        let expected_app_state = ApplicationState {
-            status: NodeStatus::Removing,
-            version: 0xffffffff,
-            schemas: vec![Schema {
-                keyspace: "keyspace".to_string(),
-                tables: vec!["table1".to_string(), "table2".to_string()],
-            }],
-        };
-
-        let bytes = expected_app_state.as_bytes();
-
-        let mut cursor = Cursor::new(bytes.as_slice());
-
-        let state = ApplicationState::from_bytes(&mut cursor).unwrap();
-
-        assert_eq!(state, expected_app_state);
-    }
-
-    #[test]
     fn ack_from_bytes_ok() {
         let node1 = Digest {
             address: Ipv4Addr::from_str("255.0.0.1").unwrap(),
@@ -994,11 +875,8 @@ mod tests {
 
         let node3_state = ApplicationState {
             status: NodeStatus::Normal,
-            version: 0xffffffff,
-            schemas: vec![Schema {
-                keyspace: "keyspace".to_string(),
-                tables: vec!["table1".to_string(), "table2".to_string()],
-            }],
+            version: 0x1,
+            schema: Schema::default(),
         };
 
         let mut updated_info = BTreeMap::new();
@@ -1026,11 +904,8 @@ mod tests {
 
         let node1_state = ApplicationState {
             status: NodeStatus::Normal,
-            version: 0xffffffff,
-            schemas: vec![Schema {
-                keyspace: "keyspace".to_string(),
-                tables: vec!["table1".to_string(), "table2".to_string()],
-            }],
+            version: 1,
+            schema: Schema::default(),
         };
 
         let node2 = Digest {
@@ -1041,11 +916,8 @@ mod tests {
 
         let node2_state = ApplicationState {
             status: NodeStatus::Normal,
-            version: 0xffffffff,
-            schemas: vec![Schema {
-                keyspace: "keyspace".to_string(),
-                tables: vec!["table1".to_string(), "table2".to_string()],
-            }],
+            version: 2,
+            schema: Schema::default(),
         };
 
         let mut updated_info = BTreeMap::new();
@@ -1054,9 +926,9 @@ mod tests {
 
         let expected_ack2 = Ack2 { updated_info };
 
-        let ack_bytes = expected_ack2.as_bytes();
+        let ack2_bytes = expected_ack2.as_bytes();
 
-        let ack2 = Ack2::from_bytes(ack_bytes.as_slice()).unwrap();
+        let ack2 = Ack2::from_bytes(ack2_bytes.as_slice()).unwrap();
 
         assert_eq!(ack2, expected_ack2);
     }
