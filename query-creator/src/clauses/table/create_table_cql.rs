@@ -6,13 +6,13 @@ use std::cmp::PartialEq;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CreateTable {
-    name: String,
-    keyspace_used_name: String,
-    if_not_exists_clause: bool,
-    columns: Vec<Column>,
-    clustering_columns_in_order: Vec<String>,
+    pub name: String,
+    pub keyspace_used_name: String,
+    pub if_not_exists_clause: bool,
+    pub columns: Vec<Column>,
+    pub clustering_columns_in_order: Vec<String>,
 }
 
 impl CreateTable {
