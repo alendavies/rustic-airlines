@@ -1,6 +1,7 @@
 // Ordered imports
-use crate::table::Table;
+// use crate::table::Table;
 use crate::NodeError;
+use gossip::structures::application_state::TableSchema;
 use query_creator::clauses::insert_cql::Insert;
 use query_creator::clauses::types::column::Column;
 use query_creator::errors::CQLError;
@@ -12,7 +13,7 @@ impl QueryExecution {
     pub(crate) fn execute_insert(
         &mut self,
         insert_query: Insert,
-        table_to_insert: Table,
+        table_to_insert: TableSchema,
         internode: bool,
         mut replication: bool,
         open_query_id: i32,

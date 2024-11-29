@@ -1,5 +1,6 @@
 // Ordered imports
 use crate::NodeError;
+use gossip::structures::application_state::KeyspaceSchema;
 use query_creator::clauses::use_cql::Use;
 
 use super::QueryExecution;
@@ -23,16 +24,21 @@ impl QueryExecution {
         // Set the current keyspace in the node
         node.set_actual_keyspace(keyspace_name.clone(), client_id)?;
 
-        let keyspaces = node.keyspaces.clone();
+        let keyspaces = node.schema.keyspaces.clone();
 
-        // Buscar el índice del keyspace con el nombre dado
-        let index = keyspaces
-            .iter()
-            .position(|keyspace| keyspace.get_name() == keyspace_name)
-            .ok_or(NodeError::KeyspaceError)?;
+        // // Buscar el índice del keyspace con el nombre dado
+        // let index = keyspaces
+        //     .iter()
+        //     .position(|keyspace| keyspace.get_name() == keyspace_name)
+        //     .ok_or(NodeError::KeyspaceError)?;
 
-        node.get_open_handle_query()
-            .set_keyspace_of_query(open_query_id, keyspaces[index].clone());
+        // node.get_open_handle_query()
+        //     .set_keyspace_of_query(open_query_id, keyspaces[index].clone());
+
+        node.get_open_handle_query().set_keyspace_of_query(
+            open_query_id,
+            KeyspaceSchema::new(keyspaces.get(&keyspace_name).unwrap().inner.clone(), vec![]),
+        );
 
         // If this is not an internode operation, communicate the change to other nodes
         if !internode {

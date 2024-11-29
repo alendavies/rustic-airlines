@@ -33,19 +33,19 @@ impl QueryExecution {
         self.storage_engine
             .drop_table(&client_keyspace.get_name(), &table_name)?;
 
-        // If this is not an internode operation, communicate to other nodes
-        if !internode {
-            // Serialize the `DropTable` into a simple message
-            let serialized_drop_table = drop_table.serialize();
-            self.send_to_other_nodes(
-                node,
-                &serialized_drop_table,
-                open_query_id,
-                client_id,
-                &client_keyspace.get_name(),
-                0,
-            )?;
-        }
+        // // If this is not an internode operation, communicate to other nodes
+        // if !internode {
+        //     // Serialize the `DropTable` into a simple message
+        //     let serialized_drop_table = drop_table.serialize();
+        //     self.send_to_other_nodes(
+        //         node,
+        //         &serialized_drop_table,
+        //         open_query_id,
+        //         client_id,
+        //         &client_keyspace.get_name(),
+        //         0,
+        //     )?;
+        // }
 
         Ok(())
     }

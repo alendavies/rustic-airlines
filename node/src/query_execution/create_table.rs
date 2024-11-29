@@ -1,6 +1,6 @@
-use crate::table::Table;
 // Ordered imports
 use crate::NodeError;
+use gossip::structures::application_state::TableSchema;
 use query_creator::clauses::table::create_table_cql::CreateTable;
 use query_creator::errors::CQLError;
 
@@ -49,22 +49,22 @@ impl QueryExecution {
         }
         node.get_open_handle_query().update_table_in_keyspace(
             &client_keyspace.get_name(),
-            Table::new(create_table.clone()),
+            TableSchema::new(create_table.clone()),
         )?;
 
-        // If this is not an internode operation, communicate to other nodes
-        if !internode {
-            // Serialize the `CreateTable` structure
-            let serialized_create_table = create_table.serialize();
-            self.how_many_nodes_failed = self.send_to_other_nodes(
-                node,
-                &serialized_create_table,
-                open_query_id,
-                client_id,
-                &client_keyspace.get_name(),
-                0,
-            )?;
-        }
+        // // If this is not an internode operation, communicate to other nodes
+        // if !internode {
+        //     // Serialize the `CreateTable` structure
+        //     let serialized_create_table = create_table.serialize();
+        //     self.how_many_nodes_failed = self.send_to_other_nodes(
+        //         node,
+        //         &serialized_create_table,
+        //         open_query_id,
+        //         client_id,
+        //         &client_keyspace.get_name(),
+        //         0,
+        //     )?;
+        // }
 
         Ok(())
     }

@@ -28,19 +28,19 @@ impl QueryExecution {
         self.storage_engine
             .drop_keyspace(&keyspace_name, &node.get_ip_string())?;
 
-        // If this is not an internode operation, communicate to other nodes
-        if !internode {
-            // Serialize the `DropKeyspace` structure
-            let serialized_drop_keyspace = drop_keyspace.serialize();
-            self.send_to_other_nodes(
-                node,
-                &serialized_drop_keyspace,
-                open_query_id,
-                client_id,
-                "None",
-                0,
-            )?;
-        }
+        // // If this is not an internode operation, communicate to other nodes
+        // if !internode {
+        //     // Serialize the `DropKeyspace` structure
+        //     let serialized_drop_keyspace = drop_keyspace.serialize();
+        //     self.send_to_other_nodes(
+        //         node,
+        //         &serialized_drop_keyspace,
+        //         open_query_id,
+        //         client_id,
+        //         "None",
+        //         0,
+        //     )?;
+        // }
 
         Ok(())
     }
