@@ -43,7 +43,8 @@ impl WidgetAddFlight {
     }
 
     pub fn show<P: Provider>(&mut self, ctx: &egui::Context, _db: &P, airports: &[Airport]) -> bool {
-        let mut is_open = self.is_open;
+        let mut is_open: bool = self.is_open;
+        let mut should_close: bool = false;
 
         egui::Window::new("Add Flight")
             .open(&mut is_open)
@@ -162,7 +163,7 @@ impl WidgetAddFlight {
                             match P::add_flight(self.to_flight(airports)) {
                                 Ok(_) => {
                                     self.error_message = None;
-                                    self.is_open = false; // Close the widget on success
+                                    should_close = true; // Close the widget on success
                                 }
                                 Err(_) => {
                                     self.error_message = Some("Error: A flight with this number already exists.".to_string());
@@ -173,7 +174,7 @@ impl WidgetAddFlight {
                 });
             });
     
-        self.is_open = is_open;
+        self.is_open = is_open && !should_close;
         self.is_open
     }
     

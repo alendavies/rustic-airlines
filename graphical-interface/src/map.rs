@@ -1,15 +1,11 @@
-use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
+use std::{cell::RefCell, rc::Rc, thread::sleep, time::{Duration, Instant}};
 
 use egui::Context;
 use egui_extras::install_image_loaders;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
 use crate::{
-    db::Provider,
-    plugins,
-    state::{SelectionState, ViewState},
-    widgets::{WidgetAddFlight, WidgetAirport, WidgetFlight},
-    windows,
+    db::Provider, plugins, state::{SelectionState, ViewState}, types::{CountryTracker, MapBounds}, widgets::{WidgetAddFlight, WidgetAirport, WidgetFlight}, windows
 };
 
 const INITIAL_LAT: f64 = -34.608406;
@@ -26,6 +22,7 @@ pub struct MyApp<P: Provider> {
     db: P,
     last_update: Instant,
     update_interval: Duration, 
+    country_tracker: CountryTracker,
 }
 
 impl<P: Provider> MyApp<P> {
@@ -52,6 +49,7 @@ impl<P: Provider> MyApp<P> {
             db,
             last_update: Instant::now(),
             update_interval: Duration::from_secs(20), // Actualiza cada 20 segundos
+            country_tracker: CountryTracker::new()
         }
     }
 
@@ -70,6 +68,12 @@ impl<P: Provider> MyApp<P> {
 
 impl<P: Provider> eframe::App for MyApp<P> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+
+        let map_bounds = calculate_map_bounds(&self.map_memory);
+        self.country_tracker.update_visible_countries(&map_bounds);
+
+        println!("{:?}", self.country_tracker.get_visible_countries());
+
         self.maybe_update_view_state(); // Periodic update for flights based on the selected airport.
 
         let rimless = egui::Frame {
@@ -142,15 +146,14 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 let _button_response = egui::Area::new("add_flight_button".into())
                     .anchor(egui::Align2::RIGHT_BOTTOM, [-10.0, -10.0])
                     .show(ctx, |ui| {
-                        // Tamaño personalizado para el botón
-                        let button_size = [150.0, 60.0]; // Ajusta el tamaño del botón aquí
+                        let button_size = [150.0, 60.0]; 
 
                         if ui.add_sized(button_size, egui::Button::new("Add Flight").rounding(10.0)).clicked() {
                             self.add_flight_widget = Some(WidgetAddFlight::new());
                         }
                     });
 
-                // Mostrar el widget "Add Flight" si está activo
+               
                 if let Some(widget) = &mut self.add_flight_widget {
                     if !widget.show(ctx, &self.db, &self.view_state.airports) {
                         self.add_flight_widget = None; 
@@ -165,6 +168,28 @@ impl<P: Provider> eframe::App for MyApp<P> {
     }
 }
 
+fn calculate_map_bounds(map_memory: &MapMemory) -> MapBounds {
+
+    let center_pos = match map_memory.detached() {
+        Some(pos) => pos,
+        None => Position::from_lat_lon(INITIAL_LAT, INITIAL_LON), // Fallback to initial position
+    };
+
+    let zoom = map_memory.zoom();
+    
+    // Rough calculation of visible area based on zoom
+    // These multipliers are approximate and may need tuning
+    let lat_span = 180.0 * (0.4 / zoom);
+    let lon_span = 300.0 * (0.4 / zoom);
+
+    MapBounds {
+        min_lat: center_pos.lat() - (lat_span / 2.0),
+        max_lat: center_pos.lat() + (lat_span / 2.0),
+        min_lon: center_pos.lon() - (lon_span / 2.0),
+        max_lon: center_pos.lon() + (lon_span / 2.0),
+    }
+
+}
 
 
 
