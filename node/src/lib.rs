@@ -190,7 +190,7 @@ impl Node {
                     node_guard.set_latest_schema_from_gossiper();
                 }
 
-                thread::sleep(std::time::Duration::from_secs(5));
+                thread::sleep(std::time::Duration::from_secs(1));
             }
         });
         //handle.join().unwrap();
