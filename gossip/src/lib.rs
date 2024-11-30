@@ -1,14 +1,23 @@
 //! This module contains the implementation of the gossip protocol.
 //! TODO: complete
 
+use chrono::{self, Utc};
+
 use messages::{Ack, Ack2, Digest, GossipMessage, Syn};
+use query_creator::clauses::{
+    keyspace::create_keyspace_cql::CreateKeyspace, table::create_table_cql::CreateTable,
+};
 use rand::{seq::IteratorRandom, thread_rng};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt,
     net::Ipv4Addr,
 };
-use structures::{EndpointState, HeartbeatState, NodeStatus};
+use structures::{
+    application_state::{KeyspaceSchema, NodeStatus, Schema, TableSchema},
+    endpoint_state::EndpointState,
+    heartbeat_state::HeartbeatState,
+};
 pub mod messages;
 pub mod structures;
 
@@ -26,6 +35,9 @@ pub struct Gossiper {
 pub enum GossipError {
     SynError,
     NoEndpointStateForIp,
+    NoSuchKeyspace,
+    KeyspaceAlreadyExists,
+    TableAlreadyExists,
 }
 
 impl fmt::Display for GossipError {
@@ -34,6 +46,9 @@ impl fmt::Display for GossipError {
         let description = match self {
             GossipError::SynError => "Syn error occurred",
             GossipError::NoEndpointStateForIp => "There is no endpoint state for the given ip",
+            GossipError::NoSuchKeyspace => "The given keyspace does not exist",
+            GossipError::KeyspaceAlreadyExists => "The given keyspace already exists",
+            GossipError::TableAlreadyExists => "The given table already exists",
         };
         write!(f, "{}", description)
     }
@@ -54,12 +69,14 @@ impl Gossiper {
     }
 
     /// Increment the version of the heartbeat state of the endpoint with the given ip.
-    pub fn heartbeat(&mut self, ip: Ipv4Addr) {
+    pub fn heartbeat(&mut self, ip: Ipv4Addr) -> Result<(), GossipError> {
         self.endpoints_state
             .get_mut(&ip)
-            .unwrap()
+            .ok_or(GossipError::NoEndpointStateForIp)?
             .heartbeat_state
             .inc_version();
+
+        Ok(())
     }
 
     /// Set the application state of the endpoint with the given ip.
@@ -76,16 +93,172 @@ impl Gossiper {
         self
     }
 
+    /// Changes the status of the application state of the endpoint with the given ip.
     pub fn change_status(&mut self, ip: Ipv4Addr, status: NodeStatus) -> Result<(), GossipError> {
-        self.endpoints_state
+        let app_state = &mut self
+            .endpoints_state
             .get_mut(&ip)
             .ok_or(GossipError::NoEndpointStateForIp)?
-            .application_state
-            .status = status;
+            .application_state;
+
+        app_state.status = status;
+        app_state.version += 1;
 
         Ok(())
     }
 
+    /// Returns the schema with the largest timestamp from the known application states.
+    pub fn get_most_updated_schema(&self) -> Option<Schema> {
+        let mut most_updated_schema = None;
+        let mut most_updated_timestamp = 0;
+
+        for state in self.endpoints_state.values() {
+            if state.application_state.schema.timestamp > most_updated_timestamp {
+                most_updated_schema = Some(&state.application_state.schema);
+                most_updated_timestamp = state.application_state.schema.timestamp;
+            }
+        }
+
+        most_updated_schema.cloned()
+    }
+
+    /// Removes the keyspace from the application state of the endpoint with the given ip.
+    pub fn remove_keyspace(&mut self, ip: Ipv4Addr, keyspace: &str) -> Result<(), GossipError> {
+        // Find the app state of the given ip
+        let app_state = &mut self
+            .endpoints_state
+            .get_mut(&ip)
+            .ok_or(GossipError::NoEndpointStateForIp)?
+            .application_state;
+
+        // TODO: make it an app state or schema method which also alters the timestamp
+        app_state.schema.keyspaces.remove(keyspace);
+
+        app_state.version += 1;
+        app_state.schema.timestamp = Utc::now().timestamp_millis();
+
+        Ok(())
+    }
+
+    /// Adds the keyspace to the application state of the endpoint with the given ip.
+    pub fn add_keyspace(
+        &mut self,
+        ip: Ipv4Addr,
+        keyspace: CreateKeyspace,
+    ) -> Result<(), GossipError> {
+        // Find the app state of the given ip
+        let app_state = &mut self
+            .endpoints_state
+            .get_mut(&ip)
+            .ok_or(GossipError::NoEndpointStateForIp)?
+            .application_state;
+
+        // Add the keyspace to the schema
+        if !app_state
+            .schema
+            .keyspaces
+            .keys()
+            .any(|k| *k == keyspace.get_name())
+        {
+            app_state.schema.keyspaces.insert(
+                keyspace.get_name(),
+                KeyspaceSchema {
+                    inner: keyspace,
+                    tables: Vec::new(),
+                },
+            );
+        } else {
+            return Err(GossipError::KeyspaceAlreadyExists);
+        }
+
+        app_state.version += 1;
+        app_state.schema.timestamp = Utc::now().timestamp_millis();
+
+        Ok(())
+    }
+
+    /// Add the table to the keyspace of the application state of the endpoint with the given ip.
+    pub fn add_table(
+        &mut self,
+        ip: Ipv4Addr,
+        table: CreateTable,
+        kesyapce_name: &str,
+    ) -> Result<(), GossipError> {
+        // Find the app state of the given ip
+        let app_state = &mut self
+            .endpoints_state
+            .get_mut(&ip)
+            .ok_or(GossipError::NoEndpointStateForIp)?
+            .application_state;
+
+        // Test if the keyspace of the table exists
+        let keyspace_exists = app_state
+            .schema
+            .keyspaces
+            .keys()
+            .any(|k| *k == kesyapce_name);
+
+        if keyspace_exists {
+            let keyspace = app_state
+                .schema
+                .keyspaces
+                .get_mut(kesyapce_name)
+                .ok_or(GossipError::NoSuchKeyspace)?;
+
+            // Check if the table already exists
+            for t in keyspace.tables.iter() {
+                if t.inner.get_name() == table.get_name() {
+                    return Err(GossipError::TableAlreadyExists);
+                }
+            }
+
+            let table_schema = TableSchema::new(table);
+
+            keyspace.tables.push(table_schema);
+        } else {
+            return Err(GossipError::NoSuchKeyspace);
+        }
+
+        app_state.version += 1;
+        app_state.schema.timestamp = Utc::now().timestamp_millis();
+
+        Ok(())
+    }
+
+    /// Removes the table from the keyspace of the application state of the endpoint with the given ip.
+    pub fn remove_table(
+        &mut self,
+        ip: Ipv4Addr,
+        keyspace: &str,
+        table: &str,
+    ) -> Result<(), GossipError> {
+        // Find the app state of the given ip
+        let app_state = &mut self
+            .endpoints_state
+            .get_mut(&ip)
+            .ok_or(GossipError::NoEndpointStateForIp)?
+            .application_state;
+
+        // Find the given keyspace in the schema
+        let k = app_state
+            .schema
+            .keyspaces
+            .iter_mut()
+            .find(|(keyspace_name, _)| *keyspace_name == keyspace);
+
+        // If the keyspace exists, remove the table from it
+        if let Some((_, k_schema)) = k {
+            k_schema.tables.retain(|t| t.inner.get_name() != table);
+            app_state.version += 1;
+            app_state.schema.timestamp = Utc::now().timestamp_millis();
+
+            Ok(())
+        } else {
+            Err(GossipError::NoSuchKeyspace)
+        }
+    }
+
+    /// Marks the endpoint with the given ip as dead.
     pub fn kill(&mut self, ip: Ipv4Addr) -> Result<(), GossipError> {
         self.change_status(ip, NodeStatus::Dead)
     }
@@ -135,36 +308,19 @@ impl Gossiper {
                     continue;
                 }
 
-                if digest.generation != my_digest.generation {
-                    match digest.generation.cmp(&my_digest.generation) {
-                        std::cmp::Ordering::Greater => {
-                            // Si la generación del digest es mayor a la mía, entonces el mío está desactualizado
-                            // le mando mi digest
-                            stale_digests.push(my_digest);
-                        }
-                        std::cmp::Ordering::Less => {
-                            // Si el de él está desactualizado, le mando la info para que lo actualice
-                            updated_info.insert(my_digest, my_state.application_state.clone());
-                        }
-                        std::cmp::Ordering::Equal => {
-                            // si las generaciones son iguales, no hacemos nada
-                        }
+                match digest
+                    .get_heartbeat_state()
+                    .cmp(&my_digest.get_heartbeat_state())
+                {
+                    std::cmp::Ordering::Less => {
+                        // Si el de él está desactualizado, le mando la info para que lo actualice
+                        updated_info.insert(my_digest, my_state.application_state.clone());
                     }
-                } else {
-                    match digest.version.cmp(&my_digest.version) {
-                        std::cmp::Ordering::Greater => {
-                            // Si la versión del digest es mayor a la mía, entonces el mío está desactualizado
-                            // le mando mi digest
-                            stale_digests.push(my_digest);
-                        }
-                        std::cmp::Ordering::Less => {
-                            // Si el de él está desactualizado, le mando la info para que lo actualice
-                            updated_info.insert(my_digest, my_state.application_state.clone());
-                        }
-                        std::cmp::Ordering::Equal => {
-                            // si las versiones son iguales, no hacemos nada
-                        }
+                    std::cmp::Ordering::Greater => {
+                        // Si el mío está desactualizado, le mando mi digest
+                        stale_digests.push(my_digest);
                     }
+                    std::cmp::Ordering::Equal => continue,
                 }
             } else {
                 // si no tengo info de ese nodo, entonces mi digest está desactualizado
@@ -187,35 +343,51 @@ impl Gossiper {
         let mut updated_info = BTreeMap::new();
 
         for digest in &ack.stale_digests {
-            let my_state = self.endpoints_state.get(&digest.address).unwrap();
+            let my_state = self
+                .endpoints_state
+                .get(&digest.address)
+                .expect("There MUST be an endpoint state for an IP received in an ACK.");
 
             let my_digest = Digest::from_heartbeat_state(digest.address, &my_state.heartbeat_state);
 
             if digest.generation == my_digest.generation && digest.version == my_digest.version {
                 continue;
             }
-            // si la version en el digest es menor a la mía, le mando la info para que lo actualice
-            else if digest.version < my_digest.version {
-                updated_info.insert(my_digest, my_state.application_state.clone());
+
+            match digest
+                .get_heartbeat_state()
+                .cmp(&my_digest.get_heartbeat_state())
+            {
+                std::cmp::Ordering::Less => {
+                    // Si el de él está desactualizado, le mando la info para que lo actualice
+                    updated_info.insert(my_digest, my_state.application_state.clone());
+                }
+                std::cmp::Ordering::Greater => {
+                    // Si el mío está desactualizado, hubo un problema, se debería haber mandado
+                    // el digest en el Syn
+                    panic!("Something went wrong, a digest incoming in an ACK should never be greater than the local state");
+                }
+                std::cmp::Ordering::Equal => continue,
             }
         }
 
-        for info in &ack.updated_info {
-            let my_state = self.endpoints_state.get(&info.0.address).unwrap();
+        for (digest, info) in &ack.updated_info {
+            let my_state = self
+                .endpoints_state
+                .get(&digest.address)
+                .expect("There MUST be an endpoint state for an IP received in an ACK.");
 
-            // por las dudas chequeo que efectivamente sea info más actualizada que la que tengo
-            if info.0.version > my_state.heartbeat_state.version
-                || info.0.generation > my_state.heartbeat_state.generation
-            {
-                // la actualizo
-                self.endpoints_state.insert(
-                    info.0.address,
-                    EndpointState::new(
-                        info.1.clone(),
-                        HeartbeatState::new(info.0.generation, info.0.version),
-                    ),
-                );
-            }
+            // El ACK debe contener info más actualizada que la mía
+            //assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
+
+            // la actualizo
+            self.endpoints_state.insert(
+                digest.address,
+                EndpointState::new(
+                    info.clone(),
+                    HeartbeatState::new(digest.generation, digest.version),
+                ),
+            );
         }
 
         Ack2 { updated_info }
@@ -223,27 +395,24 @@ impl Gossiper {
 
     /// Handles an Ack2 message and updates the local state.
     pub fn handle_ack2(&mut self, ack2: &Ack2) {
-        for info in &ack2.updated_info {
-            if let Some(my_state) = self.endpoints_state.get(&info.0.address) {
-                // por las dudas chequeo que efectivamente sea info más actualizada que la que tengo
-                if info.0.version > my_state.heartbeat_state.version
-                    || info.0.generation > my_state.heartbeat_state.generation
-                {
-                    // la actualizo
-                    self.endpoints_state.insert(
-                        info.0.address,
-                        EndpointState::new(
-                            info.1.clone(),
-                            HeartbeatState::new(info.0.generation, info.0.version),
-                        ),
-                    );
-                }
+        for (digest, info) in &ack2.updated_info {
+            if let Some(my_state) = self.endpoints_state.get(&digest.address) {
+                // El ACK2 debe contener info más actualizada que la mía
+                assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
+
+                self.endpoints_state.insert(
+                    digest.address,
+                    EndpointState::new(
+                        info.clone(),
+                        HeartbeatState::new(digest.generation, digest.version),
+                    ),
+                );
             } else {
                 self.endpoints_state.insert(
-                    info.0.address,
+                    digest.address,
                     EndpointState::new(
-                        info.1.clone(),
-                        HeartbeatState::new(info.0.generation, info.0.version),
+                        info.clone(),
+                        HeartbeatState::new(digest.generation, digest.version),
                     ),
                 );
             }
@@ -254,10 +423,9 @@ impl Gossiper {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::structures::{ApplicationState, NodeStatus};
     use messages::Payload;
     use std::str::FromStr;
-    use structures::Schema;
+    use structures::application_state::ApplicationState;
 
     #[test]
     fn incoming_syn_same_generation_lower_version() {
@@ -270,14 +438,7 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(
-                    NodeStatus::Normal,
-                    6,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                 HeartbeatState::new(3, 3),
             ),
         )]);
@@ -317,14 +478,7 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(
-                    NodeStatus::Normal,
-                    6,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                 HeartbeatState::new(3, 3),
             ),
         )]);
@@ -364,14 +518,7 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(
-                    NodeStatus::Normal,
-                    6,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                 HeartbeatState::new(4, 8),
             ),
         )]);
@@ -403,14 +550,7 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(
-                    NodeStatus::Normal,
-                    6,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                 HeartbeatState::new(7, 2),
             ),
         )]);
@@ -442,14 +582,7 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(
-                    NodeStatus::Normal,
-                    6,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                 HeartbeatState::new(7, 2),
             ),
         )]);
@@ -486,14 +619,7 @@ mod tests {
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(
-                    NodeStatus::Normal,
-                    6,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                 HeartbeatState::new(7, 3),
             ),
         )]);
@@ -525,19 +651,12 @@ mod tests {
     fn incoming_ack_stale_digest_lower_generation_greater_version() {
         let ip = Ipv4Addr::from_str("127.0.0.2").unwrap();
 
-        let ack = Ack::new(vec![Digest::new(ip, 6, 9)], BTreeMap::new());
+        let ack = Ack::new(vec![Digest::new(ip, 6, 1)], BTreeMap::new());
 
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(
-                    NodeStatus::Normal,
-                    6,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                 HeartbeatState::new(7, 3),
             ),
         )]);
@@ -575,28 +694,14 @@ mod tests {
             Vec::new(),
             BTreeMap::from([(
                 Digest::new(ip, 8, 7),
-                ApplicationState::new(
-                    NodeStatus::Leaving,
-                    9,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Leaving, 9, Schema::default()),
             )]),
         );
 
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(
-                    NodeStatus::Normal,
-                    6,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                 HeartbeatState::new(7, 2),
             ),
         )]);
@@ -614,14 +719,7 @@ mod tests {
         );
         assert_eq!(
             gossiper.endpoints_state.get(&ip).unwrap().application_state,
-            ApplicationState::new(
-                NodeStatus::Leaving,
-                9,
-                Vec::from([Schema {
-                    keyspace: "keyspace".to_string(),
-                    tables: vec!["table1".to_string(), "table2".to_string()],
-                }]),
-            )
+            ApplicationState::new(NodeStatus::Leaving, 9, Schema::default())
         );
     }
 
@@ -635,28 +733,14 @@ mod tests {
             Vec::new(),
             BTreeMap::from([(
                 Digest::new(ip, 7, 7),
-                ApplicationState::new(
-                    NodeStatus::Leaving,
-                    9,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Leaving, 9, Schema::default()),
             )]),
         );
 
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::from([(
             ip,
             EndpointState::new(
-                ApplicationState::new(
-                    NodeStatus::Normal,
-                    6,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                 HeartbeatState::new(7, 2),
             ),
         )]);
@@ -674,14 +758,7 @@ mod tests {
         );
         assert_eq!(
             gossiper.endpoints_state.get(&ip).unwrap().application_state,
-            ApplicationState::new(
-                NodeStatus::Leaving,
-                9,
-                Vec::from([Schema {
-                    keyspace: "keyspace".to_string(),
-                    tables: vec!["table1".to_string(), "table2".to_string()],
-                }]),
-            )
+            ApplicationState::new(NodeStatus::Leaving, 9, Schema::default())
         );
     }
 
@@ -692,17 +769,10 @@ mod tests {
 
         // ack with one stale digest (ip_1) and one updated info (ip_2)
         let ack = Ack::new(
-            vec![Digest::new(ip_1, 6, 3)],
+            vec![Digest::new(ip_1, 6, 1)],
             BTreeMap::from([(
                 Digest::new(ip_2, 8, 7),
-                ApplicationState::new(
-                    NodeStatus::Removing,
-                    9,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Removing, 9, Schema::default()),
             )]),
         );
 
@@ -710,28 +780,14 @@ mod tests {
             (
                 ip_1,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Bootstrap,
-                        2,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
                     HeartbeatState::new(7, 2),
                 ),
             ),
             (
                 ip_2,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Normal,
-                        6,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                     HeartbeatState::new(7, 2),
                 ),
             ),
@@ -770,14 +826,7 @@ mod tests {
                 .get(&ip_2)
                 .unwrap()
                 .application_state,
-            ApplicationState::new(
-                NodeStatus::Removing,
-                9,
-                Vec::from([Schema {
-                    keyspace: "keyspace".to_string(),
-                    tables: vec!["table1".to_string(), "table2".to_string()],
-                }]),
-            )
+            ApplicationState::new(NodeStatus::Removing, 9, Schema::default())
         );
     }
 
@@ -789,25 +838,11 @@ mod tests {
         let ack2 = Ack2::new(BTreeMap::from([
             (
                 Digest::new(ip_1, 7, 6),
-                ApplicationState::new(
-                    NodeStatus::Normal,
-                    7,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Normal, 7, Schema::default()),
             ),
             (
                 Digest::new(ip_2, 8, 7),
-                ApplicationState::new(
-                    NodeStatus::Removing,
-                    9,
-                    Vec::from([Schema {
-                        keyspace: "keyspace".to_string(),
-                        tables: vec!["table1".to_string(), "table2".to_string()],
-                    }]),
-                ),
+                ApplicationState::new(NodeStatus::Removing, 9, Schema::default()),
             ),
         ]));
 
@@ -815,28 +850,14 @@ mod tests {
             (
                 ip_1,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Bootstrap,
-                        2,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
                     HeartbeatState::new(7, 2),
                 ),
             ),
             (
                 ip_2,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Normal,
-                        6,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                     HeartbeatState::new(7, 2),
                 ),
             ),
@@ -859,14 +880,7 @@ mod tests {
                 .get(&ip_1)
                 .unwrap()
                 .application_state,
-            ApplicationState::new(
-                NodeStatus::Normal,
-                7,
-                Vec::from([Schema {
-                    keyspace: "keyspace".to_string(),
-                    tables: vec!["table1".to_string(), "table2".to_string()],
-                }]),
-            )
+            ApplicationState::new(NodeStatus::Normal, 7, Schema::default())
         );
         assert_eq!(
             gossiper.endpoints_state.get(&ip_2).unwrap().heartbeat_state,
@@ -878,14 +892,7 @@ mod tests {
                 .get(&ip_2)
                 .unwrap()
                 .application_state,
-            ApplicationState::new(
-                NodeStatus::Removing,
-                9,
-                Vec::from([Schema {
-                    keyspace: "keyspace".to_string(),
-                    tables: vec!["table1".to_string(), "table2".to_string()],
-                }]),
-            )
+            ApplicationState::new(NodeStatus::Removing, 9, Schema::default())
         );
     }
 
@@ -913,14 +920,7 @@ mod tests {
 
         let ack = Ack2::new(BTreeMap::from([(
             Digest::new(new_ip, 1, 1),
-            ApplicationState::new(
-                NodeStatus::Bootstrap,
-                1,
-                Vec::from([Schema {
-                    keyspace: "keyspace".to_string(),
-                    tables: vec!["table1".to_string(), "table2".to_string()],
-                }]),
-            ),
+            ApplicationState::new(NodeStatus::Bootstrap, 1, Schema::default()),
         )]));
 
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::new();
@@ -945,14 +945,7 @@ mod tests {
                 .get(&new_ip)
                 .unwrap()
                 .application_state,
-            ApplicationState::new(
-                NodeStatus::Bootstrap,
-                1,
-                Vec::from([Schema {
-                    keyspace: "keyspace".to_string(),
-                    tables: vec!["table1".to_string(), "table2".to_string()],
-                }]),
-            )
+            ApplicationState::new(NodeStatus::Bootstrap, 1, Schema::default())
         );
     }
 
@@ -967,56 +960,28 @@ mod tests {
             (
                 client_ip,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Bootstrap,
-                        2,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
                     HeartbeatState::new(7, 2),
                 ),
             ),
             (
                 server_ip,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Normal,
-                        6,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Normal, 6, Schema::default()),
                     HeartbeatState::new(8, 3),
                 ),
             ),
             (
                 another_ip,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Normal,
-                        8,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Normal, 8, Schema::default()),
                     HeartbeatState::new(4, 1),
                 ),
             ),
             (
                 new_ip,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Bootstrap,
-                        1,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Bootstrap, 1, Schema::default()),
                     HeartbeatState::new(1, 1),
                 ),
             ),
@@ -1026,42 +991,21 @@ mod tests {
             (
                 client_ip,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Bootstrap,
-                        2,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
                     HeartbeatState::new(6, 1),
                 ),
             ),
             (
                 server_ip,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Normal,
-                        7,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Normal, 7, Schema::default()),
                     HeartbeatState::new(8, 8),
                 ),
             ),
             (
                 another_ip,
                 EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Normal,
-                        8,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    ),
+                    ApplicationState::new(NodeStatus::Normal, 8, Schema::default()),
                     HeartbeatState::new(7, 2),
                 ),
             ),
@@ -1089,25 +1033,11 @@ mod tests {
                 BTreeMap::from([
                     (
                         Digest::new(server_ip, 8, 8),
-                        ApplicationState::new(
-                            NodeStatus::Normal,
-                            7,
-                            Vec::from([Schema {
-                                keyspace: "keyspace".to_string(),
-                                tables: vec!["table1".to_string(), "table2".to_string()],
-                            }]),
-                        )
+                        ApplicationState::new(NodeStatus::Normal, 7, Schema::default())
                     ),
                     (
                         Digest::new(another_ip, 7, 2),
-                        ApplicationState::new(
-                            NodeStatus::Normal,
-                            8,
-                            Vec::from([Schema {
-                                keyspace: "keyspace".to_string(),
-                                tables: vec!["table1".to_string(), "table2".to_string()],
-                            }]),
-                        )
+                        ApplicationState::new(NodeStatus::Normal, 8, Schema::default())
                     ),
                 ])
             )
@@ -1125,25 +1055,11 @@ mod tests {
             Ack2::new(BTreeMap::from([
                 (
                     Digest::new(client_ip, 7, 2),
-                    ApplicationState::new(
-                        NodeStatus::Bootstrap,
-                        2,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    )
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default())
                 ),
                 (
                     Digest::new(new_ip, 1, 1),
-                    ApplicationState::new(
-                        NodeStatus::Bootstrap,
-                        1,
-                        Vec::from([Schema {
-                            keyspace: "keyspace".to_string(),
-                            tables: vec!["table1".to_string(), "table2".to_string()],
-                        }]),
-                    )
+                    ApplicationState::new(NodeStatus::Bootstrap, 1, Schema::default())
                 ),
             ]))
         );
@@ -1177,5 +1093,400 @@ mod tests {
         let string_bytes = string.as_bytes();
 
         assert_eq!(syn_bytes, string_bytes);
+    }
+
+    #[test]
+    fn change_status() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
+                    HeartbeatState::default(),
+                ),
+            )]),
+        };
+
+        gossiper.change_status(ip, NodeStatus::Normal).unwrap();
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .status,
+            NodeStatus::Normal
+        );
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .version,
+            3
+        );
+    }
+
+    #[test]
+    fn change_status_non_existent() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::new(),
+        };
+
+        let result = gossiper.change_status(ip, NodeStatus::Normal);
+
+        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    }
+
+    #[test]
+    fn remove_keyspace() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        gossiper.remove_keyspace(ip, "keyspace").unwrap();
+
+        assert!(gossiper
+            .endpoints_state
+            .get(&ip)
+            .unwrap()
+            .application_state
+            .schema
+            .keyspaces
+            .is_empty());
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .version,
+            3
+        );
+    }
+
+    #[test]
+    fn remove_keyspace_non_existent_ip() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::new(),
+        };
+
+        let result = gossiper.remove_keyspace(ip, "keyspace");
+
+        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    }
+
+    #[test]
+    fn add_keyspace() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        gossiper
+            .add_keyspace(
+                ip,
+                CreateKeyspace {
+                    name: "keyspace".to_string(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .schema
+                .keyspaces,
+            HashMap::from([(
+                "keyspace".to_string(),
+                KeyspaceSchema::new(
+                    CreateKeyspace {
+                        name: "keyspace".to_string(),
+                        ..Default::default()
+                    },
+                    Vec::new()
+                )
+            )])
+        );
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .version,
+            3
+        );
+    }
+
+    #[test]
+    fn add_keyspace_non_existent_ip() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::new(),
+        };
+
+        let result = gossiper.add_keyspace(ip, CreateKeyspace::default());
+
+        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    }
+
+    #[test]
+    fn remove_table() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        2,
+                        Schema {
+                            keyspaces: HashMap::from([(
+                                "keyspace".to_string(),
+                                KeyspaceSchema {
+                                    inner: CreateKeyspace {
+                                        name: "keyspace".to_string(),
+                                        ..Default::default()
+                                    },
+                                    tables: vec![TableSchema {
+                                        inner: CreateTable {
+                                            name: "table1".to_string(),
+                                            keyspace_used_name: "keyspace".to_string(),
+                                            ..Default::default()
+                                        },
+                                    }],
+                                },
+                            )]),
+                            ..Default::default()
+                        },
+                    ),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        gossiper.remove_table(ip, "keyspace", "table1").unwrap();
+
+        assert!(gossiper
+            .endpoints_state
+            .get(&ip)
+            .unwrap()
+            .application_state
+            .schema
+            .keyspaces
+            .get("keyspace")
+            .unwrap()
+            .tables
+            .is_empty());
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .version,
+            3
+        );
+    }
+
+    #[test]
+    fn remove_table_non_existent_ip() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::new(),
+        };
+
+        let result = gossiper.remove_table(ip, "keyspace", "table1");
+
+        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    }
+
+    #[test]
+    fn remove_table_non_existent_keyspace() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        let result = gossiper.remove_table(ip, "keyspace", "table1");
+
+        assert!(matches!(result, Err(GossipError::NoSuchKeyspace)));
+    }
+
+    #[test]
+    fn add_table() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(
+                        NodeStatus::Bootstrap,
+                        2,
+                        Schema {
+                            keyspaces: HashMap::from([(
+                                "keyspace".to_string(),
+                                KeyspaceSchema {
+                                    inner: CreateKeyspace {
+                                        name: "keyspace".to_string(),
+                                        ..Default::default()
+                                    },
+                                    tables: Vec::new(),
+                                },
+                            )]),
+                            timestamp: 0,
+                        },
+                    ),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        gossiper
+            .add_table(
+                ip,
+                CreateTable {
+                    name: "table".to_string(),
+                    keyspace_used_name: "keyspace".to_string(),
+                    if_not_exists_clause: false,
+                    columns: Vec::new(),
+                    clustering_columns_in_order: Vec::new(),
+                },
+                "keyspace",
+            )
+            .unwrap();
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .schema,
+            Schema {
+                keyspaces: HashMap::from([(
+                    "keyspace".to_string(),
+                    KeyspaceSchema {
+                        inner: CreateKeyspace {
+                            name: "keyspace".to_string(),
+                            ..Default::default()
+                        },
+                        tables: vec![TableSchema {
+                            inner: CreateTable {
+                                name: "table".to_string(),
+                                keyspace_used_name: "keyspace".to_string(),
+                                if_not_exists_clause: false,
+                                columns: Vec::new(),
+                                clustering_columns_in_order: Vec::new(),
+                            },
+                        }],
+                    }
+                )]),
+                timestamp: 0
+            }
+        );
+
+        assert_eq!(
+            gossiper
+                .endpoints_state
+                .get(&ip)
+                .unwrap()
+                .application_state
+                .version,
+            3
+        );
+    }
+
+    #[test]
+    fn add_table_non_existent_ip() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::new(),
+        };
+
+        let result = gossiper.add_table(
+            ip,
+            CreateTable {
+                name: "table".to_string(),
+                keyspace_used_name: "keyspace".to_string(),
+                if_not_exists_clause: false,
+                columns: Vec::new(),
+                clustering_columns_in_order: Vec::new(),
+            },
+            "keyspace",
+        );
+
+        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    }
+
+    #[test]
+    fn add_table_non_existent_keyspace() {
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+
+        let mut gossiper = Gossiper {
+            endpoints_state: HashMap::from([(
+                ip,
+                EndpointState::new(
+                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
+                    HeartbeatState::new(7, 2),
+                ),
+            )]),
+        };
+
+        let result = gossiper.add_table(
+            ip,
+            CreateTable {
+                name: "table".to_string(),
+                keyspace_used_name: "keyspace".to_string(),
+                if_not_exists_clause: false,
+                columns: Vec::new(),
+                clustering_columns_in_order: Vec::new(),
+            },
+            "keyspace",
+        );
+
+        assert!(matches!(result, Err(GossipError::NoSuchKeyspace)));
     }
 }

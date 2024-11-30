@@ -10,9 +10,6 @@ impl QueryExecution {
     pub(crate) fn execute_create_keyspace(
         &mut self,
         create_keyspace: CreateKeyspace,
-        internode: bool,
-        open_query_id: i32,
-        client_id: i32,
     ) -> Result<(), NodeError> {
         // Locks the node to ensure safe concurrent access
 
@@ -37,20 +34,7 @@ impl QueryExecution {
             self.storage_engine.create_keyspace(&keyspace_name)?;
         }
 
-        // If this is not an internode operation, communicate the creation to other nodes
-        if !internode {
-            // Serialize the `CreateKeyspace` structure
-            let serialized_create_keyspace = create_keyspace.serialize();
-            self.how_many_nodes_failed = self.send_to_other_nodes(
-                node,
-                &serialized_create_keyspace,
-                open_query_id,
-                client_id,
-                "None",
-                0,
-            )?;
-        }
-
+        self.execution_finished_itself = true;
         Ok(())
     }
 }

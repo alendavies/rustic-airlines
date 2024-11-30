@@ -10,9 +10,7 @@ impl QueryExecution {
     pub(crate) fn execute_alter_table(
         &mut self,
         alter_table: AlterTable,
-        internode: bool,
         open_query_id: i32,
-        client_id: i32,
     ) -> Result<(), NodeError> {
         let mut node = self
             .node_that_execute
@@ -68,19 +66,7 @@ impl QueryExecution {
         // Save the updated table structure to the node
         node.update_table(&client_keyspace.get_name(), table)?;
 
-        // Broadcast the changes to other nodes if not an internode request
-        if !internode {
-            let serialized_alter_table = alter_table.serialize();
-            self.how_many_nodes_failed = self.send_to_other_nodes(
-                node,
-                &serialized_alter_table,
-                open_query_id,
-                client_id,
-                &client_keyspace.get_name(),
-                0,
-            )?;
-        }
-
+        self.execution_finished_itself = true;
         Ok(())
     }
 }

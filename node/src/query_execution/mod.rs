@@ -222,26 +222,17 @@ impl QueryExecution {
                     )
                 }
                 Query::CreateTable(create_table) => {
-                    self.execute_create_table(create_table, internode, open_query_id, client_id)
+                    self.execute_create_table(create_table, open_query_id)
                 }
-                Query::DropTable(drop_table) => {
-                    self.execute_drop_table(drop_table, internode, open_query_id, client_id)
-                }
+                Query::DropTable(drop_table) => self.execute_drop_table(drop_table, open_query_id),
                 Query::AlterTable(alter_table) => {
-                    self.execute_alter_table(alter_table, internode, open_query_id, client_id)
+                    self.execute_alter_table(alter_table, open_query_id)
                 }
-                Query::CreateKeyspace(create_keyspace) => self.execute_create_keyspace(
-                    create_keyspace,
-                    internode,
-                    open_query_id,
-                    client_id,
-                ),
-                Query::DropKeyspace(drop_keyspace) => {
-                    self.execute_drop_keyspace(drop_keyspace, internode, open_query_id, client_id)
+                Query::CreateKeyspace(create_keyspace) => {
+                    self.execute_create_keyspace(create_keyspace)
                 }
-                Query::AlterKeyspace(alter_keyspace) => {
-                    self.execute_alter_keyspace(alter_keyspace, internode, open_query_id, client_id)
-                }
+                Query::DropKeyspace(drop_keyspace) => self.execute_drop_keyspace(drop_keyspace),
+                Query::AlterKeyspace(alter_keyspace) => self.execute_alter_keyspace(alter_keyspace),
                 Query::Use(use_cql) => {
                     self.execute_use(use_cql, internode, open_query_id, client_id)
                 }

@@ -4,9 +4,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use gossip::structures::application_state::TableSchema;
 use query_creator::clauses::delete_cql::Delete;
-
-use crate::table::Table;
 
 use super::{errors::StorageEngineError, StorageEngine};
 
@@ -14,7 +13,7 @@ impl StorageEngine {
     pub fn delete(
         &self,
         delete_query: Delete,
-        table: Table,
+        table: TableSchema,
         keyspace: &str,
         is_replication: bool,
         timestamp: i64,
@@ -175,7 +174,7 @@ impl StorageEngine {
     /// Verifica si una línea cumple las condiciones para ser eliminada
     fn should_delete_line(
         &self,
-        table: &Table,
+        table: &TableSchema,
         delete_query: &Delete,
         line: &str,
     ) -> Result<bool, StorageEngineError> {
