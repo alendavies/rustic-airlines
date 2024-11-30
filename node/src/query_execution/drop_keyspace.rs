@@ -22,9 +22,6 @@ impl QueryExecution {
 
         node.remove_keyspace(keyspace_name.clone())?;
 
-        self.storage_engine
-            .drop_keyspace(&keyspace_name, &node.get_ip_string())?;
-
         self.execution_finished_itself = true;
         Ok(())
     }

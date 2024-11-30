@@ -28,9 +28,6 @@ impl QueryExecution {
         // Lock the node and remove the table from the internal list
         node.remove_table(table_name.clone(), open_query_id)?;
 
-        self.storage_engine
-            .drop_table(&client_keyspace.get_name(), &table_name)?;
-
         self.execution_finished_itself = true;
 
         Ok(())
