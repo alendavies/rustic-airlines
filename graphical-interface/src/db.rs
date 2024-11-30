@@ -678,7 +678,7 @@ impl Provider for Db {
         };
 
         let insert_departure_query = format!(
-            "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, {}, {}, {}, '{}', 'DEPARTURE');",
+            "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, {}, {}, {}, '{}', 'departure');",
             flight.number,
             flight.status.as_str(),
             flight.position.lat(),
@@ -690,7 +690,7 @@ impl Provider for Db {
         );
         
         let insert_arrival_query = format!(
-            "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, {}, {}, {}, '{}', 'ARRIVAL');",
+            "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, {}, {}, {}, '{}', 'arrival');",
             flight.number,
             flight.status.as_str(),
             flight.position.lat(),
@@ -738,7 +738,7 @@ impl Provider for Db {
             "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
             flight.status.as_str(),
             flight.airport,
-            &direction,
+            &direction.to_lowercase(),
             flight.departure_time,
             flight.arrival_time,
             flight.number
@@ -749,7 +749,7 @@ impl Provider for Db {
                 "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
                 flight.status.as_str(),
                 other_airport,
-                other_direction,
+                other_direction.to_lowercase(),
                 flight.departure_time,
                 flight.arrival_time,
                 flight.number
