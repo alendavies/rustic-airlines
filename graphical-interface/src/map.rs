@@ -8,7 +8,7 @@ use crate::{
     db::Provider,
     plugins,
     state::{SelectionState, ViewState},
-    widgets::{WidgetAirport, WidgetFlight},
+    widgets::{WidgetAddFlight, WidgetAirport, WidgetFlight},
     windows,
 };
 
@@ -22,6 +22,7 @@ pub struct MyApp<P: Provider> {
     view_state: ViewState,
     airport_widget: Option<WidgetAirport>,
     flight_widget: Option<WidgetFlight>,
+    add_flight_widget: Option<WidgetAddFlight>,
     db: P,
     last_update: Instant,
     update_interval: Duration, 
@@ -47,24 +48,23 @@ impl<P: Provider> MyApp<P> {
             ),
             airport_widget: None,
             flight_widget: None,
+            add_flight_widget: None,
             db,
             last_update: Instant::now(),
-            update_interval: Duration::from_secs(20), // Actualiza cada 10 segundos
+            update_interval: Duration::from_secs(20), // Actualiza cada 20 segundos
         }
     }
 
     fn maybe_update_view_state(&mut self) {
         if self.last_update.elapsed() >= self.update_interval {
+            self.last_update = Instant::now();
             self.view_state.update_airports(&self.db);
             if let Some(selected_airport) = &self.selection_state.borrow().airport {
-                if let Ok(new_flights) = P::get_flights_by_airport(&selected_airport.iata)
-                {
+                if let Ok(new_flights) = P::get_flights_by_airport(&selected_airport.iata) {
                     self.view_state.flights = new_flights;
                 }
-                self.last_update = Instant::now();
             }
         }
-
     }
 }
 
@@ -103,13 +103,23 @@ impl<P: Provider> eframe::App for MyApp<P> {
                             if !widget.show(ctx) {
                                 self.selection_state.borrow_mut().airport = None;
                                 self.airport_widget = None;
-                                self.view_state.flights.clear(); // Clear flights when the widget is closed
+                                self.view_state.flights.clear(); 
                             }
                         } else {
-                            self.airport_widget = Some(WidgetAirport::new(airport));
+                            self.airport_widget = Some(WidgetAirport::new(airport.clone()));
+                            if let Ok(new_flights) = P::get_flights_by_airport(&airport.iata) {
+                                self.view_state.flights = new_flights;
+                            }
+                            self.selection_state.borrow_mut().flight = None;
+                            self.flight_widget = None;
                         }
                     } else {
-                        self.airport_widget = Some(WidgetAirport::new(airport));
+                        self.airport_widget = Some(WidgetAirport::new(airport.clone()));
+                        if let Ok(new_flights) = P::get_flights_by_airport(&airport.iata) {
+                            self.view_state.flights = new_flights;
+                        }
+                        self.selection_state.borrow_mut().flight = None;
+                        self.flight_widget = None;
                     }
                 } else {
                     self.airport_widget = None;
@@ -131,6 +141,24 @@ impl<P: Provider> eframe::App for MyApp<P> {
                     }
                 } else {
                     self.flight_widget = None;
+                }
+
+                let _button_response = egui::Area::new("add_flight_button".into())
+                    .anchor(egui::Align2::RIGHT_BOTTOM, [-10.0, -10.0])
+                    .show(ctx, |ui| {
+                        // Tamaño personalizado para el botón
+                        let button_size = [150.0, 60.0]; // Ajusta el tamaño del botón aquí
+
+                        if ui.add_sized(button_size, egui::Button::new("Add Flight").rounding(10.0)).clicked() {
+                            self.add_flight_widget = Some(WidgetAddFlight::new());
+                        }
+                    });
+
+                // Mostrar el widget "Add Flight" si está activo
+                if let Some(widget) = &mut self.add_flight_widget {
+                    if !widget.show(ctx, &self.db, &self.view_state.airports) {
+                        self.add_flight_widget = None; 
+                    }
                 }
 
                 {

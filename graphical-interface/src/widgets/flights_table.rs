@@ -1,5 +1,5 @@
 use egui_extras::{Column, TableBuilder};
-use crate::db::{Db, Flight, Provider};
+use crate::{db::{Db, Provider}, types::{Flight, FlightStatus}};
 use super::View;
 
 pub enum FlightType {
@@ -12,6 +12,8 @@ pub struct WidgetFlightsTable {
     selected_date: chrono::NaiveDate,
     flights: Option<Vec<Flight>>,
     flight_type: FlightType,
+    edit_mode: bool, // Edit mode toggle
+    edited_flight_states: std::collections::HashMap<String, FlightStatus>, // Track edited flight states
 }
 
 impl WidgetFlightsTable {
@@ -21,6 +23,8 @@ impl WidgetFlightsTable {
             selected_date: chrono::offset::Utc::now().date_naive(),
             flights: None,
             flight_type,
+            edit_mode: false, // Default edit mode is off
+            edited_flight_states: std::collections::HashMap::new(),
         }
     }
 
@@ -29,6 +33,30 @@ impl WidgetFlightsTable {
             FlightType::Arrival => Db::get_arrival_flights(&self.airport, self.selected_date).unwrap(),
             FlightType::Departure => Db::get_departure_flights(&self.airport, self.selected_date).unwrap(),
         });
+    }
+
+    fn allowed_transitions(current_status: &FlightStatus) -> Vec<FlightStatus> {
+        match current_status {
+            FlightStatus::Scheduled => vec![
+                FlightStatus::OnTime,
+                FlightStatus::Delayed,
+                FlightStatus::Finished,
+                FlightStatus::Canceled,
+            ],
+            FlightStatus::OnTime => vec![
+                FlightStatus::Delayed,
+                FlightStatus::Finished,
+                FlightStatus::Canceled,
+            ],
+            FlightStatus::Delayed => vec![
+                FlightStatus::Finished,
+                FlightStatus::Canceled,
+            ],
+            FlightStatus::Finished | FlightStatus::Canceled => vec![
+                FlightStatus::Finished,
+                FlightStatus::Canceled,
+            ],
+        }
     }
 }
 
@@ -39,7 +67,6 @@ impl View for WidgetFlightsTable {
         }
 
         ui.vertical_centered(|ui| {
-            // Etiqueta de Fecha con espacio adicional
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new("Fecha:")
@@ -48,23 +75,28 @@ impl View for WidgetFlightsTable {
                         .color(egui::Color32::WHITE),
                 );
                 let date_response = ui.add(egui_extras::DatePickerButton::new(&mut self.selected_date));
-                
+
                 if date_response.changed() {
                     self.fetch_flights();
                 }
             });
 
-            ui.add_space(10.0); // Espacio entre la fecha y la tabla
+            ui.add_space(10.0);
 
-            // Tabla de vuelos con estilo mejorado
-            if let Some(flights) = &self.flights {
+            ui.checkbox(&mut self.edit_mode, "Edit Mode");
+
+            ui.add_space(10.0);
+
+            let flights = self.flights.clone(); //Requerido por como funciona egui.
+
+            if let Some(flights) = flights {
                 ui.group(|ui| {
-
                     TableBuilder::new(ui)
-                        .striped(true) // Alterna colores en filas
+                        .striped(true)
                         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                        .column(Column::remainder().at_least(100.0))
-                        .column(Column::remainder().at_least(100.0))
+                        .column(Column::remainder().at_least(100.0)) // Flight number column
+                        .column(Column::remainder().at_least(100.0)) // Status column
+                        .column(Column::remainder().at_least(50.0)) // Save button column
                         .header(25.0, |mut header| {
                             header.col(|ui| {
                                 ui.strong(
@@ -80,6 +112,15 @@ impl View for WidgetFlightsTable {
                                         .size(16.0),
                                 );
                             });
+                            if self.edit_mode {
+                                header.col(|ui| {
+                                    ui.strong(
+                                        egui::RichText::new("Acción")
+                                            .color(egui::Color32::YELLOW)
+                                            .size(16.0),
+                                    );
+                                });
+                            }
                         })
                         .body(|mut body| {
                             for flight in flights {
@@ -91,15 +132,67 @@ impl View for WidgetFlightsTable {
                                                 .size(14.0),
                                         );
                                     });
+
                                     row.col(|ui| {
-                                        ui.horizontal(|ui| {
+                                        if self.edit_mode {
+                                            let current_state = FlightStatus::from_str(&flight.status).unwrap();
+                                            let available_states = WidgetFlightsTable::allowed_transitions(&current_state);
+
+                                            let edited_state = self
+                                                .edited_flight_states
+                                                .entry(flight.number.clone())
+                                                .or_insert(current_state.clone());
+
+                                            egui::ComboBox::from_id_salt(&flight.number)
+                                                .selected_text(edited_state.as_str())
+                                                .show_ui(ui, |ui| {
+                                                    for state in available_states {
+                                                        if ui
+                                                            .selectable_label(*edited_state == state, state.as_str())
+                                                            .clicked()
+                                                        {
+                                                            *edited_state = state;
+                                                        }
+                                                    }
+                                                });
+                                        } else {
                                             ui.label(
                                                 egui::RichText::new(&flight.status)
                                                     .color(egui::Color32::WHITE)
                                                     .size(14.0),
                                             );
-                                        });
+                                        }
                                     });
+
+                                    // Save button (only in edit mode)
+                                    if self.edit_mode {
+                                        row.col(|ui| {
+                                            if ui.button("Save").clicked() {
+                                                if let Some(new_status) = self.edited_flight_states.get(&flight.number) {
+                                                    let direction = match self.flight_type {
+                                                        FlightType::Arrival => "ARRIVAL",
+                                                        FlightType::Departure => "DEPARTURE",
+                                                    };
+
+                                                    let mut updated_flight = flight.clone();
+                                                    updated_flight.status = new_status.as_str().to_string();
+                                                    match Db::update_state(updated_flight, direction) {
+                                                        Ok(_) => {
+                                                            // Refresh flights and clear the edited state
+                                                            self.fetch_flights();
+                                                            self.edited_flight_states.remove(&flight.number);
+                                                        }
+                                                        Err(_) => {
+                                                            ui.label(
+                                                                egui::RichText::new("Failed to update.")
+                                                                    .color(egui::Color32::RED),
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    }
                                 });
                             }
                         });
@@ -110,4 +203,5 @@ impl View for WidgetFlightsTable {
         });
     }
 }
+
 

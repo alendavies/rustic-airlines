@@ -1,4 +1,4 @@
-use crate::db::{Airport, Db, Flight, Provider};
+use crate::{db::Provider, types::{Airport, Flight}};
 
 /// Tracks the state for the selection of flights and airports.
 pub struct SelectionState {
@@ -51,7 +51,6 @@ pub struct ViewState {
 
 impl ViewState {
     pub fn new(flights: Vec<Flight>, airports: Vec<Airport>) -> Self {
-        println!("{:?}", airports);
         Self { flights, airports }
     }
 

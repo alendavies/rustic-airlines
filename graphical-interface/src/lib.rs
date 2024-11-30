@@ -6,6 +6,7 @@ mod plugins;
 mod state;
 mod widgets;
 mod windows;
+mod types;
 use map::MyApp;
 
 pub fn run() -> Result<(), eframe::Error> {

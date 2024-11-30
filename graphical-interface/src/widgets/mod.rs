@@ -1,9 +1,9 @@
 mod airport;
-mod airports;
+mod add_flight;
 mod flight;
 mod flights_table;
 pub use airport::WidgetAirport;
-pub use airports::WidgetAirports;
+pub use add_flight::WidgetAddFlight;
 pub use flight::WidgetFlight;
 pub use flights_table::WidgetFlightsTable;
 

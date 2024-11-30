@@ -60,7 +60,7 @@ fn main() {
             arrival_time TIMESTAMP,
             airport TEXT,
             direction TEXT,
-            PRIMARY KEY (airport, direction, departure_time, arrival_time)
+            PRIMARY KEY (airport, direction, departure_time, arrival_time, number)
         )",
 
     "CREATE TABLE flight_info (
@@ -73,13 +73,13 @@ fn main() {
             PRIMARY KEY (number)
         )",
 
-    "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR001', 'on time', -34.8222, -58.5358, 239.5, '1730073688', '1730131200', 'EZE', 'arrival')",
-    "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR001', 'on time', -34.8222, -58.5358, 239.5, '1730073688', '1730131200', 'AEP', 'departure')",
-    "INSERT INTO flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR001',  95.0, 10000, 550, 'AEP', 'EZE')",
-
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR101', 'on time', -34.5592, -58.4156, 125.3, '1730073800', '1730131300', 'AEP', 'departure')",
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR101', 'on time', -34.5592, -58.4156, 125.3, '1730073800', '1730131300', 'BRC', 'arrival')",
     "INSERT INTO flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR101', 92.0, 11000, 540, 'AEP', 'BRC')",
+
+    "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR001', 'on time', -34.8222, -58.5358, 239.5, '1730073688', '1730131200', 'AEP', 'departure')",
+    "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR001', 'on time', -34.8222, -58.5358, 239.5, '1730073688', '1730131200', 'EZE', 'arrival')",
+    "INSERT INTO flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR001',  95.0, 10000, 550, 'AEP', 'EZE')",
 
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR102', 'delayed', -31.3236, -64.2080, 178.6, '1730074100', '1730132700', 'COR', 'departure')",
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR102', 'delayed', -31.3236, -64.2080, 178.6, '1730074100', '1730132700', 'USH', 'arrival')",
@@ -117,14 +117,12 @@ fn main() {
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR110', 'on time', -36.5883, -64.2757, 198.3, '1730075700', '1730133300', 'BRC', 'arrival')",
     "INSERT INTO flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR110', 90.5, 11000, 535, 'RSA', 'BRC')",
 
-    "SELECT * FROM airports WHERE country = 'ARG'"
-
     ];
 
     let mut contador = 0;
     let len = queries.len();
     for query in queries {
-        match client.execute(&query, "quorum") {
+        match client.execute(&query, "all") {
             Ok(query_result) => {
                 match query_result {
                     driver::QueryResult::Result(_) => {

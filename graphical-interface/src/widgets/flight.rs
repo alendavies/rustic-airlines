@@ -1,7 +1,7 @@
 use chrono::{TimeZone, Utc};
 use egui::{Color32, RichText};
 
-use crate::db::{Db, Flight, FlightInfo, Provider};
+use crate::{db::{Db, Provider}, types::{Flight, FlightInfo}};
 
 pub struct WidgetFlight {
     pub selected_flight: Flight,

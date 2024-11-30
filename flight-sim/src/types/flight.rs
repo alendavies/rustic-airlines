@@ -116,6 +116,7 @@ impl Flight {
     /// Update the position of the flight and its fuel level based on the current time
     pub fn update_position(&mut self, current_time: NaiveDateTime) {
         if self.status == FlightStatus::Scheduled && current_time >= self.departure_time {
+            if self.altitude == 0 {self.altitude = 10000};
             self.status = FlightStatus::OnTime;
         }
         

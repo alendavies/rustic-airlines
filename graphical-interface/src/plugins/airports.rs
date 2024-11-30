@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use egui::{include_image, Image, Rect, Response, Vec2};
 use walkers::{extras::Style, Plugin, Projector};
 
-use crate::{db::Airport, state::SelectionState};
+use crate::{types::Airport, state::SelectionState};
 
 pub struct Airports<'a> {
     airports: &'a Vec<Airport>,

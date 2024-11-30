@@ -188,7 +188,7 @@ impl Client {
                 flight.altitude,
                 flight.flight_number
             );
-        self.cassandra_client.execute(&update_query_flight_info, "all")?;
+        self.cassandra_client.execute(&update_query_flight_info, "quorum")?;
 
         Ok(())
     }

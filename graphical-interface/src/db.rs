@@ -5,6 +5,8 @@ use driver::{self, CassandraClient, QueryResult};
 use native_protocol::messages::result::{result_, rows};
 use walkers::Position;
 
+use crate::types::{Airport, Flight, FlightInfo};
+
 #[derive(Debug, Clone)]
 pub struct DBError;
 
@@ -22,6 +24,10 @@ pub trait Provider {
     fn get_flights_by_airport(airport: &str) -> Result<Vec<Flight>, DBError>;
 
     fn get_airports() -> Result<Vec<Airport>, DBError>;
+
+    fn add_flight(flight: Flight) -> Result<(), DBError>;
+
+    fn update_state(flight: Flight, direction: &str) -> Result<(), DBError>;
 }
 
 /* #[derive(Debug, Deserialize)]
@@ -134,8 +140,6 @@ impl Provider for Db {
     /// Get the airports from a country from the database to show them in the graphical interface.
     fn get_airports_by_country(country: &str) -> std::result::Result<Vec<Airport>, DBError> {
 
-        println!("{:?}", "Hasta aca llega");
-
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
         let keyspace_query = format!("USE sky");
@@ -145,8 +149,6 @@ impl Provider for Db {
         let _ = driver.execute(&keyspace_query.as_str(), "all").map_err(|_| DBError)?;
 
         let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
-
-        println!("{:?}", result);
 
         let mut airports: Vec<Airport> = Vec::new();
         match result {
@@ -233,6 +235,7 @@ impl Provider for Db {
                         arrival_time: 0,
                         airport: String::new(),
                         direction: String::new(),
+                        info: None
                     };
 
                     if let Some(number) = row.get("number") {
@@ -342,6 +345,7 @@ impl Provider for Db {
                         arrival_time: 0,
                         airport: String::new(),
                         direction: String::new(),
+                        info: None
                     };
 
                     if let Some(number) = row.get("number") {
@@ -420,13 +424,19 @@ impl Provider for Db {
     }
 
     fn get_flight_info(number: &str) -> std::result::Result<FlightInfo, DBError> {
+
         let query = format!(
             "SELECT number, fuel, height, speed, origin, destination FROM sky.flight_info WHERE number = '{number}'"
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
-        let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
+        let keyspace_query = format!("USE sky");
+        let _ = driver.execute(&keyspace_query.as_str(), "quorum").map_err(|_| DBError)?;
+
+        let result = driver.execute(query.as_str(), "quorum").map_err(|_| DBError)?;
+
+        println!("{:?}", result);
 
         let mut flight_info = FlightInfo {
             number: String::new(),
@@ -529,7 +539,7 @@ impl Provider for Db {
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
-        let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
+        let result = driver.execute(query.as_str(), "quorum").map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
 
@@ -545,6 +555,7 @@ impl Provider for Db {
                         arrival_time: 0,
                         airport: String::new(),
                         direction: String::new(),
+                        info: None
                     };
 
                     if let Some(number) = row.get("number") {
@@ -648,51 +659,118 @@ impl Provider for Db {
         Ok(flights)
     }
 
+    fn add_flight(flight: Flight) -> Result<(), DBError>{
+
+        let query_check = format!(
+            "SELECT number FROM flight_info WHERE number = '{}';",
+            flight.number
+        );
+
+        let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).map_err(|_| DBError)?;
+
+        let result_check = driver.execute(query_check.as_str(), "all").map_err(|_| DBError)?;
+        
+        match result_check {
+            QueryResult::Result(result_::Result::Rows(res)) => {
+                if !res.rows_content.is_empty() {
+                    return Err(DBError);
+                }
+            }
+            _ => {}
+        }
+
+        let flight_info = match flight.info {
+            Some(data) => data,
+            None => return Err(DBError)
+        };
+
+        let insert_departure_query = format!(
+            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'DEPARTURE', {}, {}, {});",
+            flight.number,
+            flight.status.as_str(),
+            flight.departure_time,
+            flight.arrival_time,
+            flight_info.origin,
+            flight.position.lat(),
+            flight.position.lon(),
+            flight.heading
+        );
+
+        // Inserción en la tabla flights para el destino (ARRIVAL)
+        let insert_arrival_query = format!(
+            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'ARRIVAL', {}, {}, {});",
+            flight.number,
+            flight.status.as_str(),
+            flight.departure_time,
+            flight.arrival_time,
+            flight_info.destination,
+            flight.position.lat(),
+            flight.position.lon(),
+            flight.heading
+        );
+
+        // Inserción en la tabla flight_info con la información del vuelo
+        let insert_flight_info_query = format!(
+            "INSERT INTO sky.flight_info (number, fuel, height, speed, origin, destination) VALUES ('{}', {}, {}, {}, '{}', '{}');",
+            flight_info.number,
+            flight_info.fuel,
+            flight_info.height,
+            flight_info.speed,
+            flight_info.origin,
+            flight_info.destination
+        );
+
+        // Ejecución de las consultas en Cassandra
+        driver.execute(insert_departure_query.as_str(), "all").map_err(|_| DBError)?;
+        driver.execute(insert_arrival_query.as_str(), "all").map_err(|_| DBError)?;
+        driver.execute(insert_flight_info_query.as_str(), "all").map_err(|_| DBError)?;
+
+        Ok(())
+    }
+
+    fn update_state(flight: Flight, direction: &str) -> Result<(), DBError> {
+
+        let info = Self::get_flight_info(&flight.number)?;
+
+        let (other_airport, other_direction) = match direction {
+            "ARRIVAL" => (&info.origin, "DEPARTURE"),
+            "DEPARTURE" => (&info.destination, "ARRIVAL"),
+            _ => return(Err(DBError))
+        };
+        
+        let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
+
+        let update_query_status_departure = format!(
+            "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
+            flight.status.as_str(),
+            flight.airport,
+            &direction,
+            flight.departure_time,
+            flight.arrival_time,
+            flight.number
+        );
+        driver.execute(&update_query_status_departure, "all").map_err(|_| DBError)?;
+
+        let update_query_status_arrival = format!(
+                "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
+                flight.status.as_str(),
+                other_airport,
+                other_direction,
+                flight.departure_time,
+                flight.arrival_time,
+                flight.number
+            );
+
+        driver.execute(&update_query_status_arrival, "all").map_err(|_| DBError)?;
+
+        Ok(())
+    }
+
     fn get_airports() -> Result<Vec<Airport>, DBError> {
         Self::get_airports_by_country("ARG")
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Airport {
-    pub name: String,
-    pub iata: String,
-    pub position: Position,
-    pub country: String,
-}
-
-impl Airport {
-    pub fn new(name: String, iata: String, position: Position, country: String) -> Self {
-        Self {
-            name,
-            iata,
-            position,
-            country,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Flight {
-    pub number: String,
-    pub status: String,
-    pub position: Position,
-    pub heading: f32,
-    pub departure_time: i64,
-    pub arrival_time: i64,
-    pub airport: String,
-    pub direction: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct FlightInfo {
-    pub number: String,
-    pub fuel: f64,
-    pub height: i32,
-    pub speed: i32,
-    pub origin: String,
-    pub destination: String
-}
 
 /* #[derive(Debug, Clone, PartialEq)]
 pub struct Flight {
