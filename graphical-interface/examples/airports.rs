@@ -1,5 +1,5 @@
 use driver::CassandraClient;
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{net::Ipv4Addr, str::FromStr, thread};
 
 fn main() {
     let server_ip = "127.0.0.2";
@@ -8,49 +8,17 @@ fn main() {
     let mut client = CassandraClient::connect(ip).unwrap();
     client.startup().unwrap();
 
-    let queries = vec![
-        "CREATE KEYSPACE sky WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}",
-        "USE sky",
+    let meta_queries = vec![
+        "CREATE KEYSPACE sky WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2}",
         "CREATE TABLE sky.airports (
-                iata TEXT,
-                country TEXT,
-                name TEXT,
-                lat DOUBLE,
-                lon DOUBLE,
-                PRIMARY KEY (country, iata)
-                )",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('EZE', 'ARG', 'Ministro Pistarini', -34.8222, -58.5358)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('AEP', 'ARG', 'Aeroparque Jorge Newbery', -34.5592, -58.4156)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('COR', 'ARG', 'Ingeniero Ambrosio Taravella', -31.3236, -64.2080)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('MDZ', 'ARG', 'El Plumerillo', -32.8328, -68.7928)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('ROS', 'ARG', 'Islas Malvinas', -32.9036, -60.7850)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('SLA', 'ARG', 'Martín Miguel de Güemes', -24.8425, -65.4861)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('IGR', 'ARG', 'Cataratas del Iguazú', -25.7373, -54.4734)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('BRC', 'ARG', 'Teniente Luis Candelaria', -41.9629, -71.5332)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('USH', 'ARG', 'Malvinas Argentinas', -54.8433, -68.2958)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('TUC', 'ARG', 'Teniente General Benjamín Matienzo', -26.8409, -65.1048)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('AFA', 'ARG', 'Suboficial Ayudante Santiago Germano', -34.5883, -68.4039)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('CRD', 'ARG', 'General Enrique Mosconi', -45.7853, -67.4655)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('CNQ', 'ARG', 'Doctor Fernando Piragine Niveyro', -27.4455, -58.7619)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('EHL', 'ARG', 'Aeropuerto El Bolsón', -41.9432, -71.5327)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('EPA', 'ARG', 'El Palomar', -34.6099, -58.6126)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('EQS', 'ARG', 'Brigadier General Antonio Parodi', -42.9080, -71.1395)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('FMA', 'ARG', 'Formosa', -26.2127, -58.2281)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('GGS', 'ARG', 'Gobernador Gregores', -48.7831, -70.1500)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('GPO', 'ARG', 'General Pico', -35.6962, -63.7580)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('JUJ', 'ARG', 'Horacio Guzmán', -24.3928, -65.0978)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('LGS', 'ARG', 'Comodoro D. Ricardo Salomón', -35.4936, -69.5747)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('LAP', 'ARG', 'Comodoro Arturo Merino Benítez', -32.85, -68.86)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('PMQ', 'ARG', 'Perito Moreno', -46.5361, -70.9787)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('PRQ', 'ARG', 'Presidente Roque Sáenz Peña', -26.7564, -60.4922)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('REL', 'ARG', 'Almirante Zar', -43.2105, -65.2703)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('RCQ', 'ARG', 'General Justo José de Urquiza', -31.7948, -60.4804)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('RGL', 'ARG', 'Piloto Civil Norberto Fernández', -51.6089, -69.3126)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('RSA', 'ARG', 'Santa Rosa', -36.5883, -64.2757)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('VDM', 'ARG', 'Gobernador Castello', -40.8692, -63.0004)",
-        "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('BHI', 'ARG', 'Comandante Espora', -38.7242, -62.1693)",
-
-    "CREATE TABLE sky.flights (
+            iata TEXT,
+            country TEXT,
+            name TEXT,
+            lat DOUBLE,
+            lon DOUBLE,
+            PRIMARY KEY (country, iata)
+        )",
+        "CREATE TABLE sky.flights (
             number TEXT,
             status TEXT,
             lat DOUBLE,
@@ -64,15 +32,49 @@ fn main() {
         )",
 
         "CREATE TABLE sky.flight_info (
-                number TEXT,
-                fuel DOUBLE,
-                height INT,
-                speed INT,
-                origin TEXT,
-                destination TEXT,
-                PRIMARY KEY (number)
-            )",
+            number TEXT,
+            fuel DOUBLE,
+            height INT,
+            speed INT,
+            origin TEXT,
+            destination TEXT,
+            PRIMARY KEY (number)
+        )",
+    ];
 
+    let queries = vec![
+
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('EZE', 'ARG', 'Ministro Pistarini', -34.8222, -58.5358)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('AEP', 'ARG', 'Aeroparque Jorge Newbery', -34.5592, -58.4156)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('COR', 'ARG', 'Ingeniero Ambrosio Taravella', -31.3236, -64.2080)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('MDZ', 'ARG', 'El Plumerillo', -32.8328, -68.7928)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('ROS', 'ARG', 'Islas Malvinas', -32.9036, -60.7850)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('SLA', 'ARG', 'Martín Miguel de Güemes', -24.8425, -65.4861)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('IGR', 'ARG', 'Cataratas del Iguazú', -25.7373, -54.4734)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('BRC', 'ARG', 'Teniente Luis Candelaria', -41.9629, -71.5332)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('USH', 'ARG', 'Malvinas Argentinas', -54.8433, -68.2958)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('TUC', 'ARG', 'Teniente General Benjamín Matienzo', -26.8409, -65.1048)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('AFA', 'ARG', 'Suboficial Ayudante Santiago Germano', -34.5883, -68.4039)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('CRD', 'ARG', 'General Enrique Mosconi', -45.7853, -67.4655)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('CNQ', 'ARG', 'Doctor Fernando Piragine Niveyro', -27.4455, -58.7619)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('EHL', 'ARG', 'Aeropuerto El Bolsón', -41.9432, -71.5327)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('EPA', 'ARG', 'El Palomar', -34.6099, -58.6126)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('EQS', 'ARG', 'Brigadier General Antonio Parodi', -42.9080, -71.1395)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('FMA', 'ARG', 'Formosa', -26.2127, -58.2281)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('GGS', 'ARG', 'Gobernador Gregores', -48.7831, -70.1500)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('GPO', 'ARG', 'General Pico', -35.6962, -63.7580)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('JUJ', 'ARG', 'Horacio Guzmán', -24.3928, -65.0978)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('LGS', 'ARG', 'Comodoro D. Ricardo Salomón', -35.4936, -69.5747)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('LAP', 'ARG', 'Comodoro Arturo Merino Benítez', -32.85, -68.86)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('PMQ', 'ARG', 'Perito Moreno', -46.5361, -70.9787)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('PRQ', 'ARG', 'Presidente Roque Sáenz Peña', -26.7564, -60.4922)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('REL', 'ARG', 'Almirante Zar', -43.2105, -65.2703)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('RCQ', 'ARG', 'General Justo José de Urquiza', -31.7948, -60.4804)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('RGL', 'ARG', 'Piloto Civil Norberto Fernández', -51.6089, -69.3126)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('RSA', 'ARG', 'Santa Rosa', -36.5883, -64.2757)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('VDM', 'ARG', 'Gobernador Castello', -40.8692, -63.0004)",
+    "INSERT INTO airports (iata, country, name, lat, lon) VALUES ('BHI', 'ARG', 'Comandante Espora', -38.7242, -62.1693)",
+    
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR101', 'on time', -34.5592, -58.4156, 125.3, '1730073800', '1730131300', 'AEP', 'departure')",
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR101', 'on time', -34.5592, -58.4156, 125.3, '1730073800', '1730131300', 'BRC', 'arrival')",
     "INSERT INTO flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR101', 92.0, 11000, 540, 'AEP', 'BRC')",
@@ -116,11 +118,34 @@ fn main() {
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR110', 'on time', -36.5883, -64.2757, 198.3, '1730075700', '1730133300', 'RSA', 'departure')",
     "INSERT INTO flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR110', 'on time', -36.5883, -64.2757, 198.3, '1730075700', '1730133300', 'BRC', 'arrival')",
     "INSERT INTO flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR110', 90.5, 11000, 535, 'RSA', 'BRC')",
-
     ];
 
     let mut contador = 0;
-    let len = queries.len();
+    let len = queries.len() + meta_queries.len();
+
+    for query in meta_queries {
+        match client.execute(&query, "all") {
+            Ok(query_result) => {
+                match query_result {
+                    driver::QueryResult::Result(_) => {
+                        contador += 1;
+                        println!(
+                            "Consulta ejecutada exitosamente: {} y el resultado fue {:?}",
+                            query, query_result
+                        );
+                    }
+                    driver::QueryResult::Error(error) => {
+                        println!("Error en la consulta: {:?}", error);
+                    }
+                }
+                println!("exitosas {:?}/{:?}", contador, len)
+            }
+            Err(e) => eprintln!("Error al ejecutar la consulta: {}\nError: {:?}", query, e),
+        }
+    }
+
+    thread::sleep(std::time::Duration::from_secs(3));
+
     for query in queries {
         match client.execute(&query, "all") {
             Ok(query_result) => {

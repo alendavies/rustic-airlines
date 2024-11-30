@@ -4,11 +4,11 @@ use crate::internode_protocol::message::{InternodeMessage, InternodeMessageConte
 use crate::internode_protocol::query::InternodeQuery;
 use crate::internode_protocol::response::{InternodeResponse, InternodeResponseStatus};
 use crate::open_query_handler::OpenQueryHandler;
-use crate::table::Table;
 use crate::utils::connect_and_send_message;
 use crate::{storage_engine, Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
 use chrono::Utc;
 use gossip::messages::GossipMessage;
+use gossip::structures::application_state::TableSchema;
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -104,7 +104,7 @@ impl InternodeProtocolHandler {
         response: &InternodeResponse,
         open_query_id: i32,
         keyspace_name: String,
-        table: Option<Table>,
+        table: Option<TableSchema>,
         columns: Vec<Column>,
         self_ip: Ipv4Addr,
         from: Ipv4Addr,
@@ -166,7 +166,7 @@ impl InternodeProtocolHandler {
         columns: Vec<Column>,
         self_ip: Ipv4Addr,
         keyspace_name: String,
-        table: Table,
+        table: TableSchema,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         partitioner: Partitioner,
         storage_path: PathBuf,
@@ -272,7 +272,7 @@ impl InternodeProtocolHandler {
         latest_versions: HashMap<String, (Ipv4Addr, i64, Vec<String>)>,
         self_ip: &Ipv4Addr,
         keyspace_name: &String,
-        table: Table,
+        table: TableSchema,
         connections: &Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         partitioner: &Partitioner,
         storage_path: PathBuf,

@@ -1,10 +1,10 @@
 use crate::{errors::CQLError, QueryCreator};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CreateKeyspace {
     pub name: String,
     pub if_not_exists_clause: bool,
-    pub replication_class: String,
+    pub replication_class: String, // TODO: enum?
     pub replication_factor: u32,
 }
 

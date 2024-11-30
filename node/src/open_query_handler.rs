@@ -1,7 +1,6 @@
 use crate::errors::NodeError;
 use crate::internode_protocol::response::InternodeResponse;
-use crate::keyspace::Keyspace;
-use crate::table::Table;
+use gossip::structures::application_state::{KeyspaceSchema, TableSchema};
 use query_creator::Query;
 use std::collections::HashMap;
 use std::fmt;
@@ -66,7 +65,7 @@ pub struct OpenQuery {
     connection: TcpStream,
     query: Query,
     consistency_level: ConsistencyLevel,
-    table: Option<Table>,
+    table: Option<TableSchema>,
 }
 
 impl OpenQuery {
@@ -83,7 +82,7 @@ impl OpenQuery {
         connection: TcpStream,
         query: Query,
         consistencty: &str,
-        table: Option<Table>,
+        table: Option<TableSchema>,
     ) -> Self {
         Self {
             needed_responses,
@@ -151,7 +150,7 @@ impl OpenQuery {
         self.query.clone()
     }
 
-    pub fn get_table(&self) -> Option<Table> {
+    pub fn get_table(&self) -> Option<TableSchema> {
         self.table.clone()
     }
 
@@ -174,7 +173,7 @@ impl fmt::Display for OpenQuery {
 /// Manages multiple `OpenQuery` instances, each identified by an ID.
 pub struct OpenQueryHandler {
     queries: HashMap<i32, OpenQuery>,
-    keyspaces_queries: HashMap<i32, Option<Keyspace>>,
+    keyspaces_queries: HashMap<i32, Option<KeyspaceSchema>>,
     next_id: i32,
 }
 
@@ -205,8 +204,8 @@ impl OpenQueryHandler {
         connection: TcpStream,
         query: Query,
         consistency_level: &str,
-        table: Option<Table>,
-        keyspace: Option<Keyspace>,
+        table: Option<TableSchema>,
+        keyspace: Option<KeyspaceSchema>,
     ) -> i32 {
         let new_id = self.next_id;
         self.next_id += 1;
@@ -233,7 +232,10 @@ impl OpenQueryHandler {
         self.queries.get_mut(id)
     }
 
-    pub fn get_keyspace_of_query(&self, open_query_id: i32) -> Result<Option<Keyspace>, NodeError> {
+    pub fn get_keyspace_of_query(
+        &self,
+        open_query_id: i32,
+    ) -> Result<Option<KeyspaceSchema>, NodeError> {
         self.keyspaces_queries
             .get(&open_query_id)
             .ok_or(NodeError::InternodeProtocolError)
@@ -243,7 +245,7 @@ impl OpenQueryHandler {
     pub fn update_table_in_keyspace(
         &mut self,
         keyspace_name: &str,
-        new_table: Table,
+        new_table: TableSchema,
     ) -> Result<(), NodeError> {
         for (_, keyspace) in &mut self.keyspaces_queries {
             if let Some(key) = keyspace {
@@ -256,15 +258,16 @@ impl OpenQueryHandler {
                         }
                     }
                     if !find {
-                        key.add_table(new_table.clone())?;
+                        key.add_table(new_table.clone()).unwrap();
                     }
                 }
             }
         }
+
         Ok(())
     }
 
-    pub fn set_keyspace_of_query(&mut self, open_query_id: i32, keyspace: Keyspace) {
+    pub fn set_keyspace_of_query(&mut self, open_query_id: i32, keyspace: KeyspaceSchema) {
         self.keyspaces_queries.insert(open_query_id, Some(keyspace));
     }
 

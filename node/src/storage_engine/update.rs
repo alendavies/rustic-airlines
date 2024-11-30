@@ -5,9 +5,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use gossip::structures::application_state::TableSchema;
 use query_creator::clauses::update_cql::Update;
-
-use crate::table::Table;
 
 use super::{errors::StorageEngineError, StorageEngine};
 
@@ -79,7 +78,7 @@ impl StorageEngine {
     pub fn update(
         &self,
         update_query: Update,
-        table: Table,
+        table: TableSchema,
         is_replication: bool,
         keyspace: &str,
         timestamp: i64,
@@ -198,7 +197,7 @@ impl StorageEngine {
     /// Crea un mapa de valores de columna para una fila dada.
     pub fn create_column_value_map(
         &self,
-        table: &Table,
+        table: &TableSchema,
         columns: &[String],
         only_partitioner_key: bool,
     ) -> HashMap<String, String> {
@@ -216,7 +215,7 @@ impl StorageEngine {
 
     fn update_or_write_line(
         &self,
-        table: &Table,
+        table: &TableSchema,
         update_query: &Update,
         line: &str,
         temp_file: &mut File,
@@ -299,7 +298,7 @@ impl StorageEngine {
 
     fn add_new_row_in_update(
         &self,
-        table: &Table,
+        table: &TableSchema,
         update_query: &Update,
         keyspace: &str,
         is_replication: bool,

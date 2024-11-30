@@ -9,6 +9,7 @@ use std::{
 
 use std::time::Duration;
 
+use gossip::structures::application_state::{KeyspaceSchema, TableSchema};
 use partitioner::Partitioner;
 
 use crate::{
@@ -16,8 +17,6 @@ use crate::{
         message::{InternodeMessage, InternodeMessageContent},
         query::InternodeQuery,
     },
-    keyspace::Keyspace,
-    table::Table,
     utils::connect_and_send_message,
     INTERNODE_PORT,
 };
@@ -27,7 +26,7 @@ use super::{errors::StorageEngineError, StorageEngine};
 impl StorageEngine {
     pub fn redistribute_data(
         &self,
-        keyspaces: Vec<Keyspace>,
+        keyspaces: Vec<KeyspaceSchema>,
         partitioner: &Partitioner,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), StorageEngineError> {
@@ -77,8 +76,8 @@ impl StorageEngine {
         &self,
         file_path: &std::path::Path,
         partitioner: &Partitioner,
-        keyspace: Keyspace,
-        table: Table,
+        keyspace: KeyspaceSchema,
+        table: TableSchema,
         is_replication: bool,
         self_ip: String,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
@@ -324,7 +323,7 @@ impl StorageEngine {
 
         // Enviar el mensaje al nodo objetivo
 
-        let duration = Duration::from_millis(200);
+        let duration = Duration::from_millis(500);
         thread::sleep(duration);
         let result = connect_and_send_message(target_ip, INTERNODE_PORT, connections, message);
         // Manejar errores o resultados

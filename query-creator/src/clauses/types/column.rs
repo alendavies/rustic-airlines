@@ -8,7 +8,7 @@ pub struct Column {
     pub allows_null: bool,
     pub is_clustering_column: bool,
     pub is_partition_key: bool,
-    pub clustering_order: String,
+    pub clustering_order: String, // TODO: enum? es asc desc?
 }
 
 impl Column {

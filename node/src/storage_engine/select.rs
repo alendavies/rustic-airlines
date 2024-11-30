@@ -3,9 +3,8 @@ use std::{
     io::{BufRead, BufReader, Seek},
 };
 
+use gossip::structures::application_state::TableSchema;
 use query_creator::clauses::select_cql::Select;
-
-use crate::table::Table;
 
 use super::{errors::StorageEngineError, StorageEngine};
 
@@ -102,7 +101,7 @@ impl StorageEngine {
     pub fn select(
         &self,
         select_query: Select,
-        table: Table,
+        table: TableSchema,
         is_replication: bool,
         keyspace: &str,
     ) -> Result<Vec<String>, StorageEngineError> {
@@ -255,7 +254,7 @@ impl StorageEngine {
     fn line_matches_where_clause(
         &self,
         line: &str,
-        table: &Table,
+        table: &TableSchema,
         select_query: &Select,
     ) -> Result<bool, StorageEngineError> {
         // Convert the line into a map of column to value
