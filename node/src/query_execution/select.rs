@@ -36,8 +36,8 @@ impl QueryExecution {
             table = node.get_table(table_name.clone(), client_keyspace.clone())?;
 
             // Validate the primary key and where clause
-            let partition_keys = table.get_partition_keys().unwrap();
-            let clustering_columns = table.get_clustering_columns().unwrap();
+            let partition_keys = table.get_partition_keys()?;
+            let clustering_columns = table.get_clustering_columns()?;
             let where_clause = select_query
                 .clone()
                 .where_clause

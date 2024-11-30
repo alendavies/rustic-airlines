@@ -6,7 +6,7 @@ use query_creator::clauses::{
 };
 use std::{
     collections::HashMap,
-    fmt,
+    fmt::{self, Display},
     io::{Cursor, Read},
 };
 
@@ -494,6 +494,16 @@ pub enum SchemaError {
     InvalidTable(String),
     Other,
     NoSuchColumn(String),
+}
+
+impl Display for SchemaError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SchemaError::InvalidTable(e) => write!(f, "Invalid table: {:?}", e),
+            SchemaError::Other => write!(f, "Other schema error"),
+            SchemaError::NoSuchColumn(e) => write!(f, "No such column: {:?}", e),
+        }
+    }
 }
 
 impl KeyspaceSchema {

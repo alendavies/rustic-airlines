@@ -5,6 +5,7 @@ use std::fmt::{self, Display};
 use std::io;
 
 use super::storage_engine::errors::StorageEngineError;
+use gossip::structures::application_state::SchemaError;
 use native_protocol::errors::NativeError;
 use partitioner::errors::PartitionerError;
 use query_creator::errors::CQLError;
@@ -38,6 +39,8 @@ pub enum NodeError {
     /// Error related to the storage engine.
     StorageEngineError(StorageEngineError),
     GossipError,
+    /// Error related to schema updating.
+    SchemaError(SchemaError),
 }
 
 impl Display for NodeError {
@@ -58,6 +61,7 @@ impl Display for NodeError {
             NodeError::NativeError(e) => write!(f, "Native Protocol Error: {}", e),
             NodeError::StorageEngineError(e) => write!(f, "Storage Engine Error: {}", e),
             NodeError::GossipError => write!(f, "Gossip Error"),
+            NodeError::SchemaError(e) => write!(f, "Schema Error: {}", e),
         }
     }
 }
@@ -101,5 +105,11 @@ impl From<StorageEngineError> for NodeError {
     /// Conversion from `StorageEngineError` to `NodeError`.
     fn from(error: StorageEngineError) -> Self {
         NodeError::StorageEngineError(error)
+    }
+}
+
+impl From<SchemaError> for NodeError {
+    fn from(value: SchemaError) -> Self {
+        NodeError::OtherError
     }
 }
