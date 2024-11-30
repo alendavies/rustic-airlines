@@ -122,7 +122,7 @@ impl Node {
                                 .change_status(ip, NodeStatus::Normal)
                                 .ok();
                         }
-                        node_guard.gossiper.heartbeat(ip);
+                        let _ = node_guard.gossiper.heartbeat(ip);
                     }
 
                     let ips: Vec<Ipv4Addr>;
@@ -275,71 +275,93 @@ impl Node {
     fn update_schema_in_storage(&self, old_schema: Schema) {
         let storage = StorageEngine::new(self.storage_path.clone(), self.ip.to_string());
 
+        // Process new or updated keyspaces
         for (keyspace_name, keyspace) in self.schema.keyspaces.clone() {
             if !old_schema.keyspaces.contains_key(&keyspace_name) {
-                // there is a new keyspace, create it
+                // Create a new keyspace
+                println!("voy a agregar keyspace");
                 storage.create_keyspace(&keyspace_name).unwrap();
-            } else {
-                // the keyspace already exists, check if it needs updating
-                let old_tables = old_schema
-                    .clone()
-                    .keyspaces
-                    .get(&keyspace_name)
-                    .unwrap()
-                    .tables
-                    .clone();
-
-                let new_tables = keyspace.tables;
-
-                for table in new_tables {
-                    if let Some(_) = old_tables
-                        .iter()
-                        .find(|old_table| old_table.get_name() == table.get_name())
-                    {
-                        // update table?
-                    } else {
-                        // create table
-                        let cols = table.get_columns();
-                        let col_names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
-
-                        storage
-                            .create_table(&keyspace_name, &table.get_name(), col_names)
-                            .unwrap();
-                    }
-                }
             }
+
+            let old_tables = old_schema
+                .keyspaces
+                .get(&keyspace_name)
+                .map(|keyspace| keyspace.tables.clone())
+                .unwrap_or_else(Vec::new);
+
+            // Update existing keyspace
+            self.update_keyspace_tables(&storage, &keyspace_name, old_tables, keyspace.tables);
         }
 
+        // Process deleted keyspaces
         for (keyspace_name, keyspace) in old_schema.clone().keyspaces {
             if !self.schema.keyspaces.contains_key(&keyspace_name) {
-                // delete keyspace
-                // self.storage_engine.delete_keyspace(&keyspace_name).ok();
+                // Drop keyspace
+                println!("borro keyspace");
                 storage
                     .drop_keyspace(&keyspace_name, &self.ip.to_string())
                     .unwrap();
             } else {
-                let new_tables = keyspace.tables;
+                // Drop tables from existing keyspace
 
-                let old_tables = old_schema
+                let new_tables = self
+                    .schema
                     .keyspaces
                     .get(&keyspace_name)
-                    .unwrap()
-                    .tables
-                    .clone();
+                    .map(|keyspace| keyspace.tables.clone())
+                    .unwrap_or_else(Vec::new);
 
-                for table in old_tables {
-                    if let Some(_) = new_tables
-                        .iter()
-                        .find(|new_table| new_table.get_name() == table.get_name())
-                    {
-                        // update table?
-                    } else {
-                        // delete table
-                        storage
-                            .drop_table(&keyspace_name, &table.get_name())
-                            .unwrap();
-                    }
-                }
+                self.remove_obsolete_tables(&storage, &keyspace_name, keyspace.tables, new_tables);
+            }
+        }
+    }
+
+    /// Updates tables in an existing keyspace by creating new tables if they don't exist.
+    fn update_keyspace_tables(
+        &self,
+        storage: &StorageEngine,
+        keyspace_name: &str,
+        old_tables: Vec<TableSchema>,
+        new_tables: Vec<TableSchema>,
+    ) {
+        for table in new_tables {
+            if old_tables
+                .iter()
+                .find(|old_table| old_table.get_name() == table.get_name())
+                .is_none()
+            {
+                // Create a new table
+                let cols = table.get_columns();
+                let col_names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
+
+                storage
+                    .create_table(keyspace_name, &table.get_name(), col_names)
+                    .unwrap();
+            }
+        }
+    }
+
+    /// Removes tables from an existing keyspace that are no longer present in the updated schema.
+    fn remove_obsolete_tables(
+        &self,
+        storage: &StorageEngine,
+        keyspace_name: &str,
+        old_tables: Vec<TableSchema>,
+        new_tables: Vec<TableSchema>,
+    ) {
+        println!("new tables = {:?}", new_tables);
+        println!("old tables = {:?}", old_tables);
+        for table in old_tables {
+            if new_tables
+                .iter()
+                .find(|new_table| new_table.get_name() == table.get_name())
+                .is_none()
+            {
+                // Drop table
+                println!("voy a borrar {:?}", table.get_name());
+                storage
+                    .drop_table(keyspace_name, &table.get_name())
+                    .unwrap();
             }
         }
     }

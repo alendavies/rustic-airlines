@@ -9,7 +9,7 @@ use super::QueryExecution;
 impl QueryExecution {
     pub(crate) fn execute_alter_keyspace(
         &mut self,
-        alter_keyspace: AlterKeyspace,
+        _alter_keyspace: AlterKeyspace,
     ) -> Result<(), NodeError> {
         todo!()
         // // Look for the keyspace in the list of keyspaces

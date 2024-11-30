@@ -11,9 +11,7 @@ impl StorageEngine {
         columns: Vec<&str>,
     ) -> Result<(), StorageEngineError> {
         // Generate the folder name where the keyspace will be stored
-        let ip_str = self.ip.replace(".", "_");
-        let keyspace_folder = format!("keyspaces_of_{}", ip_str);
-        let keyspace_path = self.root.join(&keyspace_folder).join(keyspace);
+        let keyspace_path = self.get_keyspace_path(keyspace);
         let replication_path = keyspace_path.join("replication");
 
         let primary_file_path = keyspace_path.join(format!("{}.csv", table));
@@ -80,9 +78,7 @@ impl StorageEngine {
 
     // Drops a table from the storage location.
     pub fn drop_table(&self, keyspace: &str, table: &str) -> Result<(), StorageEngineError> {
-        let ip_str = self.ip.replace(".", "_");
-        let keyspace_folder = format!("keyspaces_of_{}", ip_str);
-        let keyspace_path = self.root.join(&keyspace_folder).join(keyspace);
+        let keyspace_path = self.get_keyspace_path(keyspace);
         let replication_path = keyspace_path.join("replication");
 
         // Paths for primary and replication files and index files

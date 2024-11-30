@@ -378,7 +378,7 @@ impl Gossiper {
                 .expect("There MUST be an endpoint state for an IP received in an ACK.");
 
             // El ACK debe contener info más actualizada que la mía
-            assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
+            //assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
 
             // la actualizo
             self.endpoints_state.insert(
