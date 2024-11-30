@@ -18,20 +18,11 @@ impl QueryExecution {
             .lock()
             .map_err(|_| NodeError::LockError)?;
 
-        let mut has_to_create = true;
         // Adds the keyspace to the node
         if let Err(e) = node.add_keyspace(create_keyspace.clone()) {
-            if create_keyspace.if_not_exists_clause {
-                has_to_create = true;
-            } else {
+            if !create_keyspace.if_not_exists_clause {
                 return Err(e);
             }
-        }
-
-        if has_to_create {
-            // Get the keyspace name
-            let keyspace_name = create_keyspace.get_name().clone();
-            self.storage_engine.create_keyspace(&keyspace_name)?;
         }
 
         self.execution_finished_itself = true;

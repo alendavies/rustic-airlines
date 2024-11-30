@@ -87,7 +87,7 @@ impl CassandraClient {
             .write_all(query.to_bytes().map_err(|_| ClientError)?.as_slice())
             .map_err(|_| ClientError)?;
 
-        let mut result = [0u8; 2048];
+        let mut result = [0u8; 850000];
         self.stream.read(&mut result).map_err(|_| ClientError)?;
         // dbg!(&String::from_utf8(result.to_vec()).unwrap());
         let result = Frame::from_bytes(&result).map_err(|_| ClientError)?;

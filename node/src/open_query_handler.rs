@@ -232,42 +232,6 @@ impl OpenQueryHandler {
         self.queries.get_mut(id)
     }
 
-    /// Removes and returns the `OpenQuery` with the specified ID.
-    ///
-    /// # Parameters
-    /// - `id`: The ID of the query.
-    ///
-    /// # Returns
-    /// The removed `OpenQuery`, or `None` if it does not exist.
-    fn _get_query_and_delete(&mut self, id: i32) -> Option<OpenQuery> {
-        self.queries.remove(&id)
-    }
-
-    /// Gets a cloned TCP connection for the query with the specified ID.
-    ///
-    /// # Parameters
-    /// - `id`: The ID of the query.
-    ///
-    /// # Returns
-    /// A cloned `TcpStream`, or an error if the query or connection is not available.
-    fn _get_connection_mut(&mut self, id: i32) -> Result<TcpStream, NodeError> {
-        let connection = self
-            .get_query_mut(&id)
-            .ok_or(NodeError::OpenQueryError)?
-            .get_connection();
-
-        connection.try_clone().map_err(|e| NodeError::IoError(e))
-    }
-
-    /// Removes the `OpenQuery` with the specified ID.
-    ///
-    /// # Parameters
-    /// - `id`: The ID of the query.
-    pub fn _remove_query(&mut self, id: &i32) {
-        self.keyspaces_queries.remove(id);
-        self.queries.remove(id);
-    }
-
     pub fn get_keyspace_of_query(
         &self,
         open_query_id: i32,
@@ -327,8 +291,8 @@ impl OpenQueryHandler {
                 query.add_ok_response(response, from);
                 if query.is_close() {
                     println!(
-                        "con {:?} OKS y {:?} ERRORS la query se cerro",
-                        query.ok_responses, query.error_responses
+                        "con {:?} / {:?} OKS la query se cerro",
+                        query.ok_responses, query.needed_responses
                     );
 
                     self.queries.remove(&open_query_id)
@@ -350,8 +314,8 @@ impl OpenQueryHandler {
 
                 if query.is_close() {
                     println!(
-                        "con {:?} OKS y {:?} ERRORS la query se cerro",
-                        query.ok_responses, query.error_responses
+                        "con {:?} / {:?} ERRORES la query se cerro",
+                        query.ok_responses, query.needed_responses
                     );
                     self.queries.remove(&open_query_id)
                 } else {

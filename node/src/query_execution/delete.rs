@@ -4,6 +4,8 @@ use crate::CQLError;
 use crate::NodeError;
 use query_creator::clauses::delete_cql::Delete;
 
+/// Executes the delete of row/rows. This function is public only for internal use
+/// within the library (defined as `pub(crate)`).
 impl QueryExecution {
     pub(crate) fn execute_delete(
         &mut self,

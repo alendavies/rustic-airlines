@@ -257,17 +257,17 @@ impl CreateTable {
         let mut clustering_key_cols: Vec<String> = Vec::new();
         let mut clustering_orders: Vec<String> = Vec::new();
 
-        // Recorre las columnas y arma la cadena de definición de cada una
+        // Recorrer columnas y armar la definición de cada una
         for col in &self.columns {
             let mut col_def = format!("{} {}", col.name, col.data_type.to_string());
             if !col.allows_null {
                 col_def.push_str(" NOT NULL");
             }
 
-            // Identifica las columnas de la clave primaria y órdenes de clustering
+            // Identificar las columnas de clave primaria y órdenes de clustering
             if col.is_partition_key {
                 partition_key_cols.push(col.name.clone());
-                // Si hay una sola partition key sin clustering columns, se agrega PRIMARY KEY aquí
+                // Si hay una sola partition key sin clustering columns, agregar PRIMARY KEY aquí
                 if partition_key_cols.len() == 1 && clustering_key_cols.is_empty() {
                     col_def.push_str(" PRIMARY KEY");
                 }
@@ -281,18 +281,31 @@ impl CreateTable {
             columns_str.push(col_def);
         }
 
-        // Construye la definición de la clave primaria si hay clustering columns
-        let primary_key = if !partition_key_cols.is_empty() && !clustering_key_cols.is_empty() {
-            format!(
-                "PRIMARY KEY (({}), {})",
-                partition_key_cols.join(", "),
-                clustering_key_cols.join(", ")
-            )
-        } else {
-            String::new()
-        };
+        // Ordenar clustering_key_cols y clustering_orders según self.clustering_columns_in_order
+        let mut ordered_clustering_key_cols = Vec::new();
+        let mut ordered_clustering_orders = Vec::new();
+        for col_name in &self.clustering_columns_in_order {
+            if let Some(pos) = clustering_key_cols.iter().position(|c| c == col_name) {
+                ordered_clustering_key_cols.push(clustering_key_cols[pos].clone());
+                if let Some(order) = clustering_orders.iter().find(|o| o.starts_with(col_name)) {
+                    ordered_clustering_orders.push(order.clone());
+                }
+            }
+        }
 
-        // Añade la definición de la Primary Key al final de la tabla si aplica
+        // Construir la definición de la clave primaria si hay clustering columns
+        let primary_key =
+            if !partition_key_cols.is_empty() && !ordered_clustering_key_cols.is_empty() {
+                format!(
+                    "PRIMARY KEY (({}), {})",
+                    partition_key_cols.join(", "),
+                    ordered_clustering_key_cols.join(", ")
+                )
+            } else {
+                String::new()
+            };
+
+        // Añadir la definición de la Primary Key al final de la tabla si aplica
         if !primary_key.is_empty() {
             columns_str.push(primary_key);
         }
@@ -317,11 +330,12 @@ impl CreateTable {
         );
 
         // Añadir la cláusula WITH CLUSTERING ORDER BY si hay órdenes de clustering
-        if !clustering_orders.is_empty() {
+        if !ordered_clustering_orders.is_empty() {
             query.push_str(" WITH CLUSTERING ORDER BY (");
-            query.push_str(&clustering_orders.join(", "));
+            query.push_str(&ordered_clustering_orders.join(", "));
             query.push(')');
         }
+
         query
     }
 

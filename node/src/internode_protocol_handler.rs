@@ -72,7 +72,8 @@ impl InternodeProtocolHandler {
                 Ok(())
             }
             InternodeMessageContent::Response(response) => {
-                self.handle_response_command(node, &response, message.from, connections)?;
+                let _ = self.handle_response_command(node, &response, message.from, connections);
+
                 Ok(())
             }
             InternodeMessageContent::Gossip(message) => {
@@ -143,16 +144,18 @@ impl InternodeProtocolHandler {
             };
 
             let mut connection = open_query.get_connection();
-
             let frame =
                 open_query
                     .get_query()
                     .create_client_response(columns, keyspace_name, rows)?;
-            println!("Returning frame to client: {:?}", frame);
 
-            connection.write(&frame.to_bytes()?)?;
+            println!(
+                "Returning response to client de la query: {:?}",
+                open_query_id
+            );
+
+            connection.write(&frame.to_bytes()?).unwrap();
             connection.flush()?;
-
             Ok(())
         } else {
             Ok(())
@@ -498,11 +501,7 @@ impl InternodeProtocolHandler {
         {
             let mut connection = open_query.get_connection();
 
-            let error_frame = Frame::Error(error::Error::ServerError(
-                "A node failed to execute the request of the coordinator.".to_string(),
-            ));
-
-            println!("Returning frame to client: {:?}", error_frame);
+            let error_frame = Frame::Error(error::Error::ServerError(".".to_string()));
 
             connection.write(&error_frame.to_bytes()?)?;
             connection.flush()?;
@@ -512,7 +511,7 @@ impl InternodeProtocolHandler {
         }
     }
 
-    /// Handles a query command received from another node.
+    // Handles a query command received from another node.
     fn handle_query_command(
         &self,
         node: &Arc<Mutex<Node>>,
@@ -537,7 +536,6 @@ impl InternodeProtocolHandler {
             self_ip = guard_node.get_ip();
         };
         let query_split: Vec<&str> = query.query_string.split_whitespace().collect();
-
         let result: Result<Option<((i32, i32), InternodeResponse)>, NodeError> =
             match query_split[0] {
                 "CREATE" => match query_split[1] {
@@ -719,8 +717,8 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Handles a gossip command from another node.
-    /// This function is responsible for processing the gossip message and responding accordingly.
+    // Handles a gossip command from another node.
+    // This function is responsible for processing the gossip message and responding accordingly.
     fn handle_gossip_command(
         &self,
         node: &Arc<Mutex<Node>>,
@@ -771,6 +769,7 @@ impl InternodeProtocolHandler {
                     guard_node.gossiper.kill(gossip_message.from).ok();
                 }
             }
+
             gossip::messages::Payload::Ack2(ack2) => {
                 guard_node.gossiper.handle_ack2(ack2);
             }
@@ -779,7 +778,7 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Procesa la respuesta cuando el estado es "OK"
+    // Procesa la respuesta cuando el estado es "OK"
     fn process_ok_response(
         &self,
         query_handler: &mut OpenQueryHandler,
@@ -834,7 +833,7 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Procesa la respuesta cuando el estado es "OK"
+    // Procesa la respuesta cuando el estado es "OK"
     fn process_error_response(
         &self,
         query_handler: &mut OpenQueryHandler,
@@ -848,7 +847,7 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Handles an `INSERT` command.
+    // Handles an `INSERT` command.
     fn handle_insert_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -871,7 +870,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `CREATE_TABLE` command.
+    // Handles a `CREATE_TABLE` command.
     fn handle_create_table_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -881,6 +880,7 @@ impl InternodeProtocolHandler {
         client_id: i32,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let query = CreateTable::deserialize(structure).map_err(NodeError::CQLError)?;
+
         let storage_path = { node.lock()?.storage_path.clone() };
         QueryExecution::new(node.clone(), connections, storage_path)?.execute(
             Query::CreateTable(query),
@@ -892,7 +892,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `DROP_TABLE` command.
+    // Handles a `DROP_TABLE` command.
     fn handle_drop_table_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -913,7 +913,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles an `ALTER_TABLE` command.
+    // Handles an `ALTER_TABLE` command.
     fn handle_alter_table_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -934,7 +934,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `CREATE_KEYSPACE` command.
+    // Handles a `CREATE_KEYSPACE` command.
     fn handle_create_keyspace_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -955,7 +955,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `DROP_KEYSPACE` command.
+    // Handles a `DROP_KEYSPACE` command.
     fn handle_drop_keyspace_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -976,7 +976,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles an `ALTER_KEYSPACE` command.
+    // Handles an `ALTER_KEYSPACE` command.
     fn handle_alter_keyspace_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -997,7 +997,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles an `UPDATE` command.
+    // Handles an `UPDATE` command.
     fn handle_update_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -1020,7 +1020,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `DELETE` command.
+    // Handles a `DELETE` command.
     fn handle_delete_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -1043,7 +1043,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles a `SELECT` command.
+    // Handles a `SELECT` command.
     fn handle_select_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,
@@ -1065,7 +1065,7 @@ impl InternodeProtocolHandler {
         )
     }
 
-    /// Handles an `INSERT` command.
+    // Handles an `INSERT` command.
     fn handle_use_command(
         node: &Arc<Mutex<Node>>,
         structure: &str,

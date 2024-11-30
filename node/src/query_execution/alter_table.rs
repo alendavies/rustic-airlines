@@ -6,6 +6,8 @@ use query_creator::errors::CQLError;
 
 use super::QueryExecution;
 
+/// Executes the alteration of a table. This function is public only for internal use
+/// within the library (defined as `pub(crate)`).
 impl QueryExecution {
     pub(crate) fn execute_alter_table(
         &mut self,

@@ -1,6 +1,6 @@
 ﻿pub mod clauses;
 pub mod errors;
-mod logical_operator;
+pub mod logical_operator;
 pub mod operator;
 mod utils;
 
@@ -170,8 +170,8 @@ fn create_column_value_from_type(
             value.parse::<i64>().map_err(|_| CQLError::Error)?,
         )),
         ColumnType::Uuid => {
-            let bytes = value.as_bytes();
-            let uuid = uuid::Uuid::from_slice(bytes).map_err(|_| CQLError::Error)?;
+            // Convertir directamente el string en un UUID
+            let uuid = uuid::Uuid::parse_str(&value).map_err(|_| CQLError::Error)?;
             Ok(ColumnValue::Uuid(uuid))
         }
         ColumnType::Varchar => Ok(ColumnValue::Varchar(value.to_string())),
@@ -218,7 +218,6 @@ impl CreateClientResponse for Query {
 
                     for (idx, value) in row.split(",").enumerate() {
                         let (name, r#type) = col_types.get(idx).ok_or(CQLError::Error)?;
-
                         let col_value = create_column_value_from_type(r#type, value)
                             .map_err(|_| CQLError::Error)?;
 

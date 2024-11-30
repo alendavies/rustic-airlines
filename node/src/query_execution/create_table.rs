@@ -25,26 +25,12 @@ impl QueryExecution {
             .get_keyspace_of_query(open_query_id)?
             .ok_or(NodeError::CQLError(CQLError::NoActualKeyspaceError))?;
 
-        let mut has_to_create = true;
         if let Err(e) = node.add_table(create_table.clone(), &client_keyspace.get_name()) {
-            if create_table.get_if_not_exists_clause() {
-                has_to_create = true;
-            } else {
+            if !create_table.get_if_not_exists_clause() {
                 return Err(e);
             }
         }
 
-        if has_to_create {
-            // Get the table name and column structure
-            let table_name = create_table.get_name().clone();
-            let columns = create_table.get_columns().clone();
-
-            // Generate the primary and replication folder paths
-            let keyspace_name = client_keyspace.get_name();
-            let columns_name: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
-            self.storage_engine
-                .create_table(&keyspace_name, &table_name, columns_name)?;
-        }
         node.get_open_handle_query().update_table_in_keyspace(
             &client_keyspace.get_name(),
             TableSchema::new(create_table.clone()),

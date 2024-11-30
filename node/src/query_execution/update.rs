@@ -7,28 +7,8 @@ use query_creator::clauses::update_cql::Update;
 use query_creator::errors::CQLError;
 
 impl QueryExecution {
-    /// Executes an `UPDATE` operation. This function is public only for internal use
+    /// Executes the update of row (or insert if not exist). This function is public only for internal use
     /// within the library (defined as `pub(crate)`).
-    ///
-    /// /// Validates the types of the `SET` clause against the columns of the table
-    pub(crate) fn validate_update_types(
-        set_clause: Set,
-        columns: Vec<Column>,
-    ) -> Result<(), NodeError> {
-        for (column_name, value) in set_clause.get_pairs() {
-            for column in &columns {
-                if *column_name == column.name {
-                    if column.is_partition_key || column.is_clustering_column {
-                        return Err(NodeError::CQLError(CQLError::InvalidCondition));
-                    }
-                    if !column.data_type.is_valid_value(value) {
-                        return Err(NodeError::CQLError(CQLError::InvalidCondition));
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
     pub(crate) fn execute_update(
         &mut self,
         update_query: Update,
@@ -146,6 +126,26 @@ impl QueryExecution {
             &client_keyspace.get_name(),
             timestamp,
         )?;
+        Ok(())
+    }
+
+    /// Validates the types of the `SET` clause against the columns of the table
+    pub(crate) fn validate_update_types(
+        set_clause: Set,
+        columns: Vec<Column>,
+    ) -> Result<(), NodeError> {
+        for (column_name, value) in set_clause.get_pairs() {
+            for column in &columns {
+                if *column_name == column.name {
+                    if column.is_partition_key || column.is_clustering_column {
+                        return Err(NodeError::CQLError(CQLError::InvalidCondition));
+                    }
+                    if !column.data_type.is_valid_value(value) {
+                        return Err(NodeError::CQLError(CQLError::InvalidCondition));
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }

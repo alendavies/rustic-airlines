@@ -51,42 +51,63 @@ impl Where {
     pub fn serialize(&self) -> String {
         self.condition.serialize()
     }
-    /// Valida que las condiciones sean `primary_key = algo` primero y que las condiciones posteriores
-    /// solo sean `AND` relacionados con las `clustering_columns`.
+    /// Validates that the conditions in the `WHERE` clause follow the correct structure for
+    /// operations like `DELETE` or `UPDATE`. Specifically:
+    /// - The first conditions must involve the `partition_key` with an `=` operator.
+    /// - Subsequent conditions must involve `clustering_columns` with valid comparison operators (`=`, `<`, `>`).
     ///
     /// # Arguments
     ///
-    /// * `partitioner_keys` - Vector con los nombres de las claves primarias que deben aparecer en las primeras condiciones.
-    /// * `clustering_columns` - Vector con los nombres de las columnas de clustering que deben aparecer en las condiciones posteriores.
+    /// * `partitioner_keys` - A vector of strings containing the names of the primary keys that
+    ///   must appear first in the conditions.
+    /// * `clustering_columns` - A vector of strings containing the names of the clustering columns
+    ///   that must appear in subsequent conditions in their defined order.
+    /// * `is_delete` - A boolean indicating whether this is a `DELETE` operation.
+    /// * `is_update` - A boolean indicating whether this is an `UPDATE` operation.
     ///
     /// # Returns
     ///
-    /// * `Ok(())` si las condiciones cumplen con los requisitos.
-    /// * `Err(CQLError::InvalidCondition)` si no se cumple alguna de las validaciones.
-    /// Valida que las condiciones sean `partition_key = algo` primero, y luego comparaciones con `clustering_columns`.
+    /// * `Ok(())` if the conditions follow the required structure.
+    /// * `Err(CQLError::InvalidCondition)` if the conditions are invalid.
     ///
-    /// # Arguments
+    /// # Rules
     ///
-    /// * `partitioner_keys` - Vector con los nombres de las claves primarias.
-    /// * `clustering_columns` - Vector con los nombres de las columnas de clustering.
+    /// 1. **Partition Key Validation:**
+    ///    - The first conditions in the `WHERE` clause must involve the `partition_key` with the `=` operator.
+    ///    - Example: `WHERE id = 1`
     ///
-    /// # Returns
+    /// 2. **Clustering Column Validation:**
+    ///    - Conditions after the `partition_key` must involve the `clustering_columns`.
+    ///    - These conditions must use valid comparison operators (`=`, `<`, `>`).
+    ///    - Conditions must respect the order of clustering columns as defined in the table schema.
+    ///    - Example: `WHERE id = 1 AND age > 25 AND city = 'New York'`
     ///
-    /// * `Ok(())` si las condiciones cumplen con los requisitos.
-    /// * `Err(CQLError::InvalidCondition)` si no se cumple alguna de las validaciones.
-    /// Valida que las condiciones sean correctas para una operación de `DELETE` o `UPDATE`.
+    /// 3. **For `DELETE` or `UPDATE` operations:**
+    ///    - The `partition_key` condition is mandatory.
+    ///    - Clustering column conditions are optional but must follow the rules outlined above.
     ///
-    /// # Arguments
+    /// # Examples
     ///
-    /// * `partitioner_keys` - Vector con los nombres de las claves primarias.
-    /// * `clustering_columns` - Vector con los nombres de las columnas de clustering.
-    /// * `delete` - Booleano que indica si es una operación de DELETE.
-    /// * `update` - Booleano que indica si es una operación de UPDATE.
+    /// ## Valid Conditions
+    /// ```sql
+    /// WHERE id = 1
+    /// WHERE id = 1 AND age > 30
+    /// WHERE id = 1 AND age = 30 AND city = 'New York'
+    /// ```
     ///
-    /// # Returns
+    /// ## Invalid Conditions
+    /// ```sql
+    /// WHERE age = 30             // Missing partition key
+    /// WHERE id = 1 AND city = 'New York' // Skipping clustering column `age`
+    /// WHERE id > 1               // Invalid operator for partition key
+    /// ```
     ///
-    /// * `Ok(())` si las condiciones cumplen con los requisitos.
-    /// * `Err(CQLError::InvalidCondition)` si no se cumple alguna de las validaciones.
+    /// # Errors
+    ///
+    /// - `CQLError::InvalidCondition`:
+    ///   - If the partition key condition is missing or uses an invalid operator.
+    ///   - If clustering column conditions do not respect the defined order or use invalid operators.
+
     pub fn validate_cql_conditions(
         &self,
         partitioner_keys: &Vec<String>,
@@ -117,7 +138,7 @@ impl Where {
         Ok(())
     }
 
-    /// Método recursivo para validar las condiciones de las claves primarias y de clustering.
+    // Método recursivo para validar las condiciones de las claves primarias y de clustering.
     fn recursive_validate_conditions(
         &self,
         condition: &Condition,
@@ -202,7 +223,33 @@ impl Where {
         Ok(())
     }
 
-    /// Retorna los valores de las claves primarias de las condiciones en la cláusula `WHERE`.
+    /// Retrieves the values for the `partition_key` conditions in the `WHERE` clause.
+    ///
+    /// # Arguments
+    ///
+    /// * `partitioner_keys` - A vector containing the names of the partition keys that
+    ///   must match the condition.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<String>)` - A vector containing the values associated with the `partitioner_keys`
+    ///   in the condition, ordered according to the keys in `partitioner_keys`.
+    /// * `Err(CQLError::InvalidColumn)` - If no conditions match the provided `partitioner_keys`.
+    ///
+    /// # Description
+    ///
+    /// - This function checks the `condition` field to identify conditions related to
+    ///   the `partitioner_keys`.
+    /// - For simple conditions (`field = value`), it validates if the `field` belongs
+    ///   to `partitioner_keys` and has the `=` operator. If valid, the `value` is added to the result.
+    /// - For complex conditions (e.g., `AND` or `OR`), it recursively evaluates the left
+    ///   and right conditions to collect matching partition key values.
+    ///
+    /// # Behavior
+    ///
+    /// - **Simple Conditions**: Only `=` operators for fields in `partitioner_keys` are considered.
+    /// - **Complex Conditions**: Combines results from left and right subconditions.
+    /// - Returns an error if no valid conditions for `partitioner_keys` are found.
     pub fn get_value_partitioner_key_condition(
         &self,
         partitioner_keys: Vec<String>,
@@ -240,7 +287,7 @@ impl Where {
         }
     }
 
-    /// Método auxiliar para recorrer las condiciones y recolectar los valores de las partitioner keys.
+    // Método auxiliar para recorrer las condiciones y recolectar los valores de las partitioner keys.
     fn collect_partitioner_key_values(
         &self,
         condition: &Condition,
@@ -278,7 +325,31 @@ impl Where {
         }
     }
 
-    /// Retorna los valores de las clustering columns de las condiciones en la cláusula `WHERE`.
+    /// Collects values associated with `partition_key` conditions in the `WHERE` clause.
+    ///
+    /// # Arguments
+    ///
+    /// * `partitioner_keys` - A vector containing the names of the partition keys to match.
+    /// * `condition` - A reference to the current condition being evaluated.
+    /// * `result` - A mutable vector where matched values for partition keys are stored.
+    ///
+    /// # Behavior
+    ///
+    /// - **Simple Conditions**:
+    ///   - If the condition is `field = value`, checks if the `field` belongs to `partitioner_keys`.
+    ///   - If the `field` is in `partitioner_keys` and the operator is `=`, appends the `value` to `result`.
+    ///
+    /// - **Complex Conditions**:
+    ///   - Evaluates both left and right subconditions recursively.
+    ///   - Collects results from valid subconditions into `result`.
+    ///
+    /// - Ignores conditions that are not relevant to the `partitioner_keys`.
+    ///
+    /// # Usage
+    ///
+    /// This function is typically used as a helper for recursive evaluation of conditions
+    /// in a query, enabling extraction of partition key values from a complex `WHERE` clause.
+
     pub fn get_value_clustering_column_condition(
         &self,
         clustering_columns: Vec<String>,
@@ -316,7 +387,7 @@ impl Where {
         }
     }
 
-    /// Método auxiliar para recorrer las condiciones y recolectar los valores de las clustering columns.
+    // Método auxiliar para recorrer las condiciones y recolectar los valores de las clustering columns.
     fn collect_clustering_column_values(
         &self,
         condition: &Condition,
@@ -354,17 +425,18 @@ impl Where {
         }
     }
 
-    /// Obtiene el valor de una clustering column si existe una condición con el operador `=`.
+    /// Retrieves the value of a clustering column if there is a condition with the `=` operator.
     ///
     /// # Arguments
     ///
-    /// * `clustering_column` - El nombre de la clustering column para la que se desea obtener el valor.
+    /// * `clustering_column` - The name of the clustering column for which the value is to be retrieved.
     ///
     /// # Returns
     ///
-    /// * `Ok(Some(String))` - Si se encuentra una condición `=`.
-    /// * `Ok(None)` - Si no hay una condición con `=`.
-    /// * `Err(CQLError)` - Si ocurre algún error de validación.
+    /// * `Ok(Some(String))` - If a condition with the `=` operator is found.
+    /// * `Ok(None)` - If no condition with the `=` operator exists.
+    /// * `Err(CQLError)` - If a validation error occurs.
+
     pub fn get_value_for_clustering_column(&self, clustering_column: &str) -> Option<String> {
         self.recursive_find_equal_condition(&self.condition, clustering_column)
     }

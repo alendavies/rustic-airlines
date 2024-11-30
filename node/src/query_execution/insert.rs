@@ -9,6 +9,8 @@ use uuid;
 
 use super::QueryExecution;
 
+/// Executes the insert of a row (o update if exist). This function is public only for internal use
+/// within the library (defined as `pub(crate)`).
 impl QueryExecution {
     pub(crate) fn execute_insert(
         &mut self,
