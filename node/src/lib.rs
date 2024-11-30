@@ -788,7 +788,7 @@ impl Node {
         Ok(())
     }
 
-    pub fn current_timestamp() -> i64 {
+    fn current_timestamp() -> i64 {
         Utc::now().timestamp()
     }
 
