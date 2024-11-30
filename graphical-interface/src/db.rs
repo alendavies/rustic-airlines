@@ -142,11 +142,7 @@ impl Provider for Db {
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
-        let keyspace_query = format!("USE sky");
-
-        let query = format!("SELECT * FROM airports WHERE country = 'ARG'");
-
-        let _ = driver.execute(&keyspace_query.as_str(), "all").map_err(|_| DBError)?;
+        let query = format!("SELECT * FROM sky.airports WHERE country = 'ARG'");
 
         let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
 
@@ -431,9 +427,6 @@ impl Provider for Db {
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
-        let keyspace_query = format!("USE sky");
-        let _ = driver.execute(&keyspace_query.as_str(), "quorum").map_err(|_| DBError)?;
-
         let result = driver.execute(query.as_str(), "quorum").map_err(|_| DBError)?;
 
         println!("{:?}", result);
@@ -662,7 +655,7 @@ impl Provider for Db {
     fn add_flight(flight: Flight) -> Result<(), DBError>{
 
         let query_check = format!(
-            "SELECT number FROM flight_info WHERE number = '{}';",
+            "SELECT number FROM sky.flight_info WHERE number = '{}';",
             flight.number
         );
 
@@ -685,28 +678,27 @@ impl Provider for Db {
         };
 
         let insert_departure_query = format!(
-            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'DEPARTURE', {}, {}, {});",
+            "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, {}, {}, {}, '{}', 'DEPARTURE');",
             flight.number,
             flight.status.as_str(),
-            flight.departure_time,
-            flight.arrival_time,
-            flight_info.origin,
             flight.position.lat(),
             flight.position.lon(),
-            flight.heading
+            flight.heading,
+            flight.departure_time,
+            flight.arrival_time,
+            flight_info.origin
         );
-
-        // Inserción en la tabla flights para el destino (ARRIVAL)
+        
         let insert_arrival_query = format!(
-            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'ARRIVAL', {}, {}, {});",
+            "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, {}, {}, {}, '{}', 'ARRIVAL');",
             flight.number,
             flight.status.as_str(),
-            flight.departure_time,
-            flight.arrival_time,
-            flight_info.destination,
             flight.position.lat(),
             flight.position.lon(),
-            flight.heading
+            flight.heading,
+            flight.departure_time,
+            flight.arrival_time,
+            flight_info.destination
         );
 
         // Inserción en la tabla flight_info con la información del vuelo
@@ -725,6 +717,8 @@ impl Provider for Db {
         driver.execute(insert_arrival_query.as_str(), "all").map_err(|_| DBError)?;
         driver.execute(insert_flight_info_query.as_str(), "all").map_err(|_| DBError)?;
 
+        println!("{:?}", "Lo subio");
+
         Ok(())
     }
 
@@ -735,7 +729,7 @@ impl Provider for Db {
         let (other_airport, other_direction) = match direction {
             "ARRIVAL" => (&info.origin, "DEPARTURE"),
             "DEPARTURE" => (&info.destination, "ARRIVAL"),
-            _ => return(Err(DBError))
+            _ => return Err(DBError)
         };
         
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();

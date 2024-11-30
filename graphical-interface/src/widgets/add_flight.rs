@@ -159,7 +159,6 @@ impl WidgetAddFlight {
                         if !errors.is_empty() {
                             self.error_message = Some(errors.join("\n"));
                         } else {
-                            println!("{:?}", "Paso esta parte");
                             match P::add_flight(self.to_flight(airports)) {
                                 Ok(_) => {
                                     self.error_message = None;

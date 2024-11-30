@@ -107,17 +107,13 @@ impl<P: Provider> eframe::App for MyApp<P> {
                             }
                         } else {
                             self.airport_widget = Some(WidgetAirport::new(airport.clone()));
-                            if let Ok(new_flights) = P::get_flights_by_airport(&airport.iata) {
-                                self.view_state.flights = new_flights;
-                            }
+                            self.view_state.update_flights(&self.db, &airport);
                             self.selection_state.borrow_mut().flight = None;
                             self.flight_widget = None;
                         }
                     } else {
                         self.airport_widget = Some(WidgetAirport::new(airport.clone()));
-                        if let Ok(new_flights) = P::get_flights_by_airport(&airport.iata) {
-                            self.view_state.flights = new_flights;
-                        }
+                        self.view_state.update_flights(&self.db, &airport);
                         self.selection_state.borrow_mut().flight = None;
                         self.flight_widget = None;
                     }
