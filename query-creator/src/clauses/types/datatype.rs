@@ -3,14 +3,13 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum DataType {
-    Int,
-    String,
-    Boolean,
-    Float,
-    Double,
-    Timestamp,
-    Uuid,
-    // Blob,
+    Int = 0x00,
+    String = 0x01,
+    Boolean = 0x02,
+    Float = 0x03,
+    Double = 0x04,
+    Timestamp = 0x05,
+    Uuid = 0x06,
 }
 
 impl std::str::FromStr for DataType {
