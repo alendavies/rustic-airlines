@@ -353,8 +353,9 @@ impl Where {
     pub fn get_value_clustering_column_condition(
         &self,
         clustering_columns: Vec<String>,
-    ) -> Option<Vec<String>> {
-        let mut result = vec![];
+    ) -> Vec<Option<String>> {
+        // Inicializamos el resultado con None para cada columna de clustering
+        let mut result = vec![None; clustering_columns.len()];
 
         match &self.condition {
             Condition::Simple {
@@ -363,8 +364,10 @@ impl Where {
                 value,
             } => {
                 // Si es una condición simple y la clave está en clustering_columns y el operador es `=`
-                if clustering_columns.contains(field) && *operator == Operator::Equal {
-                    result.push(value.clone());
+                if let Some(index) = clustering_columns.iter().position(|col| col == field) {
+                    if *operator == Operator::Equal {
+                        result[index] = Some(value.clone());
+                    }
                 }
             }
             Condition::Complex { left, right, .. } => {
@@ -380,19 +383,14 @@ impl Where {
             }
         }
 
-        if result.is_empty() {
-            None
-        } else {
-            Some(result)
-        }
+        result
     }
 
-    // Método auxiliar para recorrer las condiciones y recolectar los valores de las clustering columns.
     fn collect_clustering_column_values(
         &self,
         condition: &Condition,
         clustering_columns: &[String],
-        result: &mut Vec<String>,
+        result: &mut Vec<Option<String>>,
     ) {
         match condition {
             Condition::Simple {
@@ -400,27 +398,23 @@ impl Where {
                 operator,
                 value,
             } => {
-                // Si la condición simple corresponde a una clustering column
-                if clustering_columns.contains(field) && *operator == Operator::Equal {
-                    result.push(value.clone());
+                // Si la clave está en clustering_columns y el operador es `=`, actualizamos el resultado
+                if let Some(index) = clustering_columns.iter().position(|col| col == field) {
+                    if *operator == Operator::Equal {
+                        result[index] = Some(value.clone());
+                    }
                 }
             }
-            Condition::Complex {
-                left,
-                operator,
-                right,
-            } => {
-                // Solo procesar si es un operador lógico AND
-                if *operator == LogicalOperator::And {
-                    if let Some(left_condition) = left.as_ref() {
-                        self.collect_clustering_column_values(
-                            left_condition,
-                            clustering_columns,
-                            result,
-                        );
-                    }
-                    self.collect_clustering_column_values(right, clustering_columns, result);
+            Condition::Complex { left, right, .. } => {
+                // Recursivamente verificamos las condiciones izquierda y derecha
+                if let Some(left_condition) = left.as_ref() {
+                    self.collect_clustering_column_values(
+                        left_condition,
+                        clustering_columns,
+                        result,
+                    );
                 }
+                self.collect_clustering_column_values(right, clustering_columns, result);
             }
         }
     }
@@ -619,7 +613,7 @@ mod tests {
 
         let where_clause = Where { condition };
         let result = where_clause.get_value_clustering_column_condition(clustering_columns);
-        assert_eq!(result, Some(vec!["25".to_string()]));
+        assert_eq!(result, (vec![Some("25".to_string())]));
     }
 
     #[test]
@@ -641,7 +635,10 @@ mod tests {
 
         let where_clause = Where { condition };
         let result = where_clause.get_value_clustering_column_condition(clustering_columns);
-        assert_eq!(result, Some(vec!["25".to_string(), "John".to_string()]));
+        assert_eq!(
+            result,
+            (vec![Some("25".to_string()), Some("John".to_string())])
+        );
     }
 
     #[test]
@@ -669,7 +666,7 @@ mod tests {
 
         let where_clause = Where { condition };
         let result = where_clause.get_value_clustering_column_condition(clustering_columns);
-        assert_eq!(result, None);
+        assert_eq!(result, vec![None]);
     }
 
     #[test]

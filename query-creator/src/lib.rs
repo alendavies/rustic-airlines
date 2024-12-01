@@ -417,6 +417,7 @@ impl QueryCreator {
 
         match tokens[0].as_str() {
             "SELECT" => {
+                println!("el select es {:?}", query);
                 let select = Select::new_from_tokens(tokens)?;
                 Ok(Query::Select(select))
             }
@@ -429,6 +430,7 @@ impl QueryCreator {
                 Ok(Query::Delete(delete))
             }
             "UPDATE" => {
+                println!("el update es {:?}", query);
                 let update = Update::new_from_tokens(tokens)?;
                 Ok(Query::Update(update))
             }

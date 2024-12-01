@@ -582,15 +582,10 @@ impl KeyspaceSchema {
     /// Returns `Ok(())` if the table was successfully added, or a `NodeError` if the table already exists.
     pub fn add_table(&mut self, new_table: TableSchema) -> Result<(), SchemaError> {
         if self.tables.contains(&new_table) {
-            dbg!("Table already exists");
             return Err(SchemaError::InvalidTable(new_table.get_name()));
         }
 
-        dbg!("Adding table to keyspace");
-
         self.tables.push(new_table);
-
-        dbg!(&self.tables);
 
         Ok(())
     }
@@ -612,7 +607,6 @@ impl KeyspaceSchema {
         if let Some(table) = table {
             return Ok(table);
         } else {
-            dbg!("Table not found");
             return Err(SchemaError::InvalidTable(table_name.to_string()));
         }
     }
