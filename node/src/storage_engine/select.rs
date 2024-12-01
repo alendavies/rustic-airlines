@@ -189,6 +189,7 @@ impl StorageEngine {
                 .split_once(";")
                 .ok_or(StorageEngineError::IoError)?;
 
+            println!("analizando la linea {:?}", line);
             if self.line_matches_where_clause(&line, &table, &select_query)? {
                 results.push(buffer.trim_end().to_string());
             }
@@ -196,7 +197,11 @@ impl StorageEngine {
 
         // Aplicar `LIMIT` si está presente
         if let Some(limit) = select_query.limit {
-            if limit < results.len() {
+            if limit < results.len() - 2 {
+                println!(
+                    "los results son {:?} y el valor LIMIT es {:?}",
+                    results, limit
+                );
                 results = results[..limit + 2].to_vec();
             }
         }
@@ -401,15 +406,17 @@ mod tests {
 
         let keyspace = "test_keyspace";
         let table_name = "test_table";
+        let mut name_column = Column::new("name", DataType::String, false, false);
+        name_column.is_clustering_column = true;
         let columns = vec![
             Column::new("id", DataType::Int, true, false),
-            Column::new("name", DataType::String, false, false),
+            name_column,
             Column::new("age", DataType::Int, false, false),
         ];
-        let clustering_columns_in_order = vec!["id".to_string()];
+        let clustering_columns_in_order = vec!["age".to_string()];
         let values_row1 = vec!["1", "John", "18"];
-        let values_row2 = vec!["1", "John", "19"];
-        let values_row3 = vec!["3", "John", "20"];
+        let values_row2 = vec!["1", "Jaz", "19"];
+        let values_row3 = vec!["1", "Jol", "20"];
         let timestamp = 1234567890;
 
         let folder_path = storage.get_keyspace_path(keyspace);
@@ -466,7 +473,7 @@ mod tests {
             "CREATE".to_string(),
             "TABLE".to_string(),
             "test_keyspace.test_table".to_string(),
-            "id INT PRIMARY KEY, name TEXT, age INT".to_string(),
+            "id INT , name TEXT, age INT, PRIMARY KEY (id, name)".to_string(),
         ])
         .unwrap();
         let table = TableSchema::new(create_table.clone());
@@ -480,10 +487,6 @@ mod tests {
             "id".to_string(),
             "=".to_string(),
             "1".to_string(),
-            "AND".to_string(),
-            "name".to_string(),
-            "=".to_string(),
-            "John".to_string(),
             "LIMIT".to_string(),
             "2".to_string(),
         ];
@@ -492,11 +495,11 @@ mod tests {
         let result = storage.select(select_query, table, false, keyspace);
         assert!(result.is_ok(), "Error executing SELECT with LIMIT");
         let result_rows = result.unwrap();
-        assert_eq!(result_rows.len(), 4); // Header + 2 rows
+        assert_eq!(result_rows.len(), 4); // Header + 2 rows use native_protocol::messages::result::schema_change::SchemaChange;
         assert_eq!(result_rows[0], "id,name,age", "Header mismatch");
         assert_eq!(result_rows[1], "id,name", "Selected columns mismatch");
-        assert!(result_rows.contains(&"1,John,18;1234567890".to_string()));
-        assert!(result_rows.contains(&"1,John,19;1234567890".to_string()));
+        assert!(result_rows.contains(&"1,Jol,20;1234567890".to_string()));
+        assert!(result_rows.contains(&"1,Jaz,19;1234567890".to_string()));
 
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();

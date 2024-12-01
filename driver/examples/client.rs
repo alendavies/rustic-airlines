@@ -1,6 +1,16 @@
 use driver::CassandraClient;
 use std::{net::Ipv4Addr, str::FromStr};
 
+/// Example Rust program to interact with a Cassandra server.
+/// This program demonstrates:
+/// - Creating a keyspace in Cassandra.
+/// - Creating a table within that keyspace.
+/// - Inserting multiple rows of data into the table.
+/// - Querying the table to retrieve data.
+/// 
+/// The code uses the `CassandraClient` to establish a connection and execute queries.
+///
+/// Note: Ensure the server IP and port match your Cassandra setup before running this code.
 fn main() {
     // Reemplaza con la dirección IP y puerto correctos del servidor
     let server_ip = "127.0.0.3";

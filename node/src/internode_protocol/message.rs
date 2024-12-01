@@ -180,8 +180,7 @@ impl InternodeSerializable for InternodeMessage {
         let mut content_bytes = vec![0u8; header.length as usize];
         cursor
             .read_exact(&mut content_bytes)
-            .map_err(|_| InternodeMessageError)
-            .unwrap();
+            .map_err(|_| InternodeMessageError)?;
 
         let content = match header.opcode {
             Opcode::Query => InternodeMessageContent::Query(

@@ -28,10 +28,14 @@ impl QueryExecution {
 
         let keyspaces = node.schema.keyspaces.clone();
 
-        node.get_open_handle_query().set_keyspace_of_query(
-            open_query_id,
-            KeyspaceSchema::new(keyspaces.get(&keyspace_name).unwrap().inner.clone(), vec![]),
-        );
+        if let Some(keyspace) = keyspaces.get(&keyspace_name) {
+            node.get_open_handle_query().set_keyspace_of_query(
+                open_query_id,
+                KeyspaceSchema::new(keyspace.inner.clone(), vec![]),
+            );
+        } else {
+            return Err(NodeError::KeyspaceError); // O usa otro error adecuado para este contexto
+        }
 
         // If this is not an internode operation, communicate the change to other nodes
         if !internode {

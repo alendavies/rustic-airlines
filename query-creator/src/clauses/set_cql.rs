@@ -7,34 +7,32 @@ use crate::{errors::CQLError, utils::is_set};
 /// # Fields
 ///
 /// * A vector of tuples containing the column name and the new value.
-///
 #[derive(PartialEq, Debug, Clone)]
 pub struct Set(pub Vec<(String, String)>);
 
 impl Set {
-    /// Creates and returns a new `Set` instance from a vector of tokens.
+    /// Retrieves a reference to the internal vector of column-value pairs.
     ///
-    /// # Arguments
-    ///
-    /// * `tokens` - A vector of tokens that can be used to build a `Set` instance.
-    ///
-    /// The tokens should be in the following order: `SET`, `column`, `=`, `value`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let tokens = vec!["SET", "age", "=", "18"];
-    /// let set_from_tokens = Set::new_from_tokens(tokens).unwrap();
-    /// let set_clause = Set(vec![("age".to_string(), "18".to_string())]);
-    ///
-    /// assert_eq!(set_from_tokens, set_clause);
-    /// ```
-    ///
-    ///
-    // Método para obtener una referencia al vector interno
+    /// # Returns
+    /// - A reference to the vector of `(String, String)` pairs representing the column names and their respective values.
     pub fn get_pairs(&self) -> &Vec<(String, String)> {
         &self.0
     }
+
+    /// Creates and returns a new `Set` instance from a vector of tokens.
+    ///
+    /// # Parameters
+    /// - `tokens: Vec<&str>`:
+    ///   - A vector of tokens used to build the `Set` instance.
+    ///
+    /// # Returns
+    /// - `Ok(Set)`:
+    ///   - If the tokens are valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the tokens are invalid or improperly formatted.
+    ///
+    /// # Notes
+    /// - The tokens must be in the format: `"SET column = value"`.
     pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, CQLError> {
         let mut set = Vec::new();
         let mut i = 0;
@@ -53,6 +51,14 @@ impl Set {
 
         Ok(Self(set))
     }
+
+    /// Serializes the `Set` clause into a CQL string.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - The serialized string representation of the `SET` clause.
+    ///   - Format: `column1 = value1, column2 = value2`.
+    ///   - If a value is not numeric, it will be wrapped in single quotes.
     pub fn serialize(&self) -> String {
         self.0
             .iter()

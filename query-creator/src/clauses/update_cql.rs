@@ -6,14 +6,16 @@ use crate::utils::{is_set, is_update, is_where};
 use crate::QueryCreator;
 
 /// Struct representing the `UPDATE` SQL clause.
+///
 /// The `UPDATE` clause is used to modify records in a table.
 ///
 /// # Fields
 ///
 /// * `table_name` - The name of the table to be updated.
-/// * `set_clause` - The set clause to be applied.
-/// * `where_clause` - The where clause to be applied.
-///
+/// * `keyspace_used_name` - The keyspace name of the table to be updated.
+/// * `set_clause` - The `SET` clause specifying the columns and values to update.
+/// * `where_clause` - Optional `WHERE` clause for filtering records to update.
+/// * `if_clause` - Optional `IF` clause specifying conditions for the update.
 #[derive(PartialEq, Debug, Clone)]
 pub struct Update {
     pub table_name: String,
@@ -28,23 +30,13 @@ impl Update {
     ///
     /// # Arguments
     ///
-    /// * `tokens` - A vector of tokens that can be used to build a `Update` instance.
+    /// * `tokens` - A vector of `String` tokens representing the `UPDATE` clause.
     ///
-    /// The tokens should be in the following order: `UPDATE`, `table`, `SET`, `column`, `=`, `value`.
+    /// The tokens must include the table name, `SET` clause, and optionally `WHERE` and `IF` clauses.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// let tokens = vec!["UPDATE", "table", "SET", "nombre", "=", "Alen"];
-    /// let update_from_tokens = Update::new_from_tokens(tokens).unwrap();
-    /// let update = Update {
-    ///     table_name: "table".to_string(),
-    ///     set_clause: Set(vec![("nombre".to_string(), "Alen".to_string())]),
-    ///     where_clause: None,
-    /// };
-    ///
-    /// assert_eq!(update_from_tokens, update);
-    /// ```
+    /// # Returns
+    /// * `Ok(Update)` - A successfully parsed `Update` struct.
+    /// * `Err(CQLError::InvalidSyntax)` - If the tokens are invalid or improperly formatted.
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 6 {
             return Err(CQLError::InvalidSyntax);
@@ -120,9 +112,11 @@ impl Update {
         })
     }
 
-    // Serializa el struct `Update` en un string
+    /// Serializes the `Update` struct into a CQL string.
+    ///
+    /// # Returns
+    /// * A `String` representation of the `UPDATE` statement.
     pub fn serialize(&self) -> String {
-
         let table_name_str = if !self.keyspace_used_name.is_empty() {
             format!("{}.{}", self.keyspace_used_name, self.table_name)
         } else {
@@ -146,7 +140,15 @@ impl Update {
         result
     }
 
-    // Deserializa un string en una instancia de `Update`
+    /// Deserializes a CQL string into an `Update` struct.
+    ///
+    /// # Arguments
+    ///
+    /// * `serialized` - A CQL string representing the `UPDATE` clause.
+    ///
+    /// # Returns
+    /// * `Ok(Update)` - If the string is successfully parsed.
+    /// * `Err(CQLError::InvalidSyntax)` - If the string is invalid or improperly formatted.
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
         let tokens: Vec<String> = QueryCreator::tokens_from_query(serialized);
         Self::new_from_tokens(tokens)

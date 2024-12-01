@@ -1,8 +1,11 @@
-use chrono::{NaiveDate, NaiveDateTime, Timelike, Utc};
+use crate::{
+    db::Provider,
+    types::{Airport, Flight, FlightInfo, FlightStatus},
+};
+use chrono::{NaiveDate, Utc};
 use egui::{self};
 use egui_extras::DatePickerButton;
 use walkers::Position;
-use crate::{db::Provider, types::{Airport, Flight, FlightInfo, FlightStatus}};
 
 pub struct WidgetAddFlight {
     is_open: bool,
@@ -23,7 +26,6 @@ pub struct WidgetAddFlight {
 
 impl WidgetAddFlight {
     pub fn new() -> Self {
-
         Self {
             is_open: true,
             flight_number: String::new(),
@@ -42,7 +44,12 @@ impl WidgetAddFlight {
         }
     }
 
-    pub fn show<P: Provider>(&mut self, ctx: &egui::Context, _db: &P, airports: &[Airport]) -> bool {
+    pub fn show<P: Provider>(
+        &mut self,
+        ctx: &egui::Context,
+        _db: &P,
+        airports: &[Airport],
+    ) -> bool {
         let mut is_open: bool = self.is_open;
         let mut should_close: bool = false;
 
@@ -51,83 +58,107 @@ impl WidgetAddFlight {
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.label("Fill in the details of the new flight:");
-    
+
                     ui.horizontal(|ui| {
                         ui.label("Flight Number:");
                         ui.text_edit_singleline(&mut self.flight_number);
                     });
-    
+
                     ui.horizontal(|ui| {
                         ui.label("Departure:");
-                        let _ = ui.add(DatePickerButton::new(&mut self.departure_date).id_salt("departure_date_picker"));
+                        let _ = ui.add(
+                            DatePickerButton::new(&mut self.departure_date)
+                                .id_salt("departure_date_picker"),
+                        );
                         ui.label("Time:");
                         ui.add(egui::DragValue::new(&mut self.departure_hour).range(0..=23));
                         ui.label(":");
                         ui.add(egui::DragValue::new(&mut self.departure_minute).range(0..=59));
                     });
-    
+
                     ui.horizontal(|ui| {
                         ui.label("Arrival:");
-                        let _ = ui.add(DatePickerButton::new(&mut self.arrival_date).id_salt("arrival_date_picker"));
+                        let _ = ui.add(
+                            DatePickerButton::new(&mut self.arrival_date)
+                                .id_salt("arrival_date_picker"),
+                        );
                         ui.label("Time:");
                         ui.add(egui::DragValue::new(&mut self.arrival_hour).range(0..=23));
                         ui.label(":");
                         ui.add(egui::DragValue::new(&mut self.arrival_minute).range(0..=59));
                     });
-    
+
                     // Flight Info
                     ui.horizontal(|ui| {
                         ui.label("Fuel level:");
                         ui.add(egui::DragValue::new(&mut self.fuel).speed(1).range(0..=100));
                         ui.label("%");
                     });
-    
+
                     ui.horizontal(|ui| {
                         ui.label("Height:");
-                        ui.add(egui::DragValue::new(&mut self.height).speed(1).range(0..=100000));
+                        ui.add(
+                            egui::DragValue::new(&mut self.height)
+                                .speed(1)
+                                .range(0..=100000),
+                        );
                         ui.label(" meters");
                     });
-    
+
                     ui.horizontal(|ui| {
                         ui.label("Speed:");
-                        ui.add(egui::DragValue::new(&mut self.speed).speed(1).range(0..=10000));
+                        ui.add(
+                            egui::DragValue::new(&mut self.speed)
+                                .speed(1)
+                                .range(0..=10000),
+                        );
                         ui.label(" km/h");
                     });
-    
+
                     ui.horizontal(|ui| {
                         ui.label("Origin:");
                         egui::ComboBox::from_id_salt("origin_combo")
                             .selected_text(&self.origin)
                             .show_ui(ui, |ui| {
                                 for airport in airports {
-                                    if ui.selectable_label(self.origin == airport.iata, &airport.iata).clicked() {
+                                    if ui
+                                        .selectable_label(
+                                            self.origin == airport.iata,
+                                            &airport.iata,
+                                        )
+                                        .clicked()
+                                    {
                                         self.origin = airport.iata.clone();
                                     }
                                 }
                             });
                     });
-    
+
                     ui.horizontal(|ui| {
                         ui.label("Destination:");
                         egui::ComboBox::from_id_salt("destination_combo")
                             .selected_text(&self.destination)
                             .show_ui(ui, |ui| {
                                 for airport in airports {
-                                    if ui.selectable_label(self.destination == airport.iata, &airport.iata).clicked() {
+                                    if ui
+                                        .selectable_label(
+                                            self.destination == airport.iata,
+                                            &airport.iata,
+                                        )
+                                        .clicked()
+                                    {
                                         self.destination = airport.iata.clone();
                                     }
                                 }
                             });
                     });
-    
+
                     if let Some(error) = &self.error_message {
                         ui.colored_label(egui::Color32::RED, error);
                     }
-    
+
                     if ui.button("Submit").clicked() {
                         let mut errors = vec![];
-
-                        
 
                         // Validate all fields
                         if self.flight_number.is_empty() {
@@ -156,7 +187,7 @@ impl WidgetAddFlight {
                         if self.arrival_date <= self.departure_date {
                             errors.push("Arrival time must be after departure time.");
                         }
-    
+
                         if !errors.is_empty() {
                             self.error_message = Some(errors.join("\n"));
                         } else {
@@ -166,25 +197,28 @@ impl WidgetAddFlight {
                                     should_close = true; // Close the widget on success
                                 }
                                 Err(_) => {
-                                    self.error_message = Some("Error: A flight with this number already exists.".to_string());
+                                    self.error_message = Some(
+                                        "Error: A flight with this number already exists."
+                                            .to_string(),
+                                    );
                                 }
                             }
                         }
                     }
                 });
             });
-    
+
         self.is_open = is_open && !should_close;
         self.is_open
     }
-    
+
     fn to_flight(&self, airports: &[Airport]) -> Flight {
         let pos_flight = airports
             .iter()
             .find(|airport| airport.iata == self.origin)
             .map(|airport| airport.position.clone())
             .unwrap_or_else(|| Position::from_lat_lon(0.0, 0.0));
-    
+
         let info = FlightInfo {
             number: self.flight_number.clone(),
             fuel: self.fuel,
@@ -194,24 +228,24 @@ impl WidgetAddFlight {
             destination: self.destination.clone(),
         };
 
-        let departure_time = match self.departure_date.and_hms_opt(self.departure_hour, self.departure_minute, 0) {
-            Some(datetime) => {
-                datetime
-            }
-            None => {
-                Default::default()
-            }
-        };
+        let departure_time =
+            match self
+                .departure_date
+                .and_hms_opt(self.departure_hour, self.departure_minute, 0)
+            {
+                Some(datetime) => datetime,
+                None => Default::default(),
+            };
 
-        let arrival_time = match self.arrival_date.and_hms_opt(self.arrival_hour, self.arrival_minute, 0) {
-            Some(datetime) => {
-                datetime
-            }
-            None => {
-                Default::default()
-            }
-        };
-    
+        let arrival_time =
+            match self
+                .arrival_date
+                .and_hms_opt(self.arrival_hour, self.arrival_minute, 0)
+            {
+                Some(datetime) => datetime,
+                None => Default::default(),
+            };
+
         Flight {
             number: self.flight_number.clone(),
             status: FlightStatus::Scheduled.as_str().to_string(),

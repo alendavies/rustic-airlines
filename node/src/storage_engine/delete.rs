@@ -270,7 +270,6 @@ impl StorageEngine {
 
 #[cfg(test)]
 mod tests {
-    use native_protocol::messages::result::schema_change::SchemaChange;
     use query_creator::clauses::where_cql::Where;
 
     use super::*;

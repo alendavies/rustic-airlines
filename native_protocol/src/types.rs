@@ -256,7 +256,7 @@ mod tests {
     fn option_to_option_bytes() {
         #[derive(PartialEq, Debug)]
         enum Options {
-            Something,
+            _Something,
             SomethinElse(String),
         }
 
@@ -275,7 +275,7 @@ mod tests {
                 let mut bytes = Vec::new();
 
                 match self {
-                    Options::Something => {
+                    Options::_Something => {
                         bytes.extend_from_slice(&(0x0001 as u16).to_be_bytes());
                         Ok(bytes)
                     }

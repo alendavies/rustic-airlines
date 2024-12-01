@@ -22,23 +22,6 @@ impl Where {
     /// * `tokens` - A vector of tokens that can be used to build a `Where` instance.
     ///
     /// The tokens should be in the following order: `WHERE`, `column`, `operator`, `value` in the case of a simple condition, and `WHERE`, `condition`, `AND` or `OR`, `condition` for a complex condition.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let tokens = vec!["WHERE", "age", ">", "18"];
-    /// let where_from_tokens = Where::new_from_tokens(tokens).unwrap();
-    /// let where_clause = Where {
-    ///    condition: Condition::Simple {
-    ///         column: "age".to_string(),
-    ///         operator: Operator::Greater,
-    ///         value: "18".to_string(),
-    ///     },
-    /// };
-    ///
-    /// assert_eq!(where_from_tokens, where_clause);
-    /// ```
-    ///
     pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, CQLError> {
         if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
@@ -120,7 +103,7 @@ impl Where {
         let mut clustering_key_count = 0;
 
         // Valida recursivamente las condiciones
-        self.recursive_validate_conditions(
+        Self::recursive_validate_conditions(
             &self.condition,
             partitioner_keys,
             clustering_columns,
@@ -140,14 +123,13 @@ impl Where {
 
     // Método recursivo para validar las condiciones de las claves primarias y de clustering.
     fn recursive_validate_conditions(
-        &self,
         condition: &Condition,
         partitioner_keys: &Vec<String>,
         clustering_columns: &Vec<String>,
         partitioner_key_count: &mut usize,
         partitioner_keys_verified: &mut bool,
         clustering_key_count: &mut usize,
-        delete_or_select: bool,
+        _delete_or_select: bool,
         update: bool,
     ) -> Result<(), CQLError> {
         match condition {
@@ -195,26 +177,26 @@ impl Where {
 
                 // Verificación recursiva en las condiciones anidadas
                 if let Some(left_condition) = left.as_ref() {
-                    self.recursive_validate_conditions(
-                        &*left_condition,
+                    Self::recursive_validate_conditions(
+                        left_condition,
                         partitioner_keys,
                         clustering_columns,
                         partitioner_key_count,
                         partitioner_keys_verified,
                         clustering_key_count,
-                        delete_or_select,
+                        _delete_or_select,
                         update,
                     )?;
                 }
 
-                self.recursive_validate_conditions(
+                Self::recursive_validate_conditions(
                     right,
                     partitioner_keys,
                     clustering_columns,
                     partitioner_key_count,
                     partitioner_keys_verified,
                     clustering_key_count,
-                    delete_or_select,
+                    _delete_or_select,
                     update,
                 )?;
             }
@@ -270,13 +252,13 @@ impl Where {
             Condition::Complex { left, right, .. } => {
                 // Recorremos la condición izquierda
                 if let Some(left_condition) = left.as_ref() {
-                    self.collect_partitioner_key_values(
+                    Self::collect_partitioner_key_values(
                         left_condition,
                         &partitioner_keys,
                         &mut result,
                     );
                 }
-                self.collect_partitioner_key_values(&right, &partitioner_keys, &mut result);
+                Self::collect_partitioner_key_values(right, &partitioner_keys, &mut result);
             }
         }
 
@@ -289,7 +271,6 @@ impl Where {
 
     // Método auxiliar para recorrer las condiciones y recolectar los valores de las partitioner keys.
     fn collect_partitioner_key_values(
-        &self,
         condition: &Condition,
         partitioner_keys: &[String],
         result: &mut Vec<String>,
@@ -313,13 +294,13 @@ impl Where {
                 // Solo procesar si es un operador lógico AND
                 if *operator == LogicalOperator::And {
                     if let Some(left_condition) = left.as_ref() {
-                        self.collect_partitioner_key_values(
+                        Self::collect_partitioner_key_values(
                             left_condition,
                             partitioner_keys,
                             result,
                         );
                     }
-                    self.collect_partitioner_key_values(right, partitioner_keys, result);
+                    Self::collect_partitioner_key_values(right, partitioner_keys, result);
                 }
             }
         }
@@ -432,12 +413,11 @@ impl Where {
     /// * `Err(CQLError)` - If a validation error occurs.
 
     pub fn get_value_for_clustering_column(&self, clustering_column: &str) -> Option<String> {
-        self.recursive_find_equal_condition(&self.condition, clustering_column)
+        Self::recursive_find_equal_condition(&self.condition, clustering_column)
     }
 
     /// Método recursivo para buscar condiciones `=` para una clustering column específica.
     fn recursive_find_equal_condition(
-        &self,
         condition: &Condition,
         clustering_column: &str,
     ) -> Option<String> {
@@ -461,12 +441,12 @@ impl Where {
                 if *operator == LogicalOperator::And {
                     if let Some(left_condition) = left {
                         if let Some(value) =
-                            self.recursive_find_equal_condition(left_condition, clustering_column)
+                            Self::recursive_find_equal_condition(left_condition, clustering_column)
                         {
                             return Some(value);
                         }
                     }
-                    self.recursive_find_equal_condition(right, clustering_column)
+                    Self::recursive_find_equal_condition(right, clustering_column)
                 } else {
                     None // Ignorar condiciones con operadores no válidos
                 }

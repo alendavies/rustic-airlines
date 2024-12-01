@@ -109,7 +109,7 @@ impl From<StorageEngineError> for NodeError {
 }
 
 impl From<SchemaError> for NodeError {
-    fn from(value: SchemaError) -> Self {
+    fn from(_value: SchemaError) -> Self {
         NodeError::OtherError
     }
 }
