@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, thread::sleep, time::{Duration, Instant}};
+use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
 
 use egui::Context;
 use egui_extras::install_image_loaders;
@@ -72,7 +72,6 @@ impl<P: Provider> eframe::App for MyApp<P> {
         let map_bounds = calculate_map_bounds(&self.map_memory);
         self.country_tracker.update_visible_countries(&map_bounds);
 
-        println!("{:?}", self.country_tracker.get_visible_countries());
 
         self.maybe_update_view_state(); // Periodic update for flights based on the selected airport.
 

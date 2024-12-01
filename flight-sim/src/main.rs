@@ -95,6 +95,8 @@ fn main() -> Result<(), SimError> {
 
             "list-flights" => sim_state.list_flights(),
 
+            "list-airports" => sim_state.list_airports(),
+
             "time-rate" => {
                 clean_scr();
                 if let Err(_) = set_time_rate(&mut sim_state) {
@@ -138,6 +140,8 @@ fn print_help() {
     println!("    Adds a new airport. You'll be prompted for each detail.");
     println!("  list-flights");
     println!("    Show the current flights.");
+    println!("  list-airports");
+    println!("    Show the current airports.");
     println!("  time-rate");
     println!("    Changes the simulation's elapsed time per tick.");
     println!("  test-data");

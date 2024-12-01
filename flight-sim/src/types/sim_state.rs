@@ -10,13 +10,14 @@ use std::thread;
 
 use super::sim_error::SimError;
 
-const TICK_DURATION_SEC : u64 = 1;
+// The period it takes for the flights to be updated and time to pass.
+const TICK_DURATION_SEC : u64 = 5;
 
 /// Represents the simulation state, including flights, airports, and time management.
 #[derive(Clone)]
 pub struct SimState {
     flights: HashMap<String, Arc<RwLock<Flight>>>,
-    pub flight_states: Arc<RwLock<HashMap<String, FlightStatus>>>,  // Vamos a usar este para ver que vuelos ya tenemos
+    pub flight_states: Arc<RwLock<HashMap<String, FlightStatus>>>,
     pub airports: HashMap<String, Airport>,
     pub current_time: Arc<Mutex<NaiveDateTime>>,
     time_rate: Arc<Mutex<Duration>>,
@@ -54,20 +55,21 @@ impl SimState {
             let mut client = self.client.lock().map_err(|_| SimError::ClientError)?;
             client.insert_flight(&flight_arc.read().unwrap()).map_err(|_| SimError::new("Client Error: Error inserting flight into DB"))?;
         }
-        self.flights.insert(flight_arc.read().unwrap().flight_number.clone(), Arc::clone(&flight_arc)); // Inserción en el HashMap
+        self.flights.insert(flight_arc.read().unwrap().flight_number.clone(), Arc::clone(&flight_arc)); 
         self.start_flight_simulation(flight_arc);
         Ok(())
     }
 
+    /// Displays the list of flights in the simulation and allows the user to exit the list view.
+    ///
+    /// This function spawns a thread to listen for user input and continuously updates the flight information on the screen.
     pub fn start_periodic_flight_check(&self, interval_seconds: u64) {
         let sim_state = Arc::new(Mutex::new(self.clone()));
         
         std::thread::spawn(move || {
             loop {
-                // Sleep for the specified interval
                 std::thread::sleep(Duration::from_secs(interval_seconds));
                 
-                // Acquire lock and check for new flights
                 if let Ok(mut state) = sim_state.lock() {
                     match state.check_for_new_flights() {
                         Ok(_) => {
@@ -81,29 +83,6 @@ impl SimState {
                 }
             }
         });
-    }
-
-    fn check_for_new_flights(&mut self) -> Result<(), SimError> {
-
-        let (flights_to_add, flights_to_update) = {
-            let mut client = self.client.lock().map_err(|_| SimError::ClientError)?;
-            let current_time = *self.current_time.lock().map_err(|_| SimError::Other("LockError".to_string()))?;
-            let flight_states = self.flight_states.read().map_err(|_| SimError::Other("LockError".to_string()))?;
-    
-            client.get_all_new_flights(current_time, &flight_states, &self.airports)
-                .map_err(|_| SimError::ClientError)?
-        };
-    
-    
-        for flight in flights_to_add {
-            self.add_flight(flight)?;
-        }
-    
-        for (flight_number, new_status) in flights_to_update {
-            self.update_flight_in_simulation(&flight_number, new_status)?;
-        }
-    
-        Ok(())
     }
     
 
@@ -151,6 +130,37 @@ impl SimState {
         }
     }
 
+    /// Simply displays the list of airports.
+    pub fn list_airports(&self) {
+        if self.airports.is_empty() {
+            println!("No airports available.");
+            return;
+        }
+
+        println!("\n{:<10} {:<50} {:<10} {:<15} {:<15}", 
+            "IATA Code", "Airport Name", "Country", "Latitude", "Longitude");
+        println!("{}", "-".repeat(100));
+
+        for airport in self.airports.values() {
+
+            let truncated_name = if airport.name.len() > 49 {
+                format!("{}...", &airport.name[..49])
+            } else {
+                airport.name.clone()
+            };
+
+            println!(
+                "{:<10} {:<50} {:<10} {:<15} {:<15}",
+                airport.iata_code, 
+                truncated_name, 
+                airport.country, 
+                airport.latitude, 
+                airport.longitude
+            );
+        }
+        thread::sleep(Duration::from_secs(2));
+    }
+
     /// Sets the time rate for the simulation, adjusting the duration of each tick.
     pub fn set_time_rate(&self, minutes: u64) {
         if let Ok(mut rate) = self.time_rate.lock() {
@@ -165,6 +175,29 @@ impl SimState {
 
     pub fn airports(&self) -> &HashMap<String, Airport> {
         &self.airports
+    }
+
+    fn check_for_new_flights(&mut self) -> Result<(), SimError> {
+
+        let (flights_to_add, flights_to_update) = {
+            let mut client = self.client.lock().map_err(|_| SimError::ClientError)?;
+            let current_time = *self.current_time.lock().map_err(|_| SimError::Other("LockError".to_string()))?;
+            let flight_states = self.flight_states.read().map_err(|_| SimError::Other("LockError".to_string()))?;
+    
+            client.get_all_new_flights(current_time, &flight_states, &self.airports)
+                .map_err(|_| SimError::ClientError)?
+        };
+    
+    
+        for flight in flights_to_add {
+            self.add_flight(flight)?;
+        }
+    
+        for (flight_number, new_status) in flights_to_update {
+            self.update_flight_in_simulation(&flight_number, new_status)?;
+        }
+    
+        Ok(())
     }
 
     /// Updates the status of a flight in the simulation.
@@ -268,7 +301,7 @@ impl SimState {
                     match flight_data.status {
                         FlightStatus::Scheduled if current >= flight_data.departure_time => {
                             flight_data.update_position(current);
-                            if let Err(e) = update_flight_state(&flight_states, &flight_data.flight_number, FlightStatus::OnTime) {
+                            if let Err(e) = update_flight_state(&client, &flight_states, &flight_data, FlightStatus::OnTime) {
                                 eprintln!("Failed to update flight state: {:?}", e);
                             }
                         }
@@ -277,12 +310,12 @@ impl SimState {
 
                             if current >= flight_data.arrival_time {
 
-                                if let Err(e) = update_flight_state(&flight_states, &flight_data.flight_number, FlightStatus::Delayed) {
+                                if let Err(e) = update_flight_state(&client, &flight_states, &flight_data, FlightStatus::Delayed) {
                                     eprintln!("Failed to update flight state: {:?}", e);
                                 }
                             } else if flight_data.distance_traveled >= flight_data.total_distance {
 
-                                if let Err(e) = update_flight_state(&flight_states, &flight_data.flight_number, FlightStatus::Finished) {
+                                if let Err(e) = update_flight_state(&client, &flight_states, &flight_data, FlightStatus::Finished) {
                                     eprintln!("Failed to update flight state: {:?}", e);
                                 }
                             } 
@@ -306,12 +339,21 @@ impl SimState {
 }
 
 fn update_flight_state(
+    client: &Arc<Mutex<Client>>,
     flight_states: &Arc<RwLock<HashMap<String, FlightStatus>>>,
-    flight_number: &str,
+    flight: &Flight,
     new_status: FlightStatus,
 ) -> Result<(), SimError> {
     let mut states = flight_states.write().map_err(|_| SimError::Other("LockError".to_string()))?;
-    states.insert(flight_number.to_string(), new_status);
+    states.insert(flight.flight_number.to_string(), new_status);
+
+    if let Ok(mut db_client) = client.lock() {
+        if let Err(e) = db_client.update_flight_status(flight) {
+            eprintln!("Failed to update flight state in database {}: {:?}", 
+                flight.flight_number, e);
+        }
+    }
+    
     Ok(())
 }
 

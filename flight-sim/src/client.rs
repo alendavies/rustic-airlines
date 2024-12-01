@@ -70,7 +70,7 @@ impl Client {
             .execute(&create_flight_info_table, "all")?;
 
         let create_airports_table = r#"
-            CREATE TABLE airports (
+            CREATE TABLE sky.airports (
                 iata TEXT,
                 country TEXT,
                 name TEXT,
@@ -100,28 +100,28 @@ impl Client {
     pub fn insert_flight(&mut self, flight: &Flight) -> Result<(), ClientError> {
         // Inserción en la tabla flights para el origen (DEPARTURE)
         let insert_departure_query = format!(
-            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'departure', {}, {}, {});",
+            "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, {}, {}, {}, '{}', 'departure');",
             flight.flight_number,
             flight.status.as_str(),
+            flight.latitude,
+            flight.longitude,
+            flight.angle,
             flight.departure_time.and_utc().timestamp(),
             flight.arrival_time.and_utc().timestamp(),
             flight.origin.iata_code,
-            flight.latitude,
-            flight.longitude,
-            flight.angle
         );
 
         // Inserción en la tabla flights para el destino (ARRIVAL)
         let insert_arrival_query = format!(
-            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'arrival', {}, {}, {});",
+            "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, {}, {}, {}, '{}', 'arrival');",
             flight.flight_number,
             flight.status.as_str(),
-            flight.departure_time.and_utc().timestamp(),
-            flight.arrival_time.and_utc().timestamp(),
-            flight.destination.iata_code,
             flight.latitude,
             flight.longitude,
-            flight.angle
+            flight.angle,
+            flight.departure_time.and_utc().timestamp(),
+            flight.arrival_time.and_utc().timestamp(),
+            flight.destination.iata_code
         );
 
         // Inserción en la tabla flight_info con la información del vuelo
@@ -150,8 +150,7 @@ impl Client {
 
     pub fn update_flight(&mut self, flight: &Flight) -> Result<(), ClientError> {
         let update_query_status_departure = format!(
-                "UPDATE sky.flights SET status = '{}', lat = {}, lon = {}, angle = {} WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
-                flight.status.as_str(),
+                "UPDATE sky.flights SET lat = {}, lon = {}, angle = {} WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
                 flight.latitude,
                 flight.longitude,
                 flight.angle,
@@ -165,8 +164,7 @@ impl Client {
             .execute(&update_query_status_departure, "all")?;
 
         let update_query_status_arrival = format!(
-                "UPDATE sky.flights SET status = '{}', lat = {}, lon = {}, angle = {} WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
-                flight.status.as_str(),
+                "UPDATE sky.flights SET lat = {}, lon = {}, angle = {} WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
                 flight.latitude,
                 flight.longitude,
                 flight.angle,
@@ -188,6 +186,34 @@ impl Client {
         Ok(())
     }
 
+    pub fn update_flight_status(&mut self, flight: &Flight) -> Result<(), ClientError> {
+        let update_query_status_departure = format!(
+                "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
+                flight.status.as_str(),
+                flight.origin.iata_code,
+                "departure",
+                flight.departure_time.and_utc().timestamp(),
+                flight.arrival_time.and_utc().timestamp(),
+                flight.flight_number
+            );
+        self.cassandra_client
+            .execute(&update_query_status_departure, "all")?;
+
+        let update_query_status_arrival = format!(
+                "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
+                flight.status.as_str(),
+                flight.destination.iata_code,
+                "arrival",
+                flight.departure_time.and_utc().timestamp(),
+                flight.arrival_time.and_utc().timestamp(),
+                flight.flight_number
+            );
+        self.cassandra_client
+            .execute(&update_query_status_arrival, "all")?;
+        
+        Ok(())
+    }
+
     pub fn get_all_new_flights(&mut self, date: NaiveDateTime, current_flight_states: &HashMap<String, FlightStatus>, airports: &HashMap<String, Airport>) -> Result<(Vec<Flight>, Vec<(String, FlightStatus)>), ClientError> {
 
         let from = NaiveDateTime::new(date.date(), NaiveTime::from_hms_opt(0, 0, 0).unwrap());
@@ -202,7 +228,7 @@ impl Client {
         // Iterate through each airport in the HashMap
         for (airport_code, airport) in airports {
             let query = format!(
-                "SELECT number, status, lat, lon, angle, departure_time, arrival_time, direction FROM flights WHERE airport = '{airport_code}' AND direction = 'departure' AND arrival_time > {from} AND arrival_time < {to}"
+                "SELECT number, status, lat, lon, angle, departure_time, arrival_time, direction FROM flights WHERE sky.airport = '{airport_code}' AND direction = 'departure' AND arrival_time > {from} AND arrival_time < {to}"
             );
 
             let result = self.cassandra_client.execute(&query, "all")?;

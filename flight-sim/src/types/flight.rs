@@ -38,7 +38,6 @@ impl Flight {
         arrival_time_str: &str,
         average_speed: i32,
     ) -> Result<Self, SimError> {
-        // Look up airports and return error if not found
         let origin = airports.get(origin_code)
             .ok_or_else(|| SimError::AirportNotFound(origin_code.to_string()))?
             .clone();
@@ -47,9 +46,13 @@ impl Flight {
             .ok_or_else(|| SimError::AirportNotFound(destination_code.to_string()))?
             .clone();
     
-        // Parse datetime and return error if invalid
+
         let departure_time = parse_datetime(departure_time_str)?;
         let arrival_time = parse_datetime(arrival_time_str)?;
+
+        if arrival_time <= departure_time || average_speed <= 0 {
+            return Err(SimError::InvalidInput);
+        }
     
         let starting_latitude = origin.latitude;
         let starting_longitude = origin.longitude;

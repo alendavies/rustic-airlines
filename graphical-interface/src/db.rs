@@ -429,8 +429,6 @@ impl Provider for Db {
 
         let result = driver.execute(query.as_str(), "quorum").map_err(|_| DBError)?;
 
-        println!("{:?}", result);
-
         let mut flight_info = FlightInfo {
             number: String::new(),
             fuel: 0.0,
@@ -716,8 +714,6 @@ impl Provider for Db {
         driver.execute(insert_departure_query.as_str(), "all").map_err(|_| DBError)?;
         driver.execute(insert_arrival_query.as_str(), "all").map_err(|_| DBError)?;
         driver.execute(insert_flight_info_query.as_str(), "all").map_err(|_| DBError)?;
-
-        println!("{:?}", "Lo subio");
 
         Ok(())
     }
