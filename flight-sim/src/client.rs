@@ -1,6 +1,6 @@
 ﻿use std::collections::{BTreeMap, HashMap};
 use std::net::Ipv4Addr;
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{DateTime, NaiveDateTime, NaiveTime};
 use driver::{CassandraClient, ClientError, QueryResult};
 use native_protocol::messages::result::rows::ColumnValue;
 use native_protocol::messages::result::{result_, rows};
@@ -8,7 +8,6 @@ use native_protocol::messages::result::{result_, rows};
 use crate::types::flight::Flight;
 use crate::types::airport::Airport;
 use crate::types::flight_status::FlightStatus;
-use crate::types::sim_state::{self, SimState};
 
 pub struct Client {
     cassandra_client: CassandraClient,
@@ -35,7 +34,7 @@ impl Client {
             CREATE KEYSPACE sky
             WITH REPLICATION = {
                 'class': 'SimpleStrategy',
-                'replication_factor': 3
+                'replication_factor': 2
             };
         "#;
         self.cassandra_client.execute(&create_keyspace_query, "all")?;
@@ -105,7 +104,7 @@ impl Client {
     ) -> Result<(), ClientError> {
         // Inserción en la tabla flights para el origen (DEPARTURE)
         let insert_departure_query = format!(
-            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'DEPARTURE', {}, {}, {});",
+            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'departure', {}, {}, {});",
             flight.flight_number,
             flight.status.as_str(),
             flight.departure_time.and_utc().timestamp(),
@@ -118,7 +117,7 @@ impl Client {
 
         // Inserción en la tabla flights para el destino (ARRIVAL)
         let insert_arrival_query = format!(
-            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'ARRIVAL', {}, {}, {});",
+            "INSERT INTO sky.flights (number, status, departure_time, arrival_time, airport, direction, lat, lon, angle) VALUES ('{}', '{}', {}, {}, '{}', 'arrival', {}, {}, {});",
             flight.flight_number,
             flight.status.as_str(),
             flight.departure_time.and_utc().timestamp(),
@@ -161,7 +160,7 @@ impl Client {
                 flight.longitude,
                 flight.angle,
                 flight.origin.iata_code,
-                "DEPARTURE",
+                "departure",
                 flight.departure_time.and_utc().timestamp(),
                 flight.arrival_time.and_utc().timestamp(),
                 flight.flight_number
@@ -175,7 +174,7 @@ impl Client {
                 flight.longitude,
                 flight.angle,
                 flight.destination.iata_code,
-                "ARRIVAL",
+                "arrival",
                 flight.departure_time.and_utc().timestamp(),
                 flight.arrival_time.and_utc().timestamp(),
                 flight.flight_number
@@ -193,20 +192,19 @@ impl Client {
         Ok(())
     }
 
-    pub fn get_all_new_flights(&mut self, date: NaiveDate, sim_state: &mut SimState) -> Result<Vec<Flight>, ClientError> {
-        let from = NaiveDateTime::new(date, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+    pub fn get_all_new_flights(&mut self, date: NaiveDateTime, current_flight_states: &HashMap<String, FlightStatus>, airports: &HashMap<String, Airport>) -> Result<(Vec<Flight>, Vec<(String, FlightStatus)>), ClientError> {
+
+        let from = NaiveDateTime::new(date.date(), NaiveTime::from_hms_opt(0, 0, 0).unwrap());
         let from = from.and_utc().timestamp();
     
-        let to = NaiveDateTime::new(date, NaiveTime::from_hms_opt(23, 59, 59).unwrap());
+        let to = NaiveDateTime::new(date.date(), NaiveTime::from_hms_opt(23, 59, 59).unwrap());
         let to = to.and_utc().timestamp();
     
         let mut new_flights: Vec<Flight> = Vec::new();
-    
-        // Obtener los estados actuales de vuelos
-        let current_flight_states = sim_state.flight_states.read().map_err(|_| ClientError)?;
+        let mut flights_to_update: Vec<(String, FlightStatus)> = Vec::new();
     
         // Iterate through each airport in the HashMap
-        for (airport_code, airport) in &sim_state.airports {
+        for (airport_code, airport) in airports {
             let query = format!(
                 "SELECT number, status, lat, lon, angle, departure_time, arrival_time, direction FROM flights WHERE airport = '{airport_code}' AND direction = 'departure' AND arrival_time > {from} AND arrival_time < {to}"
             );
@@ -231,12 +229,8 @@ impl Client {
                                                 Ok(status) => {
                                                     if *existing_state != status {
                                                         // Si tenemos un estado distinto, lo actualizamos.
-                                                        if sim_state.update_flight_in_simulation(&flight_number, status).is_ok(){
-                                                            continue;
-                                                        }
-                                                        else{
-                                                            return Err(ClientError)
-                                                        }
+                                                        flights_to_update.push((flight_number, status));
+                                                        continue;
                                                     }
                                                     else {
                                                         continue;
@@ -252,7 +246,7 @@ impl Client {
                                 }
                             },
                             None => {
-                                let flight = Client::build_flight_from_row(self, &row, airport, &sim_state.airports)?;
+                                let flight = Client::build_flight_from_row(self, &row, airport, airports)?;
                                 new_flights.push(flight);
                             }
                         }
@@ -262,7 +256,7 @@ impl Client {
             }
         }
     
-        Ok(new_flights)
+        Ok((new_flights, flights_to_update))
     }
 
     fn build_flight_from_row(&mut self, row: &BTreeMap<String, ColumnValue>, selected_airport: &Airport, airports: &HashMap<String, Airport>) -> Result<Flight, ClientError> {
@@ -376,9 +370,9 @@ impl Client {
         Ok(flight)
     }
 
-    pub fn get_additional_flight_info(&mut self, flight: &mut Flight, airports: &HashMap<String, Airport>)-> Result<(), ClientError>{
+    fn get_additional_flight_info(&mut self, flight: &mut Flight, airports: &HashMap<String, Airport>)-> Result<(), ClientError>{
 
-        let number = flight.flight_number;
+        let number = &flight.flight_number;
 
         let query = format!(
             "SELECT fuel, height, speed, destination FROM sky.flight_info WHERE number = '{number}'"
@@ -442,7 +436,7 @@ impl Client {
             }
             _ => {}
         }
-        Ok()
+        Ok(())
     }
 
     /* pub fn get_all_new_flights(&mut self, date: NaiveDate, sim_state: SimState) -> Result<Vec<Flight>, ClientError> {

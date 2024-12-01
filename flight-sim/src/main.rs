@@ -150,11 +150,11 @@ fn print_help() {
 fn add_test_data(sim_state: &mut SimState) -> Result<(), SimError> {
     // List of airports in Argentina
     let airports = vec![
-        ("AEP", "Argentina", "Aeroparque Jorge Newbery", -34.553, -58.413),
-        ("EZE", "Argentina", "Aeropuerto Internacional Ministro Pistarini", -34.822, -58.535),
-        ("MDZ", "Argentina", "Aeropuerto El Plumerillo", -32.883, -68.845),
-        ("COR", "Argentina", "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella", -31.321, -64.213),
-        ("ROS", "Argentina", "Aeropuerto Internacional Rosario", -32.948, -60.787),
+        ("AEP", "ARG", "Aeroparque Jorge Newbery", -34.553, -58.413),
+        ("EZE", "ARG", "Aeropuerto Internacional Ministro Pistarini", -34.822, -58.535),
+        ("MDZ", "ARG", "Aeropuerto El Plumerillo", -32.883, -68.845),
+        ("COR", "ARG", "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella", -31.321, -64.213),
+        ("ROS", "ARG", "Aeropuerto Internacional Rosario", -32.948, -60.787),
     ];
 
     // Add airports

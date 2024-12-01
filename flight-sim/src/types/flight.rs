@@ -139,7 +139,7 @@ impl Flight {
             };
 
             // Check for arrival or delay
-            if self.distance_traveled >= self.total_distance {
+            if self.distance_traveled >= self.total_distance || self.status == FlightStatus::Finished {
                 self.land();
             } else if current_time >= self.arrival_time {
                 self.status = FlightStatus::Delayed;

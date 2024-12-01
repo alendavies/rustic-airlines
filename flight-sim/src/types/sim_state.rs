@@ -13,6 +13,7 @@ use super::sim_error::SimError;
 const TICK_DURATION_SEC : u64 = 1;
 
 /// Represents the simulation state, including flights, airports, and time management.
+#[derive(Clone)]
 pub struct SimState {
     flights: HashMap<String, Arc<RwLock<Flight>>>,
     pub flight_states: Arc<RwLock<HashMap<String, FlightStatus>>>,  // Vamos a usar este para ver que vuelos ya tenemos
@@ -32,12 +33,13 @@ impl SimState {
             flight_states: Arc::new(RwLock::new(HashMap::new())),
             airports: HashMap::new(),
             current_time: Arc::new(Mutex::new(Utc::now().naive_utc())),
-            time_rate: Arc::new(Mutex::new(Duration::from_secs(60))),
+            time_rate: Arc::new(Mutex::new(Duration::from_secs(30))),
             pool: ThreadPool::new(4),
             client: Arc::new(Mutex::new(client)),
         };
 
         state.start_time_update();
+        state.start_periodic_flight_check(TICK_DURATION_SEC*10);
         Ok(state)
     }
 
@@ -56,6 +58,54 @@ impl SimState {
         self.start_flight_simulation(flight_arc);
         Ok(())
     }
+
+    pub fn start_periodic_flight_check(&self, interval_seconds: u64) {
+        let sim_state = Arc::new(Mutex::new(self.clone()));
+        
+        std::thread::spawn(move || {
+            loop {
+                // Sleep for the specified interval
+                std::thread::sleep(Duration::from_secs(interval_seconds));
+                
+                // Acquire lock and check for new flights
+                if let Ok(mut state) = sim_state.lock() {
+                    match state.check_for_new_flights() {
+                        Ok(_) => {
+                            // Optional: log successful check
+                            println!("Successfully checked for new flights");
+                        }
+                        Err(e) => {
+                            eprintln!("Error checking for new flights: {:?}", e);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    fn check_for_new_flights(&mut self) -> Result<(), SimError> {
+
+        let (flights_to_add, flights_to_update) = {
+            let mut client = self.client.lock().map_err(|_| SimError::ClientError)?;
+            let current_time = *self.current_time.lock().map_err(|_| SimError::Other("LockError".to_string()))?;
+            let flight_states = self.flight_states.read().map_err(|_| SimError::Other("LockError".to_string()))?;
+    
+            client.get_all_new_flights(current_time, &flight_states, &self.airports)
+                .map_err(|_| SimError::ClientError)?
+        };
+    
+    
+        for flight in flights_to_add {
+            self.add_flight(flight)?;
+        }
+    
+        for (flight_number, new_status) in flights_to_update {
+            self.update_flight_in_simulation(&flight_number, new_status)?;
+        }
+    
+        Ok(())
+    }
+    
 
     /// Adds an airport to the simulation and inserts it into the database.
     pub fn add_airport(&mut self, airport: Airport) -> Result<(), SimError> {
@@ -118,7 +168,7 @@ impl SimState {
     }
 
     /// Updates the status of a flight in the simulation.
-    pub fn update_flight_in_simulation(
+    fn update_flight_in_simulation(
         &self,
         flight_number: &str,
         new_status: FlightStatus,
@@ -137,12 +187,14 @@ impl SimState {
             }
         }
 
-        // Update in the flights map
+        let current_time = *Arc::clone(&self.current_time).lock().unwrap();
+
         if let Some(flight_arc) = self.flights.get(flight_number) {
             let mut flight = flight_arc
                 .write()
                 .map_err(|_| SimError::Other("LockError".to_string()))?;
             flight.status = new_status;
+            flight.update_position(current_time);
         } else {
             return Err(SimError::Other(format!("Flight {} not found in simulation", flight_number)));
         }
@@ -262,3 +314,5 @@ fn update_flight_state(
     states.insert(flight_number.to_string(), new_status);
     Ok(())
 }
+
+
