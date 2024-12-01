@@ -74,7 +74,7 @@ fn main() {
         "INSERT INTO sky.airports (iata, country, name, lat, lon) VALUES ('RGL', 'ARG', 'Piloto Civil Norberto Fernández', -51.6089, -69.3126)",
         "INSERT INTO sky.airports (iata, country, name, lat, lon) VALUES ('RSA', 'ARG', 'Santa Rosa', -36.5883, -64.2757)",
         "INSERT INTO sky.airports (iata, country, name, lat, lon) VALUES ('VDM', 'ARG', 'Gobernador Castello', -40.8692, -63.0004)",
-        "INSERT INTO sky.airports (iata, country, name, lat, lon) VALUES ('BHI', 'ARG', 'Comandante Espora', -38.7242, -62.1693)"
+        "INSERT INTO sky.airports (iata, country, name, lat, lon) VALUES ('BHI', 'ARG', 'Comandante Espora', -38.7242, -62.1693)",
     ];
 
     let flight_queries = vec![
@@ -121,6 +121,10 @@ fn main() {
         format!("INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR110', 'on time', -36.5883, -64.2757, 198.3, '{}', '{}', 'RSA', 'departure')", now, now + 4000),
         format!("INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR110', 'on time', -36.5883, -64.2757, 198.3, '{}', '{}', 'BRC', 'arrival')", now, now + 4000),
         format!("INSERT INTO sky.flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR110', 90.5, 11000, 535, 'RSA', 'BRC')"), 
+
+        format!("SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = 'AEP' AND direction = 'departure' AND departure_time > 1733011200"),
+        //format!("UPDATE sky.flights SET status = 'on time' WHERE airport = 'EZE' AND direction = 'arrival' AND departure_time = 1733017729 AND arrival_time = 1733021609 AND number = AR001"),
+        //format!("SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = 'AEP' AND direction = 'departure' AND departure_time > 1733011200"),
     ];
 
     let mut contador = 0;

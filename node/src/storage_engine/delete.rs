@@ -270,10 +270,10 @@ impl StorageEngine {
 
 #[cfg(test)]
 mod tests {
+    use native_protocol::messages::result::schema_change::SchemaChange;
     use query_creator::clauses::where_cql::Where;
 
     use super::*;
-    use crate::table::Table;
     use query_creator::clauses::condition::Condition;
     use query_creator::clauses::delete_cql::Delete;
     use query_creator::clauses::table::create_table_cql::CreateTable;
@@ -311,7 +311,7 @@ mod tests {
         let create_table = CreateTable::new_from_tokens(tokens).unwrap();
 
         // Crear el `Table` utilizando el `CreateTable`
-        let table = Table {
+        let table = TableSchema {
             inner: create_table,
         };
 
@@ -376,7 +376,7 @@ mod tests {
         let create_table = CreateTable::new_from_tokens(tokens).unwrap();
 
         // Crear el `Table` utilizando el `CreateTable`
-        let table = Table {
+        let table = TableSchema {
             inner: create_table,
         };
 
@@ -448,7 +448,7 @@ mod tests {
         let create_table = CreateTable::new_from_tokens(tokens).unwrap();
 
         // Crear el `Table` utilizando el `CreateTable`
-        let table = Table {
+        let table = TableSchema {
             inner: create_table,
         };
 

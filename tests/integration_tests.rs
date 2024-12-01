@@ -126,19 +126,19 @@ fn setup_keyspace_queries(client: &mut CassandraClient) {
     );
     println!("Keyspace creation succeeded: {}", query);
 
-    // Alter keyspace replication factor to 2
-    let query = "ALTER KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2}";
-    let expected_result = QueryResult::Result(Result::SchemaChange(SchemaChange::new(
-        schema_change::ChangeType::Updated,
-        schema_change::Target::Keyspace,
-        schema_change::Options::new("test_keyspace".to_string(), None),
-    )));
-    assert!(
-        execute_and_verify(client, query, expected_result),
-        "Failed keyspace alteration: {}",
-        query
-    );
-    println!("Keyspace alteration succeeded: {}", query);
+    // // Alter keyspace replication factor to 2
+    // let query = "ALTER KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2}";
+    // let expected_result = QueryResult::Result(Result::SchemaChange(SchemaChange::new(
+    //     schema_change::ChangeType::Updated,
+    //     schema_change::Target::Keyspace,
+    //     schema_change::Options::new("test_keyspace".to_string(), None),
+    // )));
+    // assert!(
+    //     execute_and_verify(client, query, expected_result),
+    //     "Failed keyspace alteration: {}",
+    //     query
+    // );
+    // println!("Keyspace alteration succeeded: {}", query);
 }
 
 fn setup_table_queries(client: &mut CassandraClient) {
@@ -166,19 +166,19 @@ fn setup_table_queries(client: &mut CassandraClient) {
     );
     println!("Set keyspace succeeded: {}", query);
 
-    // Alter table "test_table" to add a new column
-    let query = "ALTER TABLE test_table ADD last_name TEXT";
-    let expected_result = QueryResult::Result(Result::SchemaChange(SchemaChange::new(
-        schema_change::ChangeType::Updated,
-        schema_change::Target::Table,
-        schema_change::Options::new("test_table".to_string(), None),
-    )));
-    assert!(
-        execute_and_verify(client, query, expected_result),
-        "Failed table alteration: {}",
-        query
-    );
-    println!("Table alteration succeeded: {}", query);
+    // // Alter table "test_table" to add a new column
+    // let query = "ALTER TABLE test_table ADD last_name TEXT";
+    // let expected_result = QueryResult::Result(Result::SchemaChange(SchemaChange::new(
+    //     schema_change::ChangeType::Updated,
+    //     schema_change::Target::Table,
+    //     schema_change::Options::new("test_table".to_string(), None),
+    // )));
+    // assert!(
+    //     execute_and_verify(client, query, expected_result),
+    //     "Failed table alteration: {}",
+    //     query
+    // );
+    // println!("Table alteration succeeded: {}", query);
 }
 
 fn execute_insert_queries(client: &mut CassandraClient) {

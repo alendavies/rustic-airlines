@@ -229,7 +229,7 @@ impl Node {
                     }
                 }
 
-                thread::sleep(std::time::Duration::from_secs(1));
+                thread::sleep(std::time::Duration::from_millis(1200));
             }
         });
         //handle.join().unwrap();
@@ -318,7 +318,6 @@ impl Node {
         for (keyspace_name, keyspace) in self.schema.keyspaces.clone() {
             if !old_schema.keyspaces.contains_key(&keyspace_name) {
                 // Create a new keyspace
-                println!("voy a agregar keyspace");
                 storage.create_keyspace(&keyspace_name).unwrap();
             }
 
@@ -336,7 +335,6 @@ impl Node {
         for (keyspace_name, keyspace) in old_schema.clone().keyspaces {
             if !self.schema.keyspaces.contains_key(&keyspace_name) {
                 // Drop keyspace
-                println!("borro keyspace");
                 storage
                     .drop_keyspace(&keyspace_name, &self.ip.to_string())
                     .unwrap();
@@ -388,8 +386,6 @@ impl Node {
         old_tables: Vec<TableSchema>,
         new_tables: Vec<TableSchema>,
     ) {
-        println!("new tables = {:?}", new_tables);
-        println!("old tables = {:?}", old_tables);
         for table in old_tables {
             if new_tables
                 .iter()
@@ -397,7 +393,6 @@ impl Node {
                 .is_none()
             {
                 // Drop table
-                println!("voy a borrar {:?}", table.get_name());
                 storage
                     .drop_table(keyspace_name, &table.get_name())
                     .unwrap();
@@ -420,7 +415,7 @@ impl Node {
 
         self.update_schema_in_storage(old_schema);
 
-        println!("Schema updated: {:?}", self.schema);
+        //println!("Schema updated: {:?}", self.schema);
     }
 
     fn add_keyspace(&mut self, new_keyspace: CreateKeyspace) -> Result<(), NodeError> {
@@ -806,7 +801,6 @@ impl Node {
                 }
                 Ok(_) => {
                     let query = handle_client_request(&buffer);
-                    dbg!(&query);
                     match query {
                         Request::Startup => {
                             stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
@@ -826,8 +820,6 @@ impl Node {
                                 client_stream,
                                 client_id,
                             );
-
-                            dbg!(&result);
 
                             if let Err(e) = result {
                                 let frame = Frame::Error(error::Error::ServerError(e.to_string()));

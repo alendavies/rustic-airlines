@@ -188,6 +188,7 @@ impl StorageEngine {
                 .trim_end()
                 .split_once(";")
                 .ok_or(StorageEngineError::IoError)?;
+
             if self.line_matches_where_clause(&line, &table, &select_query)? {
                 results.push(buffer.trim_end().to_string());
             }
@@ -258,12 +259,14 @@ impl StorageEngine {
         select_query: &Select,
     ) -> Result<bool, StorageEngineError> {
         // Convert the line into a map of column to value
-        let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
-        let column_value_map = self.create_column_value_map(table, &columns, false);
+
+        let values: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
+        let column_value_map = self.create_column_value_map(table, &values, false);
 
         let columns = table.get_columns();
         // Check the WHERE clause condition in the SELECT query
         if let Some(where_clause) = &select_query.where_clause {
+            //println!("el column value map es {:?}", column_value_map);
             Ok(where_clause
                 .condition
                 .execute(&column_value_map, columns)
@@ -354,7 +357,7 @@ mod tests {
             "id INT PRIMARY KEY, name TEXT".to_string(),
         ])
         .unwrap();
-        let table = Table::new(create_table.clone());
+        let table = TableSchema::new(create_table.clone());
         // Crear consulta SELECT con `WHERE id = 1`
         let select_tokens = vec![
             "SELECT".to_string(),
@@ -466,7 +469,7 @@ mod tests {
             "id INT PRIMARY KEY, name TEXT, age INT".to_string(),
         ])
         .unwrap();
-        let table = Table::new(create_table.clone());
+        let table = TableSchema::new(create_table.clone());
 
         let select_tokens = vec![
             "SELECT".to_string(),
@@ -486,11 +489,9 @@ mod tests {
         ];
 
         let select_query = Select::new_from_tokens(select_tokens).unwrap();
-        println!("el select es {:?}", select_query);
         let result = storage.select(select_query, table, false, keyspace);
         assert!(result.is_ok(), "Error executing SELECT with LIMIT");
         let result_rows = result.unwrap();
-        println!("{:?}", result_rows);
         assert_eq!(result_rows.len(), 4); // Header + 2 rows
         assert_eq!(result_rows[0], "id,name,age", "Header mismatch");
         assert_eq!(result_rows[1], "id,name", "Selected columns mismatch");
@@ -578,7 +579,7 @@ mod tests {
             "id INT PRIMARY KEY, name TEXT, age INT".to_string(),
         ])
         .unwrap();
-        let table = Table::new(create_table.clone());
+        let table = TableSchema::new(create_table.clone());
 
         let select_tokens = vec![
             "SELECT".to_string(),
@@ -596,11 +597,9 @@ mod tests {
         ];
 
         let select_query = Select::new_from_tokens(select_tokens).unwrap();
-        println!("el select es {:?}", select_query);
         let result = storage.select(select_query, table, false, keyspace);
         assert!(result.is_ok(), "Error executing SELECT with LIMIT");
         let result_rows = result.unwrap();
-        println!("{:?}", result_rows);
         assert_eq!(result_rows.len(), 2); // Header + 2 rows
         assert_eq!(result_rows[0], "id,name,age", "Header mismatch");
         assert_eq!(result_rows[1], "id,name", "Selected columns mismatch");

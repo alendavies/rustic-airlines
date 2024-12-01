@@ -1,7 +1,7 @@
 use std::{
-    fs::{self, File, OpenOptions},
+    fmt::format,
+    fs::{self, File},
     io::{BufRead, BufReader, BufWriter, Write},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use query_creator::{clauses::types::column::Column, operator::Operator};
@@ -72,13 +72,9 @@ impl StorageEngine {
         if_not_exist: bool,
         timestamp: i64,
     ) -> Result<(), StorageEngineError> {
-        let base_folder_path = self.get_keyspace_path(keyspace);
-
-        let folder_path = if is_replication {
-            base_folder_path.join("replication")
-        } else {
-            base_folder_path
-        };
+        let folder_path =
+            self.get_keyspace_path(keyspace)
+                .join(if is_replication { "replication" } else { "" });
 
         if !folder_path.exists() {
             fs::create_dir_all(&folder_path)
@@ -86,16 +82,18 @@ impl StorageEngine {
         }
 
         let file_path = folder_path.join(format!("{}.csv", table));
-        let temp_file_path = folder_path.join(format!(
-            "{}.tmp",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|_| StorageEngineError::TempFileCreationFailed)?
-                .as_nanos()
-        ));
-
+        let temp_file_path = folder_path.join(format!("temp_{}.csv", timestamp));
         let index_file_path = folder_path.join(format!("{}_index.csv", table));
 
+        let clustering_indices =
+            Self::get_clustering_indices(&columns, &clustering_columns_in_order)?;
+        let partition_key_indices = Self::get_partition_key_indices(&columns);
+
+        let mut inserted = false;
+        let mut current_byte_offset: u64 = 0;
+        let mut index_map = std::collections::BTreeMap::new();
+
+        // Preparar archivo temporal
         let mut temp_file =
             File::create(&temp_file_path).map_err(|_| StorageEngineError::IoError)?;
         let mut temp_index = BufWriter::new(
@@ -105,36 +103,7 @@ impl StorageEngine {
         writeln!(temp_index, "clustering_column,start_byte,end_byte")
             .map_err(|_| StorageEngineError::IoError)?;
 
-        let clustering_key_indices: Vec<(usize, String)> = clustering_columns_in_order
-            .iter()
-            .filter_map(|col_name| {
-                columns
-                    .iter()
-                    .position(|col| col.name == *col_name && col.is_clustering_column)
-                    .map(|idx| {
-                        let inverted_order = if columns[idx].get_clustering_order() == "ASC" {
-                            "DESC".to_string()
-                        } else {
-                            "ASC".to_string()
-                        };
-                        (idx, inverted_order)
-                    })
-            })
-            .collect();
-
-        let partition_key_indices: Vec<usize> = columns
-            .iter()
-            .enumerate()
-            .filter(|(_, col)| col.is_partition_key)
-            .map(|(idx, _)| idx)
-            .collect();
-
-        let mut inserted = false;
-        let mut current_byte_offset: u64 = 0;
-        let mut index_map: std::collections::BTreeMap<String, (u64, u64)> =
-            std::collections::BTreeMap::new();
-
-        if let Ok(file) = OpenOptions::new().read(true).open(&file_path) {
+        if let Ok(file) = File::open(&file_path) {
             let reader = BufReader::new(file);
             let mut lines = reader.lines();
 
@@ -143,136 +112,192 @@ impl StorageEngine {
                 writeln!(temp_file, "{}", header_line).map_err(|_| StorageEngineError::IoError)?;
                 current_byte_offset += header_line.len() as u64 + 1; // Contamos el '\n'
             }
-
-            for line in lines {
+            for (_, line) in lines.enumerate() {
                 let line = line.map_err(|_| StorageEngineError::IoError)?;
                 let line_length = line.len() as u64;
 
-                let (line_content, time_of_row) =
-                    line.split_once(";").ok_or(StorageEngineError::IoError)?;
-
+                let (line_content, row_timestamp) = Self::split_line(&line)?;
                 let row: Vec<&str> = line_content.split(',').collect();
 
-                let mut clustering_comparison = std::cmp::Ordering::Equal;
+                let is_same_partition =
+                    Self::is_same_partition(&row, &values, &partition_key_indices);
+                let clustering_cmp =
+                    Self::compare_clustering(&row, &values, &clustering_indices, &columns)?;
 
-                let same_partition_key = partition_key_indices.iter().all(|&index| {
-                    row.get(index).unwrap_or(&"") == values.get(index).unwrap_or(&"")
-                });
-
-                for &(idx, ref order) in &clustering_key_indices {
-                    let row_value = row.get(idx).unwrap_or(&"");
-                    let insert_value = values.get(idx).unwrap_or(&"");
-                    let data_type = &columns[idx].data_type;
-                    //println!("voy a comparar {:?} con {:?}", row_value, insert_value);
-
-                    if row_value != insert_value {
-                        let is_less = data_type
-                            .compare(
-                                &row_value.to_string(),
-                                &insert_value.to_string(),
-                                &Operator::Lesser,
-                            )
-                            .map_err(|_| StorageEngineError::UnsupportedOperation)?;
-
-                        clustering_comparison = match (is_less, order.as_str()) {
-                            (true, "DESC") | (false, "ASC") => std::cmp::Ordering::Less,
-                            (false, "DESC") | (true, "ASC") => std::cmp::Ordering::Greater,
-                            _ => std::cmp::Ordering::Equal,
-                        };
-
-                        break;
-                    }
-                }
-
-                if clustering_comparison == std::cmp::Ordering::Equal {
-                    if !same_partition_key {
-                        writeln!(temp_file, "{};{}", line_content, time_of_row)
+                if clustering_cmp == std::cmp::Ordering::Equal {
+                    if is_same_partition && if_not_exist {
+                        writeln!(temp_file, "{};{}", line_content, row_timestamp)
                             .map_err(|_| StorageEngineError::IoError)?;
                         current_byte_offset += line_length + 1;
-                        writeln!(temp_file, "{};{}", values.join(","), timestamp)
-                            .map_err(|_| StorageEngineError::IoError)?;
-                        inserted = true;
-                        current_byte_offset +=
-                            values.join(",").len() as u64 + timestamp.to_string().len() as u64 + 2;
+                        Self::update_index_map(
+                            &row,
+                            &clustering_indices,
+                            &mut index_map,
+                            current_byte_offset - line_length - 1,
+                            line_length,
+                        );
                         continue;
                     }
-
-                    if if_not_exist {
-                        writeln!(temp_file, "{};{}", line_content, time_of_row)
-                            .map_err(|_| StorageEngineError::IoError)?;
-                        current_byte_offset += line_length + 1;
-                        continue;
-                    } else {
-                        if clustering_key_indices.len() == 0 {
-                            writeln!(temp_file, "{};{}", line_content, time_of_row)
-                                .map_err(|_| StorageEngineError::IoError)?;
-                            continue;
-                        }
-                        writeln!(temp_file, "{};{}", values.join(","), timestamp)
-                            .map_err(|_| StorageEngineError::IoError)?;
-                        inserted = true;
-                        current_byte_offset +=
-                            values.join(",").len() as u64 + timestamp.to_string().len() as u64 + 2;
-                        continue;
-                    }
-                } else if clustering_comparison == std::cmp::Ordering::Greater && !inserted {
-                    writeln!(temp_file, "{};{}", values.join(","), timestamp)
-                        .map_err(|_| StorageEngineError::IoError)?;
-                    inserted = true;
-                    current_byte_offset +=
-                        values.join(",").len() as u64 + timestamp.to_string().len() as u64 + 2;
+                    Self::write_inserted_row(
+                        &mut temp_file,
+                        &values,
+                        timestamp,
+                        &mut inserted,
+                        &mut current_byte_offset,
+                        &mut index_map,
+                        &clustering_indices,
+                    )?;
+                    continue;
+                } else if clustering_cmp == std::cmp::Ordering::Greater && !inserted {
+                    Self::write_inserted_row(
+                        &mut temp_file,
+                        &values,
+                        timestamp,
+                        &mut inserted,
+                        &mut current_byte_offset,
+                        &mut index_map,
+                        &clustering_indices,
+                    )?;
                 }
 
-                if let Some(&(idx, _)) = clustering_key_indices.first() {
-                    let key = row[idx].to_string();
-                    let entry = index_map
-                        .entry(key)
-                        .or_insert((current_byte_offset, current_byte_offset));
-                    entry.1 = current_byte_offset + line_length;
-                }
-
-                writeln!(temp_file, "{};{}", line_content, time_of_row)
+                writeln!(temp_file, "{};{}", line_content, row_timestamp)
                     .map_err(|_| StorageEngineError::IoError)?;
-                current_byte_offset += line.len() as u64 + 1;
-            }
-        }
-
-        if !inserted {
-            writeln!(temp_file, "{};{}", values.join(","), timestamp)
-                .map_err(|_| StorageEngineError::IoError)?;
-
-            if let Some(&(idx, _)) = clustering_key_indices.first() {
-                let key = values[idx].to_string();
-                index_map.insert(
-                    key,
-                    (
-                        current_byte_offset,
-                        current_byte_offset
-                            + values.join(",").len() as u64
-                            + timestamp.to_string().len() as u64
-                            + 2,
-                    ),
+                current_byte_offset += line_length + 1;
+                Self::update_index_map(
+                    &row,
+                    &clustering_indices,
+                    &mut index_map,
+                    current_byte_offset - line_length - 1,
+                    line_length,
                 );
             }
         }
 
-        let mut sorted_indices: Vec<_> = index_map.into_iter().collect();
-        for &(_, ref order) in &clustering_key_indices {
-            if order == "ASC" {
-                sorted_indices.sort_by(|a, b| a.0.cmp(&b.0));
-            } else {
-                sorted_indices.sort_by(|a, b| b.0.cmp(&a.0));
-            }
+        if !inserted {
+            Self::write_inserted_row(
+                &mut temp_file,
+                &values,
+                timestamp,
+                &mut inserted,
+                &mut current_byte_offset,
+                &mut index_map,
+                &clustering_indices,
+            )?;
         }
 
-        for (key, (start_byte, end_byte)) in sorted_indices {
+        for (key, (start_byte, end_byte)) in index_map {
             writeln!(temp_index, "{},{},{}", key, start_byte, end_byte)
                 .map_err(|_| StorageEngineError::IoError)?;
         }
 
         fs::rename(&temp_file_path, &file_path).map_err(|_| StorageEngineError::IoError)?;
-
         Ok(())
+    }
+
+    fn write_inserted_row(
+        file: &mut File,
+        values: &[&str],
+        timestamp: i64,
+        inserted: &mut bool,
+        current_byte_offset: &mut u64,
+        index_map: &mut std::collections::BTreeMap<String, (u64, u64)>,
+        clustering_indices: &[(usize, String)],
+    ) -> Result<(), StorageEngineError> {
+        let line = format!("{};{}", values.join(","), timestamp);
+        let line_length = line.len() as u64;
+
+        writeln!(file, "{}", line).map_err(|_| StorageEngineError::IoError)?;
+        Self::update_index_map(
+            &values,
+            clustering_indices,
+            index_map,
+            *current_byte_offset,
+            line_length,
+        );
+        *current_byte_offset += line_length + 1; // +1 para incluir '\n'
+        *inserted = true;
+        Ok(())
+    }
+
+    fn update_index_map(
+        row: &[&str],
+        clustering_indices: &[(usize, String)],
+        index_map: &mut std::collections::BTreeMap<String, (u64, u64)>,
+        start_byte: u64,
+        line_length: u64,
+    ) {
+        if let Some(&(idx, _)) = clustering_indices.first() {
+            let key = row[idx].to_string();
+            let entry = index_map
+                .entry(key)
+                .or_insert((start_byte, start_byte + line_length));
+            entry.1 = start_byte + line_length;
+        }
+    }
+
+    fn get_clustering_indices(
+        columns: &[Column],
+        clustering_columns: &[String],
+    ) -> Result<Vec<(usize, String)>, StorageEngineError> {
+        Ok(clustering_columns
+            .iter()
+            .filter_map(|col_name| {
+                columns
+                    .iter()
+                    .position(|col| col.name == *col_name)
+                    .map(|idx| {
+                        let order = if columns[idx].get_clustering_order() == "ASC" {
+                            "DESC".to_string()
+                        } else {
+                            "ASC".to_string()
+                        };
+                        (idx, order)
+                    })
+            })
+            .collect())
+    }
+
+    fn get_partition_key_indices(columns: &[Column]) -> Vec<usize> {
+        columns
+            .iter()
+            .enumerate()
+            .filter(|(_, col)| col.is_partition_key)
+            .map(|(idx, _)| idx)
+            .collect()
+    }
+
+    fn split_line(line: &str) -> Result<(&str, &str), StorageEngineError> {
+        line.split_once(";").ok_or(StorageEngineError::IoError)
+    }
+
+    fn is_same_partition(row: &[&str], values: &[&str], partition_indices: &[usize]) -> bool {
+        partition_indices
+            .iter()
+            .all(|&index| row.get(index) == values.get(index))
+    }
+
+    fn compare_clustering(
+        row: &[&str],
+        values: &[&str],
+        clustering_indices: &[(usize, String)],
+        columns: &[Column],
+    ) -> Result<std::cmp::Ordering, StorageEngineError> {
+        for &(idx, ref order) in clustering_indices {
+            let row_val = row.get(idx).unwrap_or(&"");
+            let value = values.get(idx).unwrap_or(&"");
+            if row_val != value {
+                let is_less = columns[idx]
+                    .data_type
+                    .compare(row_val, value, &Operator::Lesser)
+                    .map_err(|_| StorageEngineError::UnsupportedOperation)?;
+                return Ok(match (is_less, order.as_str()) {
+                    (true, "DESC") | (false, "ASC") => std::cmp::Ordering::Less,
+                    (false, "DESC") | (true, "ASC") => std::cmp::Ordering::Greater,
+                    _ => std::cmp::Ordering::Equal,
+                });
+            }
+        }
+        Ok(std::cmp::Ordering::Equal)
     }
 }
 
