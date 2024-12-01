@@ -49,7 +49,7 @@ impl Client {
                 arrival_time TIMESTAMP,
                 airport TEXT,
                 direction TEXT,
-                PRIMARY KEY (direction, airport, departure_time, arrival_time, number)
+                PRIMARY KEY (airport, direction, departure_time, arrival_time, number)
             )
             "#;
         self.cassandra_client
@@ -228,7 +228,7 @@ impl Client {
         // Iterate through each airport in the HashMap
         for (airport_code, airport) in airports {
             let query = format!(
-                "SELECT number, status, lat, lon, angle, departure_time, arrival_time, direction FROM flights WHERE sky.airport = '{airport_code}' AND direction = 'departure' AND arrival_time > {from} AND arrival_time < {to}"
+                "SELECT number, status, lat, lon, angle, departure_time, arrival_time, direction FROM sky.flights WHERE airport = '{airport_code}' AND direction = 'departure' AND arrival_time > {from} AND arrival_time < {to}"
             );
 
             let result = self.cassandra_client.execute(&query, "all")?;

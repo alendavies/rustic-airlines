@@ -48,7 +48,7 @@ impl<P: Provider> MyApp<P> {
             add_flight_widget: None,
             db,
             last_update: Instant::now(),
-            update_interval: Duration::from_secs(20), // Actualiza cada 20 segundos
+            update_interval: Duration::from_secs(5), // Actualiza cada 5 segundos
             country_tracker: CountryTracker::new()
         }
     }
