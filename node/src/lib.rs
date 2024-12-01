@@ -634,7 +634,7 @@ impl Node {
         Ok(())
     }
 
-    fn set_actual_keyspace(
+    fn _set_actual_keyspace(
         &mut self,
         keyspace_name: String,
         client_id: i32,

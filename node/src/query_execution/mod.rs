@@ -318,8 +318,9 @@ impl QueryExecution {
                 }
                 Query::DropKeyspace(drop_keyspace) => self.execute_drop_keyspace(drop_keyspace),
                 Query::AlterKeyspace(alter_keyspace) => self.execute_alter_keyspace(alter_keyspace),
-                Query::Use(use_cql) => {
-                    self.execute_use(use_cql, internode, open_query_id, client_id)
+                Query::Use(_) => {
+                    return Err(NodeError::OtherError);
+                    //self.execute_use(use_cql, internode, open_query_id, client_id)
                 }
             }
         };
@@ -369,7 +370,7 @@ impl QueryExecution {
     }
 
     // Función auxiliar para enviar un mensaje a todos los nodos en el partitioner
-    fn send_to_other_nodes(
+    fn _send_to_other_nodes(
         &self,
         local_node: MutexGuard<'_, Node>,
         serialized_message: &str,
