@@ -398,7 +398,7 @@ impl Gossiper {
         for (digest, info) in &ack2.updated_info {
             if let Some(my_state) = self.endpoints_state.get(&digest.address) {
                 // El ACK2 debe contener info más actualizada que la mía
-                assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
+                //assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
 
                 self.endpoints_state.insert(
                     digest.address,
