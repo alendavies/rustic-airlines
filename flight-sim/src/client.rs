@@ -4,8 +4,6 @@ use chrono::{DateTime, NaiveDateTime, NaiveTime};
 use driver::{CassandraClient, ClientError, QueryResult};
 use native_protocol::messages::result::rows::ColumnValue;
 use native_protocol::messages::result::{result_, rows};
-use std::collections::{BTreeMap, HashMap};
-use std::net::Ipv4Addr;
 
 use crate::types::airport::Airport;
 use crate::types::flight::Flight;
@@ -435,7 +433,6 @@ impl Client {
             }
             _ => {}
         }
-        Ok(())
         Ok(())
     }
 
