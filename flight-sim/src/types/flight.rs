@@ -82,33 +82,30 @@ impl Flight {
     }
 
     fn calculate_bearing(&self) -> f64 {
-        let lat1 = self.origin.latitude;
-        let lon1 = self.origin.longitude;
-        let lat2 = self.destination.latitude;
-        let lon2 = self.destination.longitude;
-
+        let lat1 = self.latitude.to_radians();
+        let lon1 = self.longitude.to_radians();
+        let lat2 = self.destination.latitude.to_radians();
+        let lon2 = self.destination.longitude.to_radians();
+    
         let delta_lon = lon2 - lon1;
-        let delta_lat = lat2 - lat1;
-
-        let bearing = delta_lat.atan2(delta_lon);
-
-        bearing.to_degrees() + 90.0
+    
+        // Fórmula para calcular el bearing (rumbo)
+        let y = delta_lon.sin() * lat2.cos();
+        let x = lat1.cos() * lat2.sin() - lat1.sin() * lat2.cos() * delta_lon.cos();
+        let bearing = y.atan2(x).to_degrees();
+    
+        // Asegúrate de que el ángulo está en el rango [0, 360)
+        (bearing - 90.0 + 360.0) % 360.0
     }
 
     // Calculate current latitude and longitude according to distance traveled (using radians)
     fn update_position_with_direction(&mut self, distance_traveled_km: f64) {
-        let delta_lat = (self.destination.latitude - self.latitude).to_radians();
-        let delta_lon = (self.destination.longitude - self.longitude).to_radians();
-
-        let mean_latitude = ((self.latitude + self.destination.latitude) / 2.0).to_radians();
-
-        let distance_ratio = distance_traveled_km / self.total_distance;
-        let lat_increment = (delta_lat * distance_ratio).atan2(EARTH_RADIUS_KM);
-        let lon_increment = (delta_lon * distance_ratio * mean_latitude.cos()).atan2(EARTH_RADIUS_KM);
-
-        self.latitude += lat_increment.to_degrees();
-        self.longitude += lon_increment.to_degrees();
-
+        let progress_ratio = distance_traveled_km / self.total_distance;
+        self.latitude = self.origin.latitude
+            + progress_ratio * (self.destination.latitude - self.origin.latitude);
+        self.longitude = self.origin.longitude
+            + progress_ratio * (self.destination.longitude - self.origin.longitude);
+        self.angle = self.calculate_bearing() as f32;
     }
 
     /// Update the position of the flight and its fuel level based on the current time
