@@ -227,6 +227,7 @@ impl Client {
     
         // Iterate through each airport in the HashMap
         for (airport_code, airport) in airports {
+
             let query = format!(
                 "SELECT number, status, lat, lon, angle, departure_time, arrival_time, direction FROM sky.flights WHERE airport = '{airport_code}' AND direction = 'departure' AND arrival_time > {from} AND arrival_time < {to}"
             );

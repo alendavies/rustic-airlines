@@ -5,7 +5,7 @@ use driver::{self, CassandraClient, QueryResult};
 use native_protocol::messages::result::{result_, rows};
 use walkers::Position;
 
-use crate::types::{Airport, Flight, FlightInfo};
+use crate::types::{Airport, Flight, FlightInfo, FlightStatus};
 
 #[derive(Debug, Clone)]
 pub struct DBError;
@@ -641,7 +641,9 @@ impl Provider for Db {
                         return Err(DBError);
                     }
 
-                    flights.push(flight);
+                    if flight.status == FlightStatus::OnTime.as_str() || flight.status == FlightStatus::Delayed.as_str(){
+                        flights.push(flight);
+                    }
                 }
             }
             _ => {}

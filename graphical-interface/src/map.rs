@@ -66,8 +66,6 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 self.view_state.update_flights(&self.db, selected_airport);
             }
 
-            println!("update");
-
             // Update last update time
             self.last_update = ctx.input(|i| i.time);
         }

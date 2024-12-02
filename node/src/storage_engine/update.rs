@@ -366,7 +366,6 @@ impl StorageEngine {
             let primary_key_index = table
                 .get_column_index(primary_key)
                 .ok_or(StorageEngineError::ColumnNotFound)?;
-            println!("el indice de la primarty key es {:?}", primary_key_index);
             new_row[primary_key_index] = primary_key_values[i].clone();
         }
 
@@ -381,9 +380,6 @@ impl StorageEngine {
                 where_clause.get_value_clustering_column_condition(clustering_keys.clone())
             })
             .ok_or(StorageEngineError::MissingWhereClause)?;
-
-        println!("las clustering columns son {:?}", clustering_keys);
-        println!("las clustering key values son {:?}", clustering_key_values);
 
         for (i, value) in clustering_key_values.iter().enumerate() {
             if let Some(val) = value {
@@ -411,10 +407,6 @@ impl StorageEngine {
 
         let values: Vec<&str> = new_row.iter().map(|v| v.as_str()).collect();
 
-        println!(
-            "como el update no tuvo coincidencias voy a insertar {:?}",
-            values
-        );
         self.insert(
             keyspace,
             &table.get_name(),

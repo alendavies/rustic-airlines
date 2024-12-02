@@ -29,7 +29,7 @@ fn add_flight(sim_state: &mut SimState) -> Result<(), SimError> {
     };
 
     let flight = Flight::new_from_console(
-        &sim_state.airports(), &flight_number, &origin, &destination, &departure_time, &arrival_time, avg_speed
+        &sim_state.airports()?, &flight_number, &origin, &destination, &departure_time, &arrival_time, avg_speed
     ).map_err(|_| SimError::InvalidFlight("Flight details are incorrect.".to_string()))?;
 
     sim_state.add_flight(flight)?;
@@ -159,6 +159,21 @@ fn add_test_data(sim_state: &mut SimState) -> Result<(), SimError> {
         ("MDZ", "ARG", "Aeropuerto El Plumerillo", -32.883, -68.845),
         ("COR", "ARG", "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella", -31.321, -64.213),
         ("ROS", "ARG", "Aeropuerto Internacional Rosario", -32.948, -60.787),
+        ("BRC", "ARG", "Aeropuerto Internacional Teniente Luis Candelaria", -41.151, -71.158),
+        ("USH", "ARG", "Aeropuerto Internacional Malvinas Argentinas", -54.843, -68.295),
+        ("FTE", "ARG", "Aeropuerto Internacional Comandante Armando Tola", -50.280, -72.053),
+        ("REL", "ARG", "Aeropuerto Internacional Almirante Marcos A. Zar", -43.211, -65.270),
+        ("CRD", "ARG", "Aeropuerto Internacional General Enrique Mosconi", -45.785, -67.465),
+        ("NQN", "ARG", "Aeropuerto Presidente Perón", -38.949, -68.156),
+        ("SLA", "ARG", "Aeropuerto Internacional Martín Miguel de Güemes", -24.854, -65.486),
+        ("JUJ", "ARG", "Aeropuerto Internacional Gobernador Horacio Guzmán", -24.392, -65.097),
+        ("TUC", "ARG", "Aeropuerto Internacional Teniente Benjamín Matienzo", -26.842, -65.104),
+        ("CNQ", "ARG", "Aeropuerto Internacional Doctor Fernando Piragine Niveyro", -27.445, -58.762),
+        ("RES", "ARG", "Aeropuerto Internacional Resistencia", -27.450, -59.056),
+        ("PSS", "ARG", "Aeropuerto Internacional Libertador General José de San Martín", -27.385, -55.970),
+        ("RGL", "ARG", "Aeropuerto Internacional Piloto Civil Norberto Fernández", -51.609, -69.312),
+        ("CTC", "ARG", "Aeropuerto Coronel Felipe Varela", -28.448, -65.780),
+        ("RIA", "ARG", "Aeropuerto Internacional Termas de Río Hondo", -27.486, -64.935),
     ];
 
     // Add airports
@@ -168,26 +183,51 @@ fn add_test_data(sim_state: &mut SimState) -> Result<(), SimError> {
         sim_state.add_airport(airport)?;
     }
 
-    // Add flights (for today)
+    // Add flights
     let today = Utc::now().naive_utc();
+    let yesterday = today - chrono::Duration::days(1);
+    let tomorrow = today + chrono::Duration::days(1);
+
     let flight_data = vec![
-        ("AR1234", "AEP", "MDZ", today, today + chrono::Duration::hours(2), 550),
-        ("AR5678", "EZE", "ROS", today, today + chrono::Duration::hours(1), 600),
-        ("AR9101", "COR", "EZE", today, today + chrono::Duration::hours(3), 500),
-        ("AR1122", "ROS", "AEP", today, today + chrono::Duration::hours(1), 650),
+        ("AR1234", "AEP", "MDZ", yesterday, yesterday + chrono::Duration::hours(2), 550),
+        ("AR5678", "MDZ", "AEP", today, today + chrono::Duration::hours(2), 550),
+        ("AR9101", "EZE", "BRC", today, today + chrono::Duration::hours(3), 600),
+        ("AR1122", "BRC", "EZE", tomorrow, tomorrow + chrono::Duration::hours(3), 600),
+        ("AR2233", "COR", "USH", yesterday, yesterday + chrono::Duration::hours(4), 700),
+        ("AR3344", "USH", "COR", today, today + chrono::Duration::hours(4), 700),
+        ("AR4455", "FTE", "REL", today, today + chrono::Duration::hours(2), 400),
+        ("AR5566", "REL", "FTE", tomorrow, tomorrow + chrono::Duration::hours(2), 400),
+        ("AR6677", "CRD", "NQN", yesterday, yesterday + chrono::Duration::hours(2), 500),
+        ("AR7788", "NQN", "CRD", today, today + chrono::Duration::hours(2), 500),
+        ("AR8899", "SLA", "JUJ", today, today + chrono::Duration::minutes(45), 300),
+        ("AR9900", "JUJ", "SLA", tomorrow, tomorrow + chrono::Duration::minutes(45), 300),
+        ("AR1011", "TUC", "CNQ", yesterday, yesterday + chrono::Duration::hours(3), 650),
+        ("AR1212", "CNQ", "TUC", today, today + chrono::Duration::hours(3), 650),
+        ("AR1313", "RES", "PSS", today, today + chrono::Duration::hours(2), 450),
+        ("AR1414", "PSS", "RES", tomorrow, tomorrow + chrono::Duration::hours(2), 450),
+        ("AR1515", "RGL", "CTC", yesterday, yesterday + chrono::Duration::hours(4), 700),
+        ("AR1616", "CTC", "RGL", today, today + chrono::Duration::hours(4), 700),
+        ("AR1717", "RIA", "AEP", today, today + chrono::Duration::hours(3), 500),
+        ("AR1818", "AEP", "RIA", tomorrow, tomorrow + chrono::Duration::hours(2), 500),
+        ("AR1920", "EZE", "ROS", today, today + chrono::Duration::hours(2), 550),
+        ("AR2021", "ROS", "EZE", tomorrow, tomorrow + chrono::Duration::hours(2), 550),
+        ("AR2122", "NQN", "AEP", yesterday, yesterday + chrono::Duration::hours(3), 450),
+        ("AR2223", "AEP", "NQN", today, today + chrono::Duration::hours(3), 450),
+        ("AR2324", "COR", "MDZ", tomorrow, tomorrow + chrono::Duration::hours(2), 500),
+        ("AR2425", "MDZ", "COR", today, today + chrono::Duration::hours(2), 500),
     ];
 
-    // Add flights
     for (flight_number, origin, destination, departure_time, arrival_time, avg_speed) in flight_data {
         let departure_str = departure_time.format("%d-%m-%Y %H:%M:%S").to_string();
         let arrival_str = arrival_time.format("%d-%m-%Y %H:%M:%S").to_string();
         let flight = Flight::new_from_console(
-            sim_state.airports(), flight_number, origin, destination, &departure_str, &arrival_str, avg_speed
+            &sim_state.airports()?, flight_number, origin, destination, &departure_str, &arrival_str, avg_speed
         ).map_err(|_| SimError::Other("Error".to_string()))?;
-        
+
         sim_state.add_flight(flight)?;
     }
 
     println!("Test data added successfully!");
     Ok(())
 }
+

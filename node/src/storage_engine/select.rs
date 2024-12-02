@@ -188,8 +188,6 @@ impl StorageEngine {
                 .trim_end()
                 .split_once(";")
                 .ok_or(StorageEngineError::IoError)?;
-
-            println!("analizando la linea {:?}", line);
             if self.line_matches_where_clause(&line, &table, &select_query)? {
                 results.push(buffer.trim_end().to_string());
             }
@@ -198,10 +196,6 @@ impl StorageEngine {
         // Aplicar `LIMIT` si está presente
         if let Some(limit) = select_query.limit {
             if limit < results.len() - 2 {
-                println!(
-                    "los results son {:?} y el valor LIMIT es {:?}",
-                    results, limit
-                );
                 results = results[..limit + 2].to_vec();
             }
         }
@@ -271,7 +265,6 @@ impl StorageEngine {
         let columns = table.get_columns();
         // Check the WHERE clause condition in the SELECT query
         if let Some(where_clause) = &select_query.where_clause {
-            //println!("el column value map es {:?}", column_value_map);
             Ok(where_clause
                 .condition
                 .execute(&column_value_map, columns)
