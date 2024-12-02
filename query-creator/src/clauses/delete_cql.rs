@@ -4,14 +4,24 @@ use crate::errors::CQLError;
 use crate::utils::{is_delete, is_from, is_where};
 use crate::QueryCreator;
 
-/// Struct that represents the `DELETE` SQL clause.
-/// The `DELETE` clause is used to delete records from a table.
+/// Represents a `DELETE` SQL clause in CQL.
 ///
 /// # Fields
+/// - `table_name: String`
+///   - The name of the table from which records will be deleted.
+/// - `keyspace_used_name: String`
+///   - The keyspace containing the table, if specified.
+/// - `columns: Option<Vec<String>>`
+///   - An optional list of column names to delete. If `None`, all columns will be considered.
+/// - `where_clause: Option<Where>`
+///   - An optional `WHERE` clause specifying the condition for deletion.
+/// - `if_clause: Option<If>`
+///   - An optional `IF` clause specifying a conditional deletion.
+/// - `if_exist: bool`
+///   - Indicates if the `IF EXISTS` clause is present.
 ///
-/// - `table_name`: a `String` that holds the name of the table from which the records will be deleted.
-/// - `where_clause`: an `Option<Where>` that holds the condition that the records must meet to be deleted. If it is `None`, all records will be deleted.
-///
+/// # Purpose
+/// This struct models the `DELETE` clause in CQL, providing methods for parsing, serialization, and deserialization.
 #[derive(PartialEq, Debug, Clone)]
 pub struct Delete {
     pub table_name: String,
@@ -23,18 +33,22 @@ pub struct Delete {
 }
 
 impl Delete {
-    /// Creates and returns a new `Delete` instance from tokens.
+    /// Creates a new `Delete` instance from tokens.
     ///
-    /// # Arguments
+    /// # Parameters
+    /// - `tokens: Vec<String>`:
+    ///   - A vector of strings representing the tokens of a `DELETE` clause.
     ///
-    /// - `tokens`: a `Vec<String>` that holds the tokens that form the `DELETE` clause.
+    /// # Returns
+    /// - `Ok(Delete)`:
+    ///   - If the tokens are valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the tokens are invalid or improperly formatted.
     ///
-    /// The tokens must be in the following order: `DELETE`, `column(s)_optional`, `FROM`, `table_name`, `WHERE`, `condition` `IF` `condition`.
-    ///
-    /// If the `WHERE` clause is not present, the `where_clause` field will be `None`.
-    ///
-    /// If the `IF` clause is not present, the `if_clause` field will be `None`.
-    ///
+    /// # Notes
+    /// - The tokens must follow the order:
+    ///   `DELETE`, `[column(s)_optional]`, `FROM`, `table_name`, `WHERE`, `condition`, `IF`, `condition`.
+    /// - The `WHERE` and `IF` clauses are optional.
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 3 {
             return Err(CQLError::InvalidSyntax);
@@ -121,7 +135,14 @@ impl Delete {
         })
     }
 
-    /// Serializa la instancia de `Delete` en una cadena de texto.
+    /// Serializes the `Delete` instance into a CQL query string.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - A string representation of the `DELETE` clause in the following format:
+    ///     ```sql
+    ///     DELETE [columns] FROM [keyspace.]table_name [WHERE condition] [IF condition];
+    ///     ```
     pub fn serialize(&self) -> String {
         let mut serialized = String::from("DELETE");
 
@@ -149,7 +170,17 @@ impl Delete {
         serialized
     }
 
-    /// Deserializa una cadena de texto en una instancia de `Delete`.
+    /// Deserializes a CQL query string into a `Delete` instance.
+    ///
+    /// # Parameters
+    /// - `serialized: &str`:
+    ///   - A string representing the `DELETE` clause.
+    ///
+    /// # Returns
+    /// - `Ok(Delete)`:
+    ///   - If the query is valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the query is invalid or improperly formatted.
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
         let tokens: Vec<String> = QueryCreator::tokens_from_query(serialized);
         Self::new_from_tokens(tokens)

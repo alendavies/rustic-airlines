@@ -8,7 +8,7 @@ use super::QueryExecution;
 impl QueryExecution {
     /// Executee the selection of what keyspace use. This function is public only for internal use
     /// within the library (defined as `pub(crate)`).
-    pub(crate) fn execute_use(
+    pub(crate) fn _execute_use(
         &self,
         use_keyspace: Use,
         internode: bool,
@@ -24,20 +24,24 @@ impl QueryExecution {
         let keyspace_name = use_keyspace.get_name();
 
         // Set the current keyspace in the node
-        node.set_actual_keyspace(keyspace_name.clone(), client_id)?;
+        node._set_actual_keyspace(keyspace_name.clone(), client_id)?;
 
         let keyspaces = node.schema.keyspaces.clone();
 
-        node.get_open_handle_query().set_keyspace_of_query(
-            open_query_id,
-            KeyspaceSchema::new(keyspaces.get(&keyspace_name).unwrap().inner.clone(), vec![]),
-        );
+        if let Some(keyspace) = keyspaces.get(&keyspace_name) {
+            node.get_open_handle_query().set_keyspace_of_query(
+                open_query_id,
+                KeyspaceSchema::new(keyspace.inner.clone(), vec![]),
+            );
+        } else {
+            return Err(NodeError::KeyspaceError); // O usa otro error adecuado para este contexto
+        }
 
         // If this is not an internode operation, communicate the change to other nodes
         if !internode {
             // Serialize the `UseKeyspace` into a simple message
             let serialized_use_keyspace = use_keyspace.serialize();
-            self.send_to_other_nodes(
+            self._send_to_other_nodes(
                 node,
                 &serialized_use_keyspace,
                 open_query_id,

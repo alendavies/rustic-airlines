@@ -1,13 +1,19 @@
 use crate::{errors::CQLError, utils::is_into};
 
-/// Struct that represents the `INTO` SQL clause.
-/// The `INTO` clause is used to specify the table name and columns in the `INSERT` clause.
+/// Represents the `INTO` clause in CQL `INSERT` statements.
+///
+/// The `INTO` clause specifies the target table and the columns into which data will be inserted.
 ///
 /// # Fields
+/// - `table_name: String`
+///   - The name of the table where data will be inserted.
+/// - `keyspace_used_name: String`
+///   - The keyspace containing the table, if specified.
+/// - `columns: Vec<String>`
+///   - A vector of column names into which data will be inserted.
 ///
-/// * `table_name` - The name of the table to insert data into.
-/// * `columns` - The columns of the table to insert data into.
-///
+/// # Purpose
+/// This struct is used to parse and represent the `INTO` clause in `INSERT` queries.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Into {
     pub table_name: String,
@@ -16,15 +22,22 @@ pub struct Into {
 }
 
 impl Into {
-    /// Creates and returns a new `Into` instance from a vector of `&str` tokens.
+    /// Creates a new `Into` instance from a vector of tokens.
     ///
-    /// # Arguments
+    /// # Parameters
+    /// - `tokens: Vec<&str>`:
+    ///   - A vector of string tokens representing the `INTO` clause.
     ///
-    /// * `tokens` - A vector of `&str` tokens that represent the `INTO` clause.
+    /// # Returns
+    /// - `Ok(Into)`:
+    ///   - If the tokens are valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the tokens are invalid or improperly formatted.
     ///
-    /// The tokens should be in the following order: `INTO`, `table_name`, `columns`.
-    /// The `columns` should be comma-separated and between parentheses.
-    ///
+    /// # Notes
+    /// - The expected token order is:
+    ///   `"INTO", "table_name", "(columns)"`.
+    /// - The `columns` should be enclosed in parentheses and separated by commas.
     pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, CQLError> {
         if tokens.len() < 3 {
             return Err(CQLError::InvalidSyntax);

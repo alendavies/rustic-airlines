@@ -1,4 +1,4 @@
-use crate::db::Airport;
+use crate::types::Airport;
 
 use super::{flights_table::FlightType, View, WidgetFlightsTable};
 

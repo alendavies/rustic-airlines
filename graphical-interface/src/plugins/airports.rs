@@ -1,9 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
-use egui::{include_image, Align2, Color32, FontId, Image, Rect, Response, Stroke, Vec2};
+use egui::{include_image, Image, Rect, Response, Vec2};
 use walkers::{extras::Style, Plugin, Projector};
 
-use crate::{db::Airport, state::SelectionState};
+use crate::{state::SelectionState, types::Airport};
 
 pub struct Airports<'a> {
     airports: &'a Vec<Airport>,
@@ -20,7 +20,7 @@ impl<'a> Airports<'a> {
 }
 
 impl Plugin for Airports<'_> {
-    fn run(self: Box<Self>, ui: &mut egui::Ui, response: &Response, projector: &Projector) {
+    fn run(self: Box<Self>, ui: &mut egui::Ui, _response: &Response, projector: &Projector) {
         for airport in self.airports {
             let mut style = Style::default();
             style.symbol_font.size = 24.;
@@ -34,7 +34,7 @@ impl Airport {
         &self,
         ui: &mut egui::Ui,
         projector: &Projector,
-        style: Style,
+        _style: Style,
         selection_state: &mut SelectionState,
     ) {
         let screen_position = projector.project(self.position);

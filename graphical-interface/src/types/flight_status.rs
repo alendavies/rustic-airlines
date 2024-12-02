@@ -1,12 +1,10 @@
-use super::sim_error::SimError;
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum FlightStatus {
     Scheduled,
     OnTime,
     Delayed,
     Finished,
-    Canceled,
+    Canceled
 }
 
 impl FlightStatus {
@@ -16,18 +14,18 @@ impl FlightStatus {
             FlightStatus::OnTime => "on time",
             FlightStatus::Delayed => "delayed",
             FlightStatus::Finished => "finished",
-            FlightStatus::Canceled => "canceled",
+            FlightStatus::Canceled => "canceled"
         }
     }
 
-    pub fn from_str(status: &str) -> Result<FlightStatus, SimError> {
+    pub fn from_str(status: &str) -> Result<FlightStatus, Box<dyn std::error::Error>> {
         match status.to_lowercase().as_str() {
             "scheduled" => Ok(FlightStatus::Scheduled),
             "on time" => Ok(FlightStatus::OnTime),
             "delayed" => Ok(FlightStatus::Delayed),
             "finished" => Ok(FlightStatus::Finished),
             "canceled" => Ok(FlightStatus::Canceled),
-            _ => Err(SimError::Other("Invalid flight status".to_string())),
+            _ => Err(format!("Invalid flight status").into()),
         }
     }
 }

@@ -1,6 +1,16 @@
 use driver::CassandraClient;
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{net::Ipv4Addr, str::FromStr, thread, time::Duration};
 
+/// Example Rust program to interact with a Cassandra server.
+/// This program demonstrates:
+/// - Creating a keyspace in Cassandra.
+/// - Creating a table within that keyspace.
+/// - Inserting multiple rows of data into the table.
+/// - Querying the table to retrieve data.
+///
+/// The code uses the `CassandraClient` to establish a connection and execute queries.
+///
+/// Note: Ensure the server IP and port match your Cassandra setup before running this code.
 fn main() {
     // Reemplaza con la dirección IP y puerto correctos del servidor
     let server_ip = "127.0.0.3";
@@ -10,58 +20,67 @@ fn main() {
     let mut client = CassandraClient::connect(ip).unwrap();
     client.startup().unwrap();
     let queries = vec![
-        // Crear un keyspace
-        "CREATE KEYSPACE IF NOT EXISTS my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2};".to_string(),
-    
-        // Crear una tabla
-        "CREATE TABLE IF NOT EXISTS my_keyspace.my_table (
-            id UUID,
-            partition_key TEXT,
-            clustering_key INT,
-            data TEXT,
-            PRIMARY KEY (partition_key, clustering_key)
-        );".to_string(),
-    
-        // Insertar 30 filas con la misma partition_key
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 0, 'data_0');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 1, 'data_1');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 2, 'data_2');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 3, 'data_3');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 4, 'data_4');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 5, 'data_5');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 6, 'data_6');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 7, 'data_7');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 8, 'data_8');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 9, 'data_9');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 10, 'data_10');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 11, 'data_11');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 12, 'data_12');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 13, 'data_13');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 14, 'data_14');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 15, 'data_15');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 16, 'data_16');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 17, 'data_17');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 18, 'data_18');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 19, 'data_19');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 20, 'data_20');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 21, 'data_21');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 22, 'data_22');".to_string(),
-        "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 23, 'data_23');".to_string(),
-         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 24, 'data_24');".to_string(),
-         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 25, 'data_25');".to_string(),
-         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 26, 'data_26');".to_string(),
-         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 27, 'data_27');".to_string(),
-         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 28, 'data_28');".to_string(),
-         "INSERT INTO my_keyspace.my_table (id, partition_key, clustering_key, data) VALUES (uuid(), 'my_partition', 29, 'data_29');".to_string(),
-    
-        // Realizar un SELECT para consultar los datos
-        "SELECT * FROM my_keyspace.my_table WHERE partition_key = 'my_partition';".to_string(),
-    ];
+    // Crear un keyspace
+    "CREATE KEYSPACE people_data WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};".to_string(),
+
+    // Crear una tabla
+    "CREATE TABLE  people_data.persons (
+        partition_key TEXT,
+        clustering_key TEXT,
+        name TEXT,
+        age INT,
+        email TEXT,
+        phone TEXT,
+        PRIMARY KEY (partition_key, clustering_key, name)
+    );".to_string(),
+
+    // Insertar datos para SEXO = 'Masculino' con clustering_key 'Argentina'
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Juan Pérez', 30, 'juan.perez@example.com', '+5491123456789');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Carlos Gómez', 35, 'carlos.gomez@example.com', '+5491145678901');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Luis Martínez', 40, 'luis.martinez@example.com', '+5491167890123');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Pedro Díaz', 29, 'pedro.diaz@example.com', '+5491189012345');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Miguel Castro', 34, 'miguel.castro@example.com', '+5491111234567');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Luis Romero', 33, 'luis.romero@example.com', '+5491122345678');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Federico Sánchez', 27, 'federico.sanchez@example.com', '+5491156789012');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Ricardo Torres', 26, 'ricardo.torres@example.com', '+5491178901234');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Gustavo Díaz', 31, 'gustavo.diaz@example.com', '+5491190123456');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Marcelo Gutiérrez', 36, 'marcelo.gutierrez@example.com', '+5491987654321');".to_string(),
+
+    // Insertar datos para SEXO = 'Masculino' con clustering_key 'Brasil'
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'João Silva', 31, 'joao.silva@example.com', '+5521987654321');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'Carlos Santos', 37, 'carlos.santos@example.com', '+5521912345678');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'Pedro Almeida', 38, 'pedro.almeida@example.com', '+5521934567890');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'Miguel Rocha', 39, 'miguel.rocha@example.com', '+5521956789012');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'Luis Ribeiro', 33, 'luis.ribeiro@example.com', '+5521978901234');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'Marcelo Carvalho', 40, 'marcelo.carvalho@example.com', '+5521989012345');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'Felipe Lima', 29, 'felipe.lima@example.com', '+5521923456789');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'Ricardo Souza', 35, 'ricardo.souza@example.com', '+5521945678901');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'André Nunes', 34, 'andre.nunes@example.com', '+5521967890123');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'Fernando Santos', 30, 'fernando.santos@example.com', '+5521998765432');".to_string(),
+
+    // Insertar datos para SEXO = 'Masculino' con clustering_key 'Chile'
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Chile', 'Juan García', 28, 'juan.garcia@example.com', '+56212345678');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Chile', 'Carlos Vega', 32, 'carlos.vega@example.com', '+56234567890');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Chile', 'Luis Morales', 34, 'luis.morales@example.com', '+56256789012');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Chile', 'Miguel Herrera', 27, 'miguel.herrera@example.com', '+56278901234');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Chile', 'Pedro Araya', 33, 'pedro.araya@example.com', '+56289012345');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Chile', 'Federico Navarro', 29, 'federico.navarro@example.com', '+56267890123');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Chile', 'Ricardo Ortiz', 31, 'ricardo.ortiz@example.com', '+56223456789');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Chile', 'Gustavo Fuentes', 36, 'gustavo.fuentes@example.com', '+56212345678');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Chile', 'Fernando Navarro', 30, 'fernando.navarro@example.com', '+56234567890');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Chile', 'Marcelo Gutiérrez', 35, 'marcelo.gutierrez@example.com', '+56245678901');".to_string(),
+
+    // Consulta los datos
+    "SELECT * FROM people_data.persons WHERE partition_key = 'Masculino';".to_string(),
+];
 
     // Ejecutar cada consulta en un loop
     let mut contador = 0;
     let len = queries.len();
-    for query in queries {
+    for (i, query) in queries.iter().enumerate() {
+        if i == 2 {
+            thread::sleep(Duration::from_secs(2));
+        }
         match client.execute(&query, "all") {
             Ok(query_result) => {
                 match query_result {

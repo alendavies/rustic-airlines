@@ -6,6 +6,19 @@ use crate::QueryCreator;
 use std::cmp::PartialEq;
 use std::str::FromStr;
 
+/// Represents an `ALTER TABLE` operation in CQL.
+///
+/// # Fields
+/// - `table_name: String`
+///   - The name of the table being altered.
+/// - `keyspace_used_name: String`
+///   - The keyspace containing the table, if specified.
+/// - `operations: Vec<AlterTableOperation>`
+///   - A list of operations to be performed on the table (e.g., adding or dropping columns).
+///
+/// # Purpose
+/// This struct models the `ALTER TABLE` operation in CQL, providing methods for parsing,
+/// serialization, and deserialization.
 #[derive(Debug, Clone)]
 pub struct AlterTable {
     table_name: String,
@@ -14,6 +27,19 @@ pub struct AlterTable {
 }
 
 impl AlterTable {
+    /// Creates a new `AlterTable` instance.
+    ///
+    /// # Parameters
+    /// - `table_name: String`:
+    ///   - The name of the table being altered.
+    /// - `keyspace_used_name: String`:
+    ///   - The keyspace containing the table, if applicable.
+    /// - `operations: Vec<AlterTableOperation>`:
+    ///   - The operations to be performed on the table.
+    ///
+    /// # Returns
+    /// - `AlterTable`:
+    ///   - A new instance of the `AlterTable` struct.
     pub fn new(
         table_name: String,
         keyspace_used_name: String,
@@ -26,13 +52,37 @@ impl AlterTable {
         }
     }
 
-    // Método para deserializar una cadena de texto en una instancia de `AlterTable` utilizando `new_from_tokens`
+    /// Deserializes a CQL query string into an `AlterTable` instance.
+    ///
+    /// # Parameters
+    /// - `serialized: &str`:
+    ///   - A string representing an `ALTER TABLE` query.
+    ///
+    /// # Returns
+    /// - `Ok(AlterTable)`:
+    ///   - If the query is valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the query is invalid or improperly formatted.
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
         let tokens: Vec<String> = QueryCreator::tokens_from_query(serialized);
         Self::new_from_tokens(tokens)
     }
 
-    // Constructor alternativo que recibe tokens y construye una instancia `AlterTable`
+    /// Constructs an `AlterTable` instance from a vector of query tokens.
+    ///
+    /// # Parameters
+    /// - `query: Vec<String>`:
+    ///   - A vector of strings representing the tokens of an `ALTER TABLE` query.
+    ///
+    /// # Returns
+    /// - `Ok(AlterTable)`:
+    ///   - If the tokens are valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the tokens are invalid or improperly formatted.
+    ///
+    /// # Validation
+    /// - The query must begin with `ALTER TABLE`.
+    /// - Operations supported include `ADD`, `DROP`, `MODIFY`, and `RENAME`.
     pub fn new_from_tokens(query: Vec<String>) -> Result<AlterTable, CQLError> {
         if query.len() < 4
             || query[0].to_uppercase() != "ALTER"
@@ -134,7 +184,11 @@ impl AlterTable {
         Ok(AlterTable::new(table_name, keyspace_used_name, ops))
     }
 
-    // Método para serializar una instancia de `AlterTable` a una cadena de texto
+    /// Serializes an `AlterTable` instance into a CQL query string.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - A string representing the `ALTER TABLE` query.
     pub fn serialize(&self) -> String {
         let operations_str: Vec<String> = self
             .operations

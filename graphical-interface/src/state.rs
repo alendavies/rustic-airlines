@@ -1,7 +1,4 @@
-use crate::{
-    db::{Airport, Flight, MockProvider, Provider},
-    widgets::WidgetAirport,
-};
+use crate::{db::Provider, types::{Airport, Flight}};
 
 /// Tracks the state for the selection of flights and airports.
 pub struct SelectionState {
@@ -53,16 +50,19 @@ pub struct ViewState {
 }
 
 impl ViewState {
-    pub fn new() -> Self {
-        Self {
-            // TODO: pass a parameter?
-            flights: MockProvider::get_flights().unwrap(),
-            airports: MockProvider::get_airports().unwrap(),
+    pub fn new(flights: Vec<Flight>, airports: Vec<Airport>) -> Self {
+        Self { flights, airports }
+    }
+
+    pub fn update_airports<P: Provider>(&mut self, _db: &P) {
+        if let Ok(new_airports) = P::get_airports() {
+            self.airports = new_airports;
         }
     }
 
-    // pub fn update_flights(&mut self) {
-    //     // TODO: should spawn a thread to not block main thread?
-    //     self.flights = MockProvider::get_flights().unwrap();
-    // }
+    pub fn update_flights<P: Provider>(&mut self, _db: &P, airport: &Airport) {
+        if let Ok(new_flights) = P::get_flights_by_airport(&airport.iata) {
+            self.flights = new_flights;
+        }
+    }
 }

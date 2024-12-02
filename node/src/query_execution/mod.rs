@@ -40,15 +40,54 @@ pub struct QueryExecution {
 }
 
 impl QueryExecution {
-    /// Constructs a new `QueryExecution` instance, initializing the node and
-    /// connection attributes required for handling and distributing queries.
+    /// Creates a new instance of `QueryExecution`.
     ///
-    /// # Arguments
-    /// * `node_that_execute` - A thread-safe reference to the `Node` responsible for executing the query.
-    /// * `connections` - A thread-safe map of active connections to other nodes.
+    /// # Purpose
+    /// This function initializes a `QueryExecution` object that manages query execution on a specific node
+    /// in a distributed database system. It sets up the required components such as the `StorageEngine`
+    /// and establishes the execution context.
+    ///
+    /// # Parameters
+    /// - `node_that_execute: Arc<Mutex<Node>>`
+    ///   - A shared, thread-safe reference to the node responsible for executing queries.
+    ///   - The node is locked during initialization to retrieve its IP address and other details.
+    /// - `connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>`
+    ///   - A shared, thread-safe map of active connections to other nodes in the cluster.
+    ///   - The key is a string representing the node address, and the value is a thread-safe `TcpStream`
+    ///     for communication with the corresponding node.
+    /// - `storage_path: PathBuf`
+    ///   - A file system path to the storage directory used by the `StorageEngine`.
+    ///   - This defines where local data for the node is stored.
     ///
     /// # Returns
-    /// * `QueryExecution` - The new instance configured for query execution.
+    /// - `Result<QueryExecution, NodeError>`
+    ///   - On success:
+    ///     - Returns an `Ok(QueryExecution)` instance configured with the provided parameters.
+    ///   - On failure:
+    ///     - Returns an `Err(NodeError)` if there is an issue accessing the node or initializing the storage engine.
+    ///
+    /// # Behavior
+    /// 1. **Node Access**:
+    ///    - Locks the `node_that_execute` mutex to safely access the node's details.
+    ///    - Retrieves the IP address of the node using `get_ip_string()`.
+    /// 2. **Storage Engine Initialization**:
+    ///    - Creates a new instance of `StorageEngine` using the provided `storage_path` and the node's IP address.
+    /// 3. **QueryExecution Initialization**:
+    ///    - Sets default values for execution-related flags:
+    ///      - `execution_finished_itself`: `false` (indicates whether the execution is complete).
+    ///      - `execution_replicate_itself`: `false` (indicates whether replication is complete).
+    ///      - `how_many_nodes_failed`: `0` (initializes the failure counter for nodes).
+    ///    - Assigns the `node_that_execute`, `connections`, and `storage_engine` to the `QueryExecution` object.
+    ///
+    /// # Errors
+    /// - Returns `NodeError` in the following cases:
+    ///   - Failure to lock the `node_that_execute` mutex.
+    ///   - Failure to initialize the `StorageEngine` (e.g., invalid `storage_path` or node IP issues).
+    ///
+    /// # Notes
+    /// - This function is designed to be thread-safe, utilizing `Arc` and `Mutex` for shared resources.
+    /// - Ensure that the `storage_path` is valid and accessible to avoid initialization errors.
+
     pub fn new(
         node_that_execute: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
@@ -67,29 +106,75 @@ impl QueryExecution {
         })
     }
 
-    /// Executes a database query by determining the query type and applying the necessary operations
-    /// within a distributed setting. Handles various query types such as `SELECT`, `INSERT`,
-    /// `DELETE`, and others, ensuring node-specific execution as well as inter-node
-    /// communication and replication when required.
+    /// Executes a query against the database, with support for various query types
+    /// (e.g., SELECT, INSERT, UPDATE, DELETE, etc.) and internode communication.
     ///
-    /// # Arguments
-    /// * `query` - The `Query` object specifying the type and details of the query.
-    /// * `internode` - Boolean indicating if the query originates from another node.
-    /// * `replication` - Boolean indicating whether replication is required.
-    /// * `open_query_id` - ID used to track open queries for inter-node communication.
+    /// # Parameters
+    /// - `query: Query`
+    ///   - The query to be executed. This can be any of the following:
+    ///     - `Query::Select` for SELECT queries.
+    ///     - `Query::Insert` for INSERT queries.
+    ///     - `Query::Update` for UPDATE queries.
+    ///     - `Query::Delete` for DELETE queries.
+    ///     - `Query::CreateTable`, `Query::DropTable`, `Query::AlterTable` for table management.
+    ///     - `Query::CreateKeyspace`, `Query::DropKeyspace`, `Query::AlterKeyspace` for keyspace management.
+    ///     - `Query::Use` for switching keyspaces.
+    /// - `internode: bool`
+    ///   - If `true`, enables internode communication for the query, involving other nodes in the cluster.
+    /// - `replication: bool`
+    ///   - Specifies whether the query should trigger data replication across nodes.
+    /// - `open_query_id: i32`
+    ///   - A unique identifier for the query being executed. This is used to track the query across nodes.
+    /// - `client_id: i32`
+    ///   - The identifier of the client initiating the query. Useful for audit trails or debugging.
+    /// - `timestap: Option<i64>`
+    ///   - Optional timestamp for the query. If `None`, certain queries (e.g., INSERT, UPDATE, DELETE) will fail with a `NodeError::InternodeProtocolError`.
     ///
     /// # Returns
-    /// * `Result<Option<(i32, String)>, NodeError>` - Returns:
-    ///   - `Ok(Some((how_many_internode_query_has_finish, response)))`: On successful execution, with `how_many_internode_query_has_finish` representing the number of internode queries that have completed, and `response` containing any resulting message.
-    ///   - `Ok(None)`: If no additional response is required.
-    ///   - `Err(NodeError)`: If an error occurs during execution.
+    /// - `Result<Option<((i32, i32), InternodeResponse)>, NodeError>`
+    ///   - On success:
+    ///     - Returns `Ok(Some(((execution_status, node_failures), response)))` where:
+    ///       - `execution_status`: Indicates how many internode queries finished successfully:
+    ///         - `2` for both local and replicated execution completed.
+    ///         - `1` for either local or replicated execution completed.
+    ///         - `0` for neither completed.
+    ///       - `node_failures`: Number of nodes that failed during execution.
+    ///       - `response`: An `InternodeResponse` containing the query results or status.
+    ///     - For internode communication, it may return a simpler response with metadata.
+    ///   - On failure:
+    ///     - Returns `Err(NodeError)` containing details of the error.
     ///
-    /// # Errors
-    /// This function may return `NodeError` in cases such as:
-    /// - Connection issues between nodes.
-    /// - Invalid query structure or unsupported query types.
-
-    // Método para ejecutar la query según su tipo
+    /// # Query Execution Process
+    /// - **SELECT Queries**:
+    ///   - Executes `execute_select` to fetch rows from the database.
+    ///   - Processes the results into columns, select columns, and row values.
+    ///   - Constructs an `InternodeResponseContent` object with the query results.
+    /// - **INSERT Queries**:
+    ///   - Requires a valid timestamp (`timestap` parameter).
+    ///   - Validates the target table within the context of the query's keyspace.
+    ///   - Calls `execute_insert` to perform the operation.
+    /// - **UPDATE Queries**:
+    ///   - Similar to INSERT but updates rows in the database.
+    /// - **DELETE Queries**:
+    ///   - Removes rows based on the conditions specified in the query.
+    /// - **Table and Keyspace Management**:
+    ///   - Handles `CREATE`, `DROP`, and `ALTER` operations for tables and keyspaces.
+    ///   - Operations are forwarded to specific handlers like `execute_create_table`.
+    /// - **USE Queries**:
+    ///   - Switches the keyspace context for subsequent queries.
+    ///
+    /// # Internode Communication
+    /// - If `internode` is enabled, the function constructs an `InternodeResponse` object:
+    ///   - `Ok`: Indicates the query succeeded.
+    ///   - `Error`: Captures failures, logs the error, and updates the response status.
+    /// - Non-internode queries return execution status and failure counts directly.
+    ///
+    /// # Error Handling
+    /// - Returns a `NodeError` in case of failures, which could include:
+    ///   - `InternodeProtocolError`: Missing timestamp for queries requiring one.
+    ///   - `CQLError`: Specific errors during query execution, such as missing keyspace or table.
+    ///   - `Other`: Errors encountered during query execution.
+    ///
     pub fn execute(
         &mut self,
         query: Query,
@@ -233,8 +318,9 @@ impl QueryExecution {
                 }
                 Query::DropKeyspace(drop_keyspace) => self.execute_drop_keyspace(drop_keyspace),
                 Query::AlterKeyspace(alter_keyspace) => self.execute_alter_keyspace(alter_keyspace),
-                Query::Use(use_cql) => {
-                    self.execute_use(use_cql, internode, open_query_id, client_id)
+                Query::Use(_) => {
+                    return Err(NodeError::OtherError);
+                    //self.execute_use(use_cql, internode, open_query_id, client_id)
                 }
             }
         };
@@ -284,7 +370,7 @@ impl QueryExecution {
     }
 
     // Función auxiliar para enviar un mensaje a todos los nodos en el partitioner
-    fn send_to_other_nodes(
+    fn _send_to_other_nodes(
         &self,
         local_node: MutexGuard<'_, Node>,
         serialized_message: &str,

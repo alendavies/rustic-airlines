@@ -3,11 +3,18 @@ use std::collections::HashMap;
 
 use super::types::column::Column;
 
-/// Enum for the conditions used in the `WHERE` clause.
+/// Represents a condition in a `WHERE` clause of a CQL query.
 ///
-/// - `Simple`: Simple condition with a field, operator and value.
-/// - `Complex`: Complex condition with a left condition, logical operator and right condition.
+/// # Variants
+/// - `Simple`
+///   - Represents a basic condition with a field, operator, and value.
+/// - `Complex`
+///   - Represents a composite condition with logical operators (e.g., `AND`, `OR`, `NOT`)
+///     and nested conditions.
 ///
+/// # Purpose
+/// This enum provides a flexible representation for query conditions, supporting
+/// both simple field-value comparisons and complex logical expressions.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Condition {
     Simple {
@@ -23,30 +30,19 @@ pub enum Condition {
 }
 
 impl Condition {
-    /// Creates a new `Condition` with a simple condition from tokens.
+    /// Creates a new `Simple` condition from tokens.
     ///
-    /// # Arguments
+    /// # Parameters
+    /// - `tokens: &[&str]`:
+    ///   - A slice of tokens representing the condition.
+    /// - `pos: &mut usize`:
+    ///   - The current position in the tokens, which is updated as tokens are consumed.
     ///
-    /// * `tokens` - A slice of `&str` with the tokens of the condition.
-    /// * `pos` - A mutable reference to `usize` with the position of the tokens.
-    ///
-    /// The tokens must be in the following order: `field`, `operator`, `value`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let tokens = vec!["age", ">", "18"];
-    /// let pos = 0;
-    /// let condition = Condition::new_simple_from_tokens(&tokens, &mut pos).unwrap();
-    /// assert_eq!(condition,
-    ///     Condition::Simple {
-    ///         field: String::from("age"),
-    ///         operator: Operator::Greater,
-    ///         value: String::from("18")
-    ///     })
-    ///
-    /// ```
-    ///
+    /// # Returns
+    /// - `Ok(Condition)`:
+    ///   - If the tokens represent a valid simple condition.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the tokens are invalid or improperly formatted.
     pub fn new_simple_from_tokens(tokens: &[&str], pos: &mut usize) -> Result<Self, CQLError> {
         if let Some(field) = tokens.get(*pos) {
             *pos += 1;
@@ -83,45 +79,18 @@ impl Condition {
         })
     }
 
-    /// Creates a new `Condition` with a complex condition.
+    /// Creates a new `Complex` condition.
     ///
-    /// # Arguments
+    /// # Parameters
+    /// - `left: Option<Condition>`:
+    ///   - The left condition (optional for `NOT` operator).
+    /// - `operator: LogicalOperator`:
+    ///   - The logical operator (`AND`, `OR`, `NOT`).
+    /// - `right: Condition`:
+    ///   - The right condition.
     ///
-    /// * `left` - An optional `Condition` with the left condition.
-    /// * `operator` - A `LogicalOperator` with the logical operator.
-    /// * `right` - A `Condition` with the right condition.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let left = Condition::Simple {
-    ///     field: String::from("age"),
-    ///     operator: Operator::Greater,
-    ///     value: String::from("18"),
-    /// };
-    /// let right = Condition::Simple {
-    ///     field: String::from("city"),
-    ///     operator: Operator::Equal,
-    ///     value: String::from("Gaiman"),
-    /// };
-    /// let complex = Condition::new_complex(Some(left), LogicalOperator::And, right);
-    ///
-    /// assert_eq!(complex,
-    ///    Condition::Complex {
-    ///         left: Some(Box::new(Condition::Simple {
-    ///                     field: String::from("age"),
-    ///                     operator: Operator::Greater,
-    ///                     value: String::from("18"),
-    ///          })),
-    ///         operator: LogicalOperator::And,
-    ///         right: Box::new(Condition::Simple {
-    ///                     field: String::from("city"),
-    ///                     operator: Operator::Equal,
-    ///                     value: String::from("Gaiman"),
-    ///          })
-    /// })
-    /// ```
-    ///
+    /// # Returns
+    /// - `Condition::Complex` instance.
     pub fn new_complex(
         left: Option<Condition>,
         operator: LogicalOperator,
@@ -134,13 +103,20 @@ impl Condition {
         }
     }
 
-    /// Executes the condition on the given register.
-    /// Returns a bool with the result of the condition.
+    /// Executes the condition on a given register.
     ///
-    /// # Arguments
+    /// # Parameters
+    /// - `register: &HashMap<String, String>`:
+    ///   - A map representing the record to evaluate.
+    /// - `columns: Vec<Column>`:
+    ///   - The schema of the table being queried.
     ///
-    /// * `register` - A reference to a `HashMap<String, String>` with the register to evaluate.
-    ///
+    /// # Returns
+    /// - `Ok(bool)`:
+    ///   - `true` if the condition evaluates to `true`.
+    ///   - `false` otherwise.
+    /// - `Err(CQLError)`:
+    ///   - If the condition cannot be evaluated due to invalid types or missing fields.
     pub fn execute(
         &self,
         register: &HashMap<String, String>,
@@ -165,24 +141,6 @@ impl Condition {
                     } else {
                         return Err(CQLError::InvalidSyntax);
                     }
-                    /* if is_number(y) && !is_number(x) || !is_number(y) && is_number(x) {
-                        return Err(CQLError::InvalidSyntax);
-                    }
-                    if is_number(x) && is_number(y) {
-                        let x: i32 = x.parse().map_err(|_| CQLError::InvalidSyntax)?;
-                        let y: i32 = y.parse().map_err(|_| CQLError::InvalidSyntax)?;
-                        match operator {
-                            Operator::Lesser => return Ok(x < y),
-                            Operator::Greater => return Ok(x > y),
-                            Operator::Equal => return Ok(x == y),
-                        }
-                    }
-
-                    match operator {
-                        Operator::Lesser => Ok(x < y),
-                        Operator::Greater => Ok(x > y),
-                        Operator::Equal => Ok(x == y),
-                    } */
                 } else {
                     Err(CQLError::Error)
                 }
@@ -219,6 +177,11 @@ impl Condition {
         op_result
     }
 
+    /// Serializes the condition into a string.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - A string representation of the condition, suitable for use in a CQL query.
     pub fn serialize(&self) -> String {
         match self {
             Condition::Simple {
@@ -244,13 +207,37 @@ impl Condition {
         }
     }
 
-    /// Deserializa un string en una instancia de `Condition`
+    /// Deserializes a string into a `Condition`.
+    ///
+    /// # Parameters
+    /// - `serialized: &str`:
+    ///   - A string representing the condition.
+    ///
+    /// # Returns
+    /// - `Ok(Condition)`:
+    ///   - If the string is successfully parsed into a valid condition.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the string is invalid or improperly formatted.
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
         let tokens: Vec<&str> = serialized.split_whitespace().collect();
         Self::parse_tokens(&tokens, 0, tokens.len())
     }
 
-    /// Función auxiliar para parsear tokens y crear la `Condition` correspondiente
+    /// Parses tokens to create a `Condition`.
+    ///
+    /// # Parameters
+    /// - `tokens: &[&str]`:
+    ///   - A slice of tokens representing the condition.
+    /// - `start: usize`:
+    ///   - The starting position in the token slice.
+    /// - `end: usize`:
+    ///   - The ending position in the token slice.
+    ///
+    /// # Returns
+    /// - `Ok(Condition)`:
+    ///   - If the tokens represent a valid condition.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the tokens are invalid or improperly formatted.
     fn parse_tokens(tokens: &[&str], mut start: usize, end: usize) -> Result<Self, CQLError> {
         // Si solo tiene 3 tokens, es una condición simple (e.g., `field = value`)
         if end - start == 3 {

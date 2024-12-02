@@ -195,7 +195,7 @@ impl StorageEngine {
 
         // Aplicar `LIMIT` si está presente
         if let Some(limit) = select_query.limit {
-            if limit < results.len() {
+            if limit < results.len() - 2 {
                 results = results[..limit + 2].to_vec();
             }
         }
@@ -258,8 +258,9 @@ impl StorageEngine {
         select_query: &Select,
     ) -> Result<bool, StorageEngineError> {
         // Convert the line into a map of column to value
-        let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
-        let column_value_map = self.create_column_value_map(table, &columns, false);
+
+        let values: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
+        let column_value_map = self.create_column_value_map(table, &values, false);
 
         let columns = table.get_columns();
         // Check the WHERE clause condition in the SELECT query
@@ -354,7 +355,7 @@ mod tests {
             "id INT PRIMARY KEY, name TEXT".to_string(),
         ])
         .unwrap();
-        let table = Table::new(create_table.clone());
+        let table = TableSchema::new(create_table.clone());
         // Crear consulta SELECT con `WHERE id = 1`
         let select_tokens = vec![
             "SELECT".to_string(),
@@ -398,15 +399,17 @@ mod tests {
 
         let keyspace = "test_keyspace";
         let table_name = "test_table";
+        let mut name_column = Column::new("name", DataType::String, false, false);
+        name_column.is_clustering_column = true;
         let columns = vec![
             Column::new("id", DataType::Int, true, false),
-            Column::new("name", DataType::String, false, false),
+            name_column,
             Column::new("age", DataType::Int, false, false),
         ];
-        let clustering_columns_in_order = vec!["id".to_string()];
+        let clustering_columns_in_order = vec!["age".to_string()];
         let values_row1 = vec!["1", "John", "18"];
-        let values_row2 = vec!["1", "John", "19"];
-        let values_row3 = vec!["3", "John", "20"];
+        let values_row2 = vec!["1", "Jaz", "19"];
+        let values_row3 = vec!["1", "Jol", "20"];
         let timestamp = 1234567890;
 
         let folder_path = storage.get_keyspace_path(keyspace);
@@ -463,10 +466,10 @@ mod tests {
             "CREATE".to_string(),
             "TABLE".to_string(),
             "test_keyspace.test_table".to_string(),
-            "id INT PRIMARY KEY, name TEXT, age INT".to_string(),
+            "id INT , name TEXT, age INT, PRIMARY KEY (id, name)".to_string(),
         ])
         .unwrap();
-        let table = Table::new(create_table.clone());
+        let table = TableSchema::new(create_table.clone());
 
         let select_tokens = vec![
             "SELECT".to_string(),
@@ -477,25 +480,19 @@ mod tests {
             "id".to_string(),
             "=".to_string(),
             "1".to_string(),
-            "AND".to_string(),
-            "name".to_string(),
-            "=".to_string(),
-            "John".to_string(),
             "LIMIT".to_string(),
             "2".to_string(),
         ];
 
         let select_query = Select::new_from_tokens(select_tokens).unwrap();
-        println!("el select es {:?}", select_query);
         let result = storage.select(select_query, table, false, keyspace);
         assert!(result.is_ok(), "Error executing SELECT with LIMIT");
         let result_rows = result.unwrap();
-        println!("{:?}", result_rows);
-        assert_eq!(result_rows.len(), 4); // Header + 2 rows
+        assert_eq!(result_rows.len(), 4); // Header + 2 rows use native_protocol::messages::result::schema_change::SchemaChange;
         assert_eq!(result_rows[0], "id,name,age", "Header mismatch");
         assert_eq!(result_rows[1], "id,name", "Selected columns mismatch");
-        assert!(result_rows.contains(&"1,John,18;1234567890".to_string()));
-        assert!(result_rows.contains(&"1,John,19;1234567890".to_string()));
+        assert!(result_rows.contains(&"1,Jol,20;1234567890".to_string()));
+        assert!(result_rows.contains(&"1,Jaz,19;1234567890".to_string()));
 
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();
@@ -578,7 +575,7 @@ mod tests {
             "id INT PRIMARY KEY, name TEXT, age INT".to_string(),
         ])
         .unwrap();
-        let table = Table::new(create_table.clone());
+        let table = TableSchema::new(create_table.clone());
 
         let select_tokens = vec![
             "SELECT".to_string(),
@@ -596,11 +593,9 @@ mod tests {
         ];
 
         let select_query = Select::new_from_tokens(select_tokens).unwrap();
-        println!("el select es {:?}", select_query);
         let result = storage.select(select_query, table, false, keyspace);
         assert!(result.is_ok(), "Error executing SELECT with LIMIT");
         let result_rows = result.unwrap();
-        println!("{:?}", result_rows);
         assert_eq!(result_rows.len(), 2); // Header + 2 rows
         assert_eq!(result_rows[0], "id,name,age", "Header mismatch");
         assert_eq!(result_rows[1], "id,name", "Selected columns mismatch");

@@ -63,15 +63,63 @@ pub struct Node {
 }
 
 impl Node {
-    /// Creates a new node with the given IP and a list of seed nodes.
+    /// Creates a new instance of a `Node` in a distributed database system.
     ///
-    /// # Arguments
+    /// # Purpose
+    /// This function initializes a node, sets up its partitioner, storage engine, and other essential components.
+    /// Nodes are fundamental building blocks of the distributed system, responsible for storing, processing,
+    /// and communicating data.
     ///
-    /// * `ip` - The IP address of the node.
-    /// * `seeds_nodes` - A vector of IP addresses of the seed nodes.
+    /// # Parameters
+    /// - `ip: Ipv4Addr`
+    ///   - The IP address of the node being initialized. This address is used for communication and data partitioning.
+    /// - `seeds_nodes: Vec<Ipv4Addr>`
+    ///   - A list of IP addresses representing seed nodes in the cluster. These nodes are used to initialize the
+    ///     partitioner and gossip protocol for cluster membership and state sharing.
+    /// - `storage_path: PathBuf`
+    ///   - The file system path where the node's storage engine will manage data and metadata.
     ///
     /// # Returns
-    /// Returns a `Node` instance or a `NodeError` if it fails.
+    /// - `Result<Node, NodeError>`
+    ///   - On success:
+    ///     - Returns `Ok(Node)` with a fully initialized node instance.
+    ///   - On failure:
+    ///     - Returns `Err(NodeError)` if there is an issue with partitioner initialization, storage setup, or other components.
+    ///
+    /// # Behavior
+    /// 1. **Partitioner Initialization**:
+    ///    - Creates a new `Partitioner` instance and adds the current node's `ip` to the partition map.
+    ///    - Iterates over the `seeds_nodes` list to add additional nodes to the partitioner, excluding the current node.
+    /// 2. **Storage Engine Setup**:
+    ///    - Initializes a `StorageEngine` with the provided `storage_path` and node's IP address.
+    ///    - Resets storage folders to ensure a clean state for the node.
+    /// 3. **Node Components**:
+    ///    - Creates and configures the following components for the node:
+    ///      - `OpenQueryHandler`: Manages queries currently being processed by the node.
+    ///      - `clients_keyspace`: Tracks keyspaces for clients connected to the node.
+    ///      - `last_client_id`: Initializes the client ID counter to zero.
+    ///      - `gossiper`: Initializes the gossip protocol with the node's endpoint state and seed nodes.
+    ///      - `schema`: Manages the database schema (e.g., keyspaces and tables).
+    ///
+    /// # Notes
+    /// - **Seed Nodes**:
+    ///   - Seed nodes are critical for the initial discovery of other nodes in the cluster.
+    ///   - The current node (`ip`) is excluded from being added as its own seed.
+    /// - **Storage Engine Reset**:
+    ///   - Resetting storage folders ensures no residual data interferes with the node's operation.
+    ///   - This operation should be used with caution in production environments to avoid unintended data loss.
+    ///
+    /// # Errors
+    /// - Returns `NodeError` in the following scenarios:
+    ///   - Failure to initialize or add nodes to the partitioner.
+    ///   - Issues resetting storage folders during storage engine initialization.
+    ///   - General failures in setting up the node's components.
+    ///
+    /// # Importance
+    /// This function is the entry point for creating a node in the cluster. It ensures that the node is ready to
+    /// participate in data storage, query processing, and cluster communication. Proper initialization of nodes
+    /// is critical for maintaining the stability and reliability of the distributed system.
+
     pub fn new(
         ip: Ipv4Addr,
         seeds_nodes: Vec<Ipv4Addr>,
@@ -102,8 +150,83 @@ impl Node {
             schema: Schema::new(),
         })
     }
-    /// Starts the gossip process for the node.
-    /// Opens 3 connections with 3 other nodes.
+
+    /// Starts the gossip protocol for the node, enabling cluster membership and state sharing.
+    ///
+    /// # Purpose
+    /// Gossip is a critical component in distributed databases for maintaining cluster membership,
+    /// state synchronization, and fault detection. This function initiates a background thread that
+    /// continuously executes the gossip protocol, exchanging state information with other nodes and
+    /// ensuring that the cluster remains consistent and operational.
+    ///
+    /// # Parameters
+    /// - `node: Arc<Mutex<Node>>`
+    ///   - A thread-safe reference to the `Node` that will participate in the gossip protocol.
+    ///   - The `Node` contains information about its state, schema, and connections to the cluster.
+    /// - `connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>`
+    ///   - A thread-safe map of active connections to other nodes in the cluster.
+    ///     - Keys are node addresses as strings.
+    ///     - Values are thread-safe `TcpStream` objects for internode communication.
+    ///
+    /// # Returns
+    /// - `Result<(), NodeError>`
+    ///   - On success:
+    ///     - Returns `Ok(())` indicating that the gossip protocol started successfully.
+    ///   - On failure:
+    ///     - Returns `Err(NodeError)` if the initialization of the gossip thread fails.
+    ///
+    /// # Behavior
+    /// 1. **Gossip Protocol Initialization**:
+    ///    - Launches a background thread that executes the gossip protocol in a loop.
+    ///    - Updates the node's status to `Normal` after an initial period (e.g., 1500ms).
+    ///    - Sends periodic heartbeat messages to indicate the node is alive.
+    ///
+    /// 2. **Cluster Communication**:
+    ///    - Picks target nodes for gossip communication using the `pick_ips` function from the `Gossiper`.
+    ///    - Sends `SYN` messages to target nodes, carrying the node's state information.
+    ///    - Handles node failures by marking unreachable nodes as `Dead` and triggering redistributions if necessary.
+    ///    - Adds newly discovered nodes to the partitioner and integrates them into the cluster.
+    ///
+    /// 3. **Schema Updates**:
+    ///    - Synchronizes the node's schema with the most recent schema available from the gossip protocol.
+    ///    - Updates the node's schema metadata to reflect changes in the cluster (e.g., new tables or keyspaces).
+    ///
+    /// 4. **Partitioner Updates**:
+    ///    - Adjusts the partitioner when nodes join or leave the cluster.
+    ///    - Redistributes data across the cluster when changes in membership occur.
+    ///
+    /// 5. **Fault Tolerance**:
+    ///    - Detects dead nodes and removes them from the partitioner to avoid stale data.
+    ///    - Adds new nodes to the partitioner and redistributes data to maintain consistency.
+    ///
+    /// # Thread Execution
+    /// - The gossip protocol runs indefinitely in a loop with a sleep interval of 1200ms between iterations.
+    /// - Within each iteration:
+    ///   - The node sends and receives gossip messages.
+    ///   - Updates its internal state, schema, and partitioner as needed.
+    ///
+    /// # Notes
+    /// - This function is critical for maintaining the health and consistency of the cluster.
+    /// - The gossip thread runs in the background and continuously monitors the state of the cluster.
+    /// - Redistributing data is a resource-intensive operation and should be handled carefully in large clusters.
+    ///
+    /// # Errors
+    /// - Returns `NodeError` in the following scenarios:
+    ///   - Failure to communicate with other nodes (e.g., network issues).
+    ///   - Errors in partitioner operations, such as adding or removing nodes.
+    ///   - Locking issues while accessing the `Node` or `connections`.
+    ///
+    /// # Importance
+    /// The gossip protocol ensures that all nodes in the cluster have a consistent view of the system's state.
+    /// It handles node failures, joins, and leaves dynamically, enabling the cluster to adapt to changes
+    /// without manual intervention. This function is foundational for ensuring high availability and fault tolerance.
+    ///
+    /// # Example Workflow
+    /// - A node starts the gossip protocol using `start_gossip`.
+    /// - The gossip thread continuously communicates with other nodes, exchanging state information.
+    /// - When a node joins or leaves, the partitioner adjusts and redistributes data as necessary.
+    /// - The cluster remains consistent, and client queries are routed accurately based on the partitioner.
+
     pub fn start_gossip(
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
@@ -113,7 +236,11 @@ impl Node {
             loop {
                 {
                     {
-                        let mut node_guard = node.lock().unwrap();
+                        let mut node_guard = match node.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => return NodeError::LockError,
+                        };
+
                         let ip = node_guard.ip;
                         if initial_gossip.elapsed().as_millis() > 1500 {
                             node_guard
@@ -127,7 +254,10 @@ impl Node {
                     let ips: Vec<Ipv4Addr>;
                     let syn;
                     {
-                        let node_guard = node.lock().unwrap();
+                        let node_guard = match node.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => return NodeError::LockError,
+                        };
                         ips = node_guard
                             .gossiper
                             .pick_ips(node_guard.get_ip())
@@ -137,7 +267,10 @@ impl Node {
                         syn = node_guard.gossiper.create_syn(node_guard.ip);
                     }
 
-                    let mut node_guard = node.lock().unwrap();
+                    let mut node_guard = match node.lock() {
+                        Ok(guard) => guard,
+                        Err(_) => return NodeError::LockError,
+                    };
 
                     for ip in ips {
                         let connections_clone = Arc::clone(&connections);
@@ -156,22 +289,28 @@ impl Node {
 
                 // After each gossip round, update the schema of the node
                 {
-                    let mut node_guard = node.lock().unwrap();
+                    let mut node_guard = match node.lock() {
+                        Ok(guard) => guard,
+                        Err(_) => return NodeError::LockError,
+                    };
+
                     let ip = node_guard.ip;
 
                     // Sets the schema of the current node to the most updated schema
                     if let Some(schema) = node_guard.gossiper.get_most_updated_schema() {
-                        node_guard
-                            .gossiper
-                            .endpoints_state
-                            .get_mut(&ip)
-                            .unwrap()
-                            .application_state
-                            .set_schema(schema);
+                        if let Some(endpoint_state) =
+                            node_guard.gossiper.endpoints_state.get_mut(&ip)
+                        {
+                            endpoint_state.application_state.set_schema(schema);
+                        } else {
+                            return NodeError::GossipError;
+                        }
                     }
 
                     // Updates the latest schema from the gossiper
-                    node_guard.set_latest_schema_from_gossiper();
+                    if let Err(e) = node_guard.set_latest_schema_from_gossiper() {
+                        return e;
+                    };
                 }
 
                 // After each gossip round, update the partitioner
@@ -189,7 +328,10 @@ impl Node {
                             node_guard.schema.keyspaces.clone(), // Clonar los keyspaces desde el guard     // Referencia mutable al particionador
                         )
                     };
-                    let mut node_guard = node.lock().unwrap();
+                    let mut node_guard = match node.lock() {
+                        Ok(guard) => guard,
+                        Err(_) => return NodeError::LockError,
+                    };
                     let endpoints_states = &node_guard.gossiper.endpoints_state.clone();
                     let partitioner = &mut node_guard.partitioner;
                     let mut needs_to_redistribute = false;
@@ -229,22 +371,70 @@ impl Node {
                     }
                 }
 
-                thread::sleep(std::time::Duration::from_secs(1));
+                thread::sleep(std::time::Duration::from_millis(1200));
             }
         });
-        //handle.join().unwrap();
         Ok(())
     }
 
-    /// Adds a new open query in the node.
+    /// Adds a new open query in the node, initializing its tracking and determining the required responses.
+    ///
+    /// # Purpose
+    /// This function sets up a new query for execution, associating it with the client connection
+    /// and tracking its progress. It calculates the required number of responses based on the query type,
+    /// replication factor, and cluster size.
     ///
     /// # Arguments
-    ///
-    /// * `query` - The query to be opened.
-    /// * `connection` - The TCP connection with the client.
+    /// - `query: Query`
+    ///   - The query object representing the operation to be executed (e.g., SELECT, INSERT, UPDATE, DELETE).
+    /// - `consistency_level: &str`
+    ///   - The desired consistency level for the query (e.g., `ONE`, `QUORUM`, `ALL`).
+    ///   - Determines the number of nodes that must respond successfully for the query to be considered successful.
+    /// - `connection: TcpStream`
+    ///   - The TCP connection to the client issuing the query. This is used to send the query's result or error back to the client.
+    /// - `table: Option<TableSchema>`
+    ///   - The schema of the table associated with the query, if applicable.
+    /// - `keyspace: Option<KeyspaceSchema>`
+    ///   - The schema of the keyspace associated with the query, if applicable.
     ///
     /// # Returns
-    /// Returns the ID of the open query or a `NodeError`.
+    /// - `Result<i32, NodeError>`
+    ///   - On success:
+    ///     - Returns the unique ID of the newly opened query.
+    ///   - On failure:
+    ///     - Returns a `NodeError` if there is an issue during query initialization or schema access.
+    ///
+    /// # Behavior
+    /// 1. **Cluster Information Retrieval**:
+    ///    - Determines the total number of nodes in the cluster using `self.get_how_many_nodes_i_know`.
+    /// 2. **Replication Factor Determination**:
+    ///    - Retrieves the replication factor from the `keyspace` schema if provided.
+    ///    - Defaults to a replication factor of `1` if the keyspace is not specified.
+    /// 3. **Response Calculation**:
+    ///    - Determines the number of responses required for the query to satisfy the consistency level:
+    ///      - For `NeededResponseCount::One`, requires one response.
+    ///      - For `NeededResponseCount::Specific`, calculates the responses based on the query's specified requirement
+    ///        and the replication factor, but caps it at the total number of nodes in the cluster.
+    /// 4. **Open Query Initialization**:
+    ///    - Registers the query with the specified parameters, including the number of required responses,
+    ///      client connection, query details, and associated schema, using `self.open_query_handler.new_open_query`.
+    ///
+    /// # Notes
+    /// - **Replication Factor**:
+    ///   - The replication factor determines how many copies of the data exist in the cluster and influences the consistency guarantees.
+    /// - **Consistency Level**:
+    ///   - Directly affects the `needed_responses` calculation, determining how strictly the cluster adheres to the query's requirements.
+    ///
+    /// # Errors
+    /// - Returns a `NodeError` in the following scenarios:
+    ///   - Issues accessing or cloning the keyspace or table schema.
+    ///   - Errors in initializing the query in the `open_query_handler`.
+    ///
+    /// # Importance
+    /// This function is essential for managing distributed queries in the cluster. It ensures that queries are
+    /// properly initialized, tracks their progress, and enforces consistency requirements based on the cluster's
+    /// configuration and the client's desired guarantees.
+
     pub fn add_open_query(
         &mut self,
         query: Query,
@@ -265,8 +455,8 @@ impl Node {
 
         let needed_responses = match query.needed_responses() {
             query_creator::NeededResponseCount::One => 1,
-            query_creator::NeededResponseCount::Specific(specific_value) => {
-                let calculated_responses = specific_value as usize * replication_factor as usize;
+            query_creator::NeededResponseCount::ReplicationFactor => {
+                let calculated_responses = replication_factor as usize;
                 if calculated_responses > all_nodes {
                     all_nodes
                 } else {
@@ -311,15 +501,14 @@ impl Node {
         self.last_client_id
     }
 
-    fn update_schema_in_storage(&self, old_schema: Schema) {
+    fn update_schema_in_storage(&self, old_schema: Schema) -> Result<(), NodeError> {
         let storage = StorageEngine::new(self.storage_path.clone(), self.ip.to_string());
 
         // Process new or updated keyspaces
         for (keyspace_name, keyspace) in self.schema.keyspaces.clone() {
             if !old_schema.keyspaces.contains_key(&keyspace_name) {
                 // Create a new keyspace
-                println!("voy a agregar keyspace");
-                storage.create_keyspace(&keyspace_name).unwrap();
+                storage.create_keyspace(&keyspace_name)?;
             }
 
             let old_tables = old_schema
@@ -329,17 +518,14 @@ impl Node {
                 .unwrap_or_else(Vec::new);
 
             // Update existing keyspace
-            self.update_keyspace_tables(&storage, &keyspace_name, old_tables, keyspace.tables);
+            self.update_keyspace_tables(&storage, &keyspace_name, old_tables, keyspace.tables)?
         }
 
         // Process deleted keyspaces
         for (keyspace_name, keyspace) in old_schema.clone().keyspaces {
             if !self.schema.keyspaces.contains_key(&keyspace_name) {
                 // Drop keyspace
-                println!("borro keyspace");
-                storage
-                    .drop_keyspace(&keyspace_name, &self.ip.to_string())
-                    .unwrap();
+                storage.drop_keyspace(&keyspace_name, &self.ip.to_string())?;
             } else {
                 // Drop tables from existing keyspace
 
@@ -350,19 +536,20 @@ impl Node {
                     .map(|keyspace| keyspace.tables.clone())
                     .unwrap_or_else(Vec::new);
 
-                self.remove_obsolete_tables(&storage, &keyspace_name, keyspace.tables, new_tables);
+                self.remove_obsolete_tables(&storage, &keyspace_name, keyspace.tables, new_tables)?;
             }
         }
+        Ok(())
     }
 
-    /// Updates tables in an existing keyspace by creating new tables if they don't exist.
+    // Updates tables in an existing keyspace by creating new tables if they don't exist.
     fn update_keyspace_tables(
         &self,
         storage: &StorageEngine,
         keyspace_name: &str,
         old_tables: Vec<TableSchema>,
         new_tables: Vec<TableSchema>,
-    ) {
+    ) -> Result<(), NodeError> {
         for table in new_tables {
             if old_tables
                 .iter()
@@ -373,23 +560,20 @@ impl Node {
                 let cols = table.get_columns();
                 let col_names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
 
-                storage
-                    .create_table(keyspace_name, &table.get_name(), col_names)
-                    .unwrap();
+                storage.create_table(keyspace_name, &table.get_name(), col_names)?
             }
         }
+        Ok(())
     }
 
-    /// Removes tables from an existing keyspace that are no longer present in the updated schema.
+    // Removes tables from an existing keyspace that are no longer present in the updated schema.
     fn remove_obsolete_tables(
         &self,
         storage: &StorageEngine,
         keyspace_name: &str,
         old_tables: Vec<TableSchema>,
         new_tables: Vec<TableSchema>,
-    ) {
-        println!("new tables = {:?}", new_tables);
-        println!("old tables = {:?}", old_tables);
+    ) -> Result<(), NodeError> {
         for table in old_tables {
             if new_tables
                 .iter()
@@ -397,30 +581,24 @@ impl Node {
                 .is_none()
             {
                 // Drop table
-                println!("voy a borrar {:?}", table.get_name());
-                storage
-                    .drop_table(keyspace_name, &table.get_name())
-                    .unwrap();
+                storage.drop_table(keyspace_name, &table.get_name())?;
             }
         }
+        Ok(())
     }
 
-    fn set_latest_schema_from_gossiper(&mut self) {
+    fn set_latest_schema_from_gossiper(&mut self) -> Result<(), NodeError> {
         let old_schema = self.schema.clone();
 
         // acá se actualiza el schema del nodo
-        self.schema = self
-            .gossiper
-            .endpoints_state
-            .get(&self.ip)
-            .unwrap()
-            .application_state
-            .schema
-            .clone();
+        self.schema = match self.gossiper.endpoints_state.get(&self.ip) {
+            Some(endpoint_state) => endpoint_state.application_state.schema.clone(),
+            None => return Err(NodeError::LockError),
+        };
 
-        self.update_schema_in_storage(old_schema);
-
-        println!("Schema updated: {:?}", self.schema);
+        self.update_schema_in_storage(old_schema)?;
+        //println!("Schema updated: {:?}", self.schema);
+        Ok(())
     }
 
     fn add_keyspace(&mut self, new_keyspace: CreateKeyspace) -> Result<(), NodeError> {
@@ -430,7 +608,7 @@ impl Node {
 
         // We manually update the latest schema right after modification so
         // we don't have to wait for the next gossip round.
-        self.set_latest_schema_from_gossiper();
+        self.set_latest_schema_from_gossiper()?;
 
         Ok(())
     }
@@ -451,12 +629,12 @@ impl Node {
 
         // We manually update the latest schema right after modification so
         // we don't have to wait for the next gossip round.
-        self.set_latest_schema_from_gossiper();
+        self.set_latest_schema_from_gossiper()?;
 
         Ok(())
     }
 
-    fn set_actual_keyspace(
+    fn _set_actual_keyspace(
         &mut self,
         keyspace_name: String,
         client_id: i32,
@@ -467,12 +645,12 @@ impl Node {
         Ok(())
     }
 
-    fn update_keyspace(&mut self, client_id: i32, new_keyspace: KeyspaceSchema) {
+    fn _update_keyspace(&mut self, client_id: i32, new_keyspace: KeyspaceSchema) {
         let new_key_name = new_keyspace.clone().get_name().clone();
         self.clients_keyspace
             .insert(client_id, Some(new_key_name.clone()));
 
-        for (i, (kespace_name, keyspace)) in self.schema.keyspaces.clone().iter().enumerate() {
+        for (_, (kespace_name, _)) in self.schema.keyspaces.clone().iter().enumerate() {
             if kespace_name == &new_key_name {
                 self.schema
                     .keyspaces
@@ -488,11 +666,11 @@ impl Node {
     fn add_table(&mut self, new_table: CreateTable, keyspace_name: &str) -> Result<(), NodeError> {
         self.gossiper
             .add_table(self.ip, new_table, keyspace_name)
-            .unwrap();
+            .map_err(|_| NodeError::GossipError)?;
 
         // We manually update the latest schema right after modification so
         // we don't have to wait for the next gossip round.
-        self.set_latest_schema_from_gossiper();
+        self.set_latest_schema_from_gossiper()?;
 
         Ok(())
     }
@@ -524,15 +702,15 @@ impl Node {
 
         // We manually update the latest schema right after modification so
         // we don't have to wait for the next gossip round.
-        self.set_latest_schema_from_gossiper();
+        self.set_latest_schema_from_gossiper()?;
 
         Ok(())
     }
 
     fn update_table(
         &mut self,
-        keyspace_name: &str,
-        new_table: CreateTable,
+        _keyspace_name: &str,
+        _new_table: CreateTable,
     ) -> Result<(), NodeError> {
         // // Encuentra el índice del Keyspace en el Vec
         // if let Some(index) = self
@@ -597,42 +775,70 @@ impl Node {
         Ok(self.schema.keyspaces.get(keyspace_name).cloned())
     }
 
-    /// Starts the primary internode and client connection handlers for a `Node`.
+    /// Starts the node's core functionalities, including internode connections, gossip, and client connections.
     ///
-    /// This function sets up the initial internode communication, establishing a handshake
-    /// with a seed node if the current node is not a seed. It then spawns two threads:
-    /// one to handle connections with other nodes (internode connections) and another to
-    /// manage client connections. Both threads are joined, ensuring that any errors encountered
-    /// are captured and handled appropriately.
+    /// # Purpose
+    /// This function is responsible for initializing and starting the main operational threads of a node
+    /// in a distributed database system. It ensures that the node can handle internode communication,
+    /// participate in the gossip protocol, and serve client requests simultaneously.
     ///
     /// # Parameters
-    /// - `node`: An `Arc<Mutex<Node>>` representing the node for which the communication is being established.
-    /// - `connections`: An `Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>` storing active TCP connections,
-    ///   allowing both node and client connections to be shared and synchronized.
+    /// - `node: Arc<Mutex<Node>>`
+    ///   - A thread-safe reference to the `Node` instance being started.
+    ///   - Contains the node's state, schema, partitioner, and other critical components.
+    /// - `connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>`
+    ///   - A thread-safe map of active TCP connections to other nodes and clients.
+    ///     - Keys are addresses (as strings), and values are `TcpStream` objects for communication.
     ///
     /// # Returns
-    /// * `Result<(), NodeError>` - Returns `Ok(())` if both threads execute and join successfully, or
-    ///   `NodeError` if an error occurs during the connection setup, handshake, or in joining the threads.
+    /// - `Result<(), NodeError>`
+    ///   - On success:
+    ///     - Returns `Ok(())`, indicating that all threads started successfully and are running.
+    ///   - On failure:
+    ///     - Returns `Err(NodeError)` if any thread fails to start or encounters an unrecoverable error.
     ///
-    /// # Workflow
-    /// 1. **Initialization and Seed Connection**:
-    ///     - Acquires a lock on `node` to check if the node is a seed and retrieve the seed IP and node's IP.
-    ///     - If the node is not a seed, attempts to connect to the seed node's IP using the `INTERNODE_PORT`.
-    ///     - Sends a handshake message (`HANDSHAKE` query) to the seed node, establishing initial communication
-    ///       and adding the seed node to the partitioner.
-    /// 2. **Thread Creation**:
-    ///     - Creates two threads:
-    ///         * **Node Connection Handler**: Manages internode connections and handles commands and messages
-    ///           between nodes.
-    ///         * **Client Connection Handler**: Manages connections with clients that send queries to the node.
-    /// 3. **Thread Execution**:
-    ///     - Each thread is executed and joined. Errors during the thread's execution are printed to `stderr`.
+    /// # Behavior
+    /// 1. **Retrieve Node IP**:
+    ///    - Extracts the node's IP address by locking the `node` reference.
+    ///
+    /// 2. **Thread for Internode Connections**:
+    ///    - Creates a thread to handle connections between nodes in the cluster.
+    ///    - Uses the `handle_node_connections` function to manage internode communication and synchronize state.
+    ///
+    /// 3. **Thread for Gossip Protocol**:
+    ///    - Starts a background thread for the gossip protocol using `start_gossip`.
+    ///    - Gossip ensures cluster membership, state sharing, and failure detection.
+    ///
+    /// 4. **Thread for Client Connections**:
+    ///    - Creates a thread to handle incoming client connections and requests.
+    ///    - Uses the `handle_client_connections` function to manage client queries and responses.
+    ///
+    /// 5. **Thread Joining**:
+    ///    - Waits for the threads handling internode connections and client connections to complete using `join`.
+    ///    - Propagates errors if any thread encounters a failure or panic.
+    ///
+    /// # Error Handling
+    /// - Errors are logged for each thread individually using `unwrap_or_else` to ensure independent thread robustness.
+    /// - If any thread panics or fails during execution:
+    ///   - The error is captured and returned as a `NodeError`.
+    ///
+    /// # Notes
+    /// - **Thread-Safe Design**:
+    ///   - The function leverages `Arc<Mutex<T>>` to ensure safe concurrent access to shared resources (e.g., `node` and `connections`).
+    /// - **Critical Functionality**:
+    ///   - This function is a key entry point for activating a node in the cluster. Without it, the node cannot
+    ///     participate in cluster operations or serve clients.
     ///
     /// # Errors
-    /// - This function returns `NodeError` in the following cases:
-    ///   - `NodeError::InternodeError`: If there is an error in the internode thread handling connections.
-    ///   - `NodeError::ClientError`: If there is an error in the client thread handling connections.
-    ///   - `NodeError::LockError`: If there is an issue locking the node for accessing seed and IP information.
+    /// - Returns `NodeError::InternodeError` if the internode connections thread fails.
+    /// - Returns `NodeError::ClientError` if the client connections thread fails.
+    /// - Errors during gossip are logged but do not cause the `start` function to fail.
+    ///
+    /// # Importance
+    /// This function encapsulates the primary operational lifecycle of a node in the system. By starting the gossip protocol,
+    /// managing internode connections, and handling client queries, it ensures the node's integration into the cluster
+    /// and its ability to serve requests efficiently.
+
     pub fn start(
         node: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
@@ -641,26 +847,6 @@ impl Node {
         {
             let node_guard = node.lock()?;
             self_ip = node_guard.get_ip();
-
-            // if !is_seed {
-            //     let message = InternodeProtocolHandler::create_protocol_message(
-            //         &node_guard.get_ip_string(),
-            //         0,
-            //         "HANDSHAKE",
-            //         "_",
-            //         true,
-            //         false,
-            //         0,
-            //         "None",
-            //     );
-            //     connect_and_send_message(
-            //         seed_ip,
-            //         INTERNODE_PORT,
-            //         Arc::clone(&connections),
-            //         &message,
-            //     )?;
-            //     node_guard.partitioner.add_node(seed_ip)?;
-            // }
         }
 
         // Creates a thread to handle node connections
@@ -806,7 +992,6 @@ impl Node {
                 }
                 Ok(_) => {
                     let query = handle_client_request(&buffer);
-                    dbg!(&query);
                     match query {
                         Request::Startup => {
                             stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
@@ -826,8 +1011,6 @@ impl Node {
                                 client_stream,
                                 client_id,
                             );
-
-                            dbg!(&result);
 
                             if let Err(e) = result {
                                 let frame = Frame::Error(error::Error::ServerError(e.to_string()));

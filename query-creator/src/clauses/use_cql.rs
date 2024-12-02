@@ -21,6 +21,9 @@ impl Use {
     ///
     /// The tokens should be in the following order: `USE`, `keyspace_name`.
     ///
+    /// # Returns
+    /// * `Ok(Use)` - A successfully parsed `Use` struct.
+    /// * `Err(CQLError::InvalidSyntax)` - If the tokens are invalid or improperly formatted.
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() != 2 || tokens[0].to_uppercase() != "USE" {
             return Err(CQLError::InvalidSyntax);
@@ -31,20 +34,31 @@ impl Use {
         })
     }
 
+    /// Retrieves the name of the keyspace.
+    ///
+    /// # Returns
+    /// A `String` representing the keyspace name.
     pub fn get_name(&self) -> String {
         self.keyspace_name.clone()
     }
 
     /// Serializes the `Use` struct into a query string representation.
+    ///
+    /// # Returns
+    /// A `String` in the format `USE keyspace_name`
     pub fn serialize(&self) -> String {
         format!("USE {}", self.keyspace_name)
     }
 
     /// Deserializes a query string into a `Use` struct.
     ///
-    /// The string should have the format:
+    /// # Arguments
     ///
-    /// `USE keyspace_name`
+    /// * `s` - A string query in the format `USE keyspace_name`.
+    ///
+    /// # Returns
+    /// * `Ok(Use)` - If the string is successfully parsed.
+    /// * `Err(CQLError::InvalidSyntax)` - If the string is invalid or improperly formatted.
     pub fn deserialize(s: &str) -> Result<Self, CQLError> {
         let trimmed = s.trim();
 

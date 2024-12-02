@@ -3,14 +3,20 @@ use crate::errors::CQLError;
 use crate::utils::{is_insert, is_values};
 use crate::QueryCreator;
 
-/// Struct that represents the `INSERT` SQL clause.
-/// The `INSERT` clause is used to insert new records into a table.
+/// Represents the `INSERT` clause in CQL queries.
+///
+/// The `INSERT` clause is used to add new records to a table.
 ///
 /// # Fields
+/// - `values: Vec<String>`
+///   - A vector of values to be inserted into the table.
+/// - `into_clause: Into`
+///   - An `Into` struct containing the table name and the list of column names.
+/// - `if_not_exists: bool`
+///   - Indicates whether the `IF NOT EXISTS` clause is included in the query.
 ///
-/// * `values` - A vector of strings that contains the values to be inserted.
-/// * `into_clause` - An `Into` struct that contains the table name and columns.
-///
+/// # Purpose
+/// This struct encapsulates the functionality for parsing, serializing, and deserializing the `INSERT` clause.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Insert {
     pub values: Vec<String>,
@@ -19,44 +25,22 @@ pub struct Insert {
 }
 
 impl Insert {
-    /// Creates and returns a new `Insert` instance from a vector of tokens.
+    /// Creates a new `Insert` instance from a vector of tokens.
     ///
-    /// # Arguments
+    /// # Parameters
+    /// - `tokens: Vec<String>`:
+    ///   - A vector of strings representing the tokens of an `INSERT` query.
     ///
-    /// * `tokens` - A vector of strings that contains the tokens to be parsed.
+    /// # Returns
+    /// - `Ok(Insert)`:
+    ///   - If the tokens are valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the tokens are invalid or improperly formatted.
     ///
-    /// The tokens should be in the following order: `INSERT`, `INTO`, `table_name`, `column_names`, `VALUES`, `values`.
-    ///
-    /// The `column_names` and `values` should be comma-separated and between parentheses.
-    ///
-    /// If a pair of col, value is missing for a column in the table, the value will be an empty string for that column.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let tokens = vec![
-    ///     String::from("INSERT"),
-    ///     String::from("INTO"),
-    ///     String::from("table"),
-    ///     String::from("name, age"),
-    ///     String::from("VALUES"),
-    ///     String::from("Alen, 25"),
-    /// ];
-    ///
-    /// let insert = Insert::new_from_tokens(tokens).unwrap();
-    ///
-    /// assert_eq!(
-    ///     insert,
-    ///     Insert {
-    ///         values: vec![String::from("Alen"), String::from("25")],
-    ///         into_clause: Into {
-    ///             table_name: String::from("table"),
-    ///             columns: vec![String::from("name"), String::from("age")]
-    ///         }
-    ///     }
-    /// );
-    /// ```
-    ///
+    /// # Notes
+    /// - The expected token order is:
+    ///   `"INSERT", "INTO", "table_name", "columns", "VALUES", "values" [IF NOT EXISTS]`.
+    /// - Column names and values should be enclosed in parentheses and separated by commas.
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 6 {
             return Err(CQLError::InvalidSyntax);
@@ -111,7 +95,14 @@ impl Insert {
         })
     }
 
-    /// Serializes the `Insert` struct into a plain string representation.
+    /// Serializes the `Insert` instance into a CQL query string.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - A string representation of the `INSERT` query in the following format:
+    ///     ```sql
+    ///     INSERT INTO [keyspace.]table_name (columns) VALUES (values) [IF NOT EXISTS];
+    ///     `
     pub fn serialize(&self) -> String {
         let columns = self.into_clause.columns.join(", ");
         let values = self.values.join(", ");
@@ -137,11 +128,17 @@ impl Insert {
         )
     }
 
-    /// Deserializes a plain string representation into an `Insert` struct.
+    /// Deserializes a CQL query string into an `Insert` instance.
     ///
-    /// The expected format for the string is:
+    /// # Parameters
+    /// - `s: &str`:
+    ///   - A string representing an `INSERT` query.
     ///
-    /// `"INSERT INTO table_name (column1, column2) VALUES (value1, value2) [IF NOT EXISTS]"`
+    /// # Returns
+    /// - `Ok(Insert)`:
+    ///   - If the query is valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the query is invalid or improperly formatted.
     pub fn deserialize(s: &str) -> Result<Self, CQLError> {
         let tokens: Vec<String> = QueryCreator::tokens_from_query(s);
         Self::new_from_tokens(tokens)

@@ -42,24 +42,67 @@ impl InternodeProtocolHandler {
         InternodeProtocolHandler
     }
 
-    /// Handles an incoming command from a node or client, distinguishing between query commands
-    /// and response commands, and delegating to the appropriate handler.
+    /// Handles incoming commands sent to the node in a distributed database system.
+    ///
+    /// # Purpose
+    /// Processes various types of internode messages, including queries, responses, and gossip messages.
+    /// Delegates the handling of each message type to specialized helper functions to ensure efficient
+    /// and accurate execution.
     ///
     /// # Parameters
-    /// - `node`: An `Arc<Mutex<Node>>` representing the node receiving the command.
-    /// - `message`: The incoming message string to be processed.
-    /// - `_stream`: A mutable reference to the TCP stream used for communication.
-    /// - `connections`: A thread-safe collection of active TCP connections with other nodes.
-    /// - `is_seed`: Boolean flag indicating if the current node is a seed node.
+    /// - `node: &Arc<Mutex<Node>>`
+    ///   - A thread-safe, shared reference to the node handling the command.
+    ///   - This ensures safe access and modifications during message processing.
+    /// - `message: InternodeMessage`
+    ///   - The received message containing:
+    ///     - `content`: The type of message, which may be:
+    ///       - `InternodeMessageContent::Query`: Represents a query to be executed on this node.
+    ///       - `InternodeMessageContent::Response`: Represents a response to a previously issued query.
+    ///       - `InternodeMessageContent::Gossip`: Represents a gossip protocol message for cluster state sharing.
+    ///     - `from`: The identifier of the node that sent the message.
+    /// - `connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>`
+    ///   - A thread-safe map of active connections to other nodes in the cluster.
+    ///   - Keys are node addresses (as strings), and values are thread-safe `TcpStream` objects for communication.
     ///
     /// # Returns
-    /// * `Result<(), NodeError>` - Returns `Ok(())` on successful processing of the command,
-    ///   or `NodeError` if there is an issue in parsing or handling the command.
+    /// - `Result<(), NodeError>`
+    ///   - On success:
+    ///     - Returns `Ok(())`, indicating that the command was successfully handled.
+    ///   - On failure:
+    ///     - Returns `Err(NodeError)` with details about the error encountered.
+    ///
+    /// # Behavior
+    /// 1. **Query Handling**:
+    ///    - If the message content is `InternodeMessageContent::Query`, calls `handle_query_command`.
+    ///    - Executes the query on the local node and manages communication with other nodes if necessary.
+    /// 2. **Response Handling**:
+    ///    - If the message content is `InternodeMessageContent::Response`, calls `handle_response_command`.
+    ///    - Processes the response for a previously issued query or command.
+    /// 3. **Gossip Handling**:
+    ///    - If the message content is `InternodeMessageContent::Gossip`, calls `handle_gossip_command`.
+    ///    - Updates the node's internal state based on the gossip protocol message.
+    /// 4. **Error Handling**:
+    ///    - Any errors encountered during the handling of commands are returned as `NodeError`.
+    ///
+    /// # Message Types
+    /// - `InternodeMessageContent::Query`:
+    ///   - Represents a database query to be executed (e.g., SELECT, INSERT, UPDATE, DELETE, or schema operations).
+    /// - `InternodeMessageContent::Response`:
+    ///   - Represents the result of a previously executed query or command.
+    /// - `InternodeMessageContent::Gossip`:
+    ///   - Represents messages exchanged between nodes to share cluster state and maintain consistency.
     ///
     /// # Errors
-    /// This function may return `NodeError::InternodeProtocolError` if:
-    /// - The incoming command formatInternodeResponseContent,  is invalid.
-    /// - The command type is unrecognized.
+    /// - Returns `NodeError` in the following cases:
+    ///   - Failure in handling a query command (e.g., invalid query syntax or execution issues).
+    ///   - Failure in processing a response command (e.g., unexpected or malformed response).
+    ///   - Errors during gossip command processing (e.g., communication or state update issues).
+    ///
+    /// # Notes
+    /// - This function relies on `handle_query_command`, `handle_response_command`, and `handle_gossip_command` for specific operations.
+    /// - Assumes the `message` is valid and well-formed; malformed messages may result in `NodeError`.
+    /// - The function is part of the internode communication layer in a distributed database system.
+
     pub fn handle_command(
         &self,
         node: &Arc<Mutex<Node>>,
@@ -83,22 +126,73 @@ impl InternodeProtocolHandler {
         }
     }
 
-    /// Adds a response to an open query and, if all expected responses have been received,
-    /// sends a complete response back to the client.
+    /// Adds an OK response to an open query, determines if the query is complete, and sends the final response to the client.
+    ///
+    /// # Purpose
+    /// This function handles the final stages of processing for a distributed query in a database cluster.
+    /// It collects responses from multiple nodes, performs consistency checks (e.g., read repair), and
+    /// sends the final result back to the client if all responses have been received.
     ///
     /// # Parameters
-    /// - `query_handler`: A mutable reference to the `OpenQueryHandler` managing open queries.
-    /// - `content`: The response content received from another node.
-    /// - `open_query_id`: The ID of the open query being handled.
-    /// - `keyspace_name`: The name of the keyspace associated with this query.
-    /// - `columns`: The list of columns in the response, if applicable.
+    /// - `query_handler: &mut OpenQueryHandler`
+    ///   - A mutable reference to the `OpenQueryHandler`, which tracks ongoing queries and their associated responses.
+    /// - `response: &InternodeResponse`
+    ///   - The response received from another node, containing query results or status.
+    /// - `open_query_id: i32`
+    ///   - The unique identifier of the open query being processed.
+    /// - `keyspace_name: String`
+    ///   - The name of the keyspace associated with the query.
+    /// - `table: Option<TableSchema>`
+    ///   - An optional table schema that defines the structure of the table involved in the query.
+    /// - `columns: Vec<Column>`
+    ///   - A vector of column metadata associated with the query, used for filtering and organizing results.
+    /// - `self_ip: Ipv4Addr`
+    ///   - The IP address of the current node processing the query.
+    /// - `from: Ipv4Addr`
+    ///   - The IP address of the node that sent the response.
+    /// - `connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>`
+    ///   - A thread-safe map of connections to other nodes in the cluster.
+    ///   - Keys are node addresses as strings, and values are `TcpStream` objects for internode communication.
+    /// - `partitioner: Partitioner`
+    ///   - The partitioner used to distribute and retrieve data within the cluster.
+    /// - `storage_path: PathBuf`
+    ///   - The file system path for accessing local storage.
     ///
     /// # Returns
-    /// * `Result<(), NodeError>` - Returns `Ok(())` on successful handling of the response,
-    ///   or `NodeError` if there is an issue in processing the query.
+    /// - `Result<(), NodeError>`
+    ///   - On success:
+    ///     - Returns `Ok(())`, indicating that the response was successfully added and processed.
+    ///   - On failure:
+    ///     - Returns `Err(NodeError)` with details about the error encountered during processing.
+    ///
+    /// # Behavior
+    /// 1. **Add OK Response**:
+    ///    - Adds the given `response` to the open query identified by `open_query_id` using the `query_handler`.
+    ///    - Determines if the query has been completed (i.e., all required responses have been received).
+    /// 2. **Read Repair**:
+    ///    - If the query is complete:
+    ///      - Collects the responses from all involved nodes using `get_acumulated_responses`.
+    ///      - Performs a read repair operation to ensure consistency across nodes:
+    ///        - Identifies the most up-to-date row based on the responses.
+    ///        - Updates inconsistent nodes to align with the most recent data.
+    /// 3. **Filter and Join Columns**:
+    ///    - Filters and organizes the rows based on the query's select columns and metadata from the response.
+    /// 4. **Create Client Response**:
+    ///    - Constructs the response frame for the client using the query's metadata and the final row set.
+    /// 5. **Send Response**:
+    ///    - Sends the response frame to the client and ensures the connection is flushed.
     ///
     /// # Errors
-    /// - `NodeError::OtherError` may be returned if the open query cannot be retrieved.
+    /// - Returns `NodeError` in the following cases:
+    ///   - Issues during read repair or row consistency checks.
+    ///   - Errors in constructing or sending the client response frame.
+    ///   - Connection write or flush failures.
+    ///
+    /// # Notes
+    /// - This function is part of the internode query processing system, ensuring data consistency and client response delivery.
+    /// - Read repair is a key feature of distributed databases, maintaining data consistency across nodes.
+    /// - The function assumes the query is valid and that the `query_handler` has been correctly initialized and managed.
+
     pub fn add_ok_response_to_open_query_and_send_response_if_closed(
         query_handler: &mut OpenQueryHandler,
         response: &InternodeResponse,
@@ -154,13 +248,93 @@ impl InternodeProtocolHandler {
                 open_query_id
             );
 
-            connection.write(&frame.to_bytes()?).unwrap();
+            connection.write(&frame.to_bytes()?)?;
             connection.flush()?;
             Ok(())
         } else {
             Ok(())
         }
     }
+
+    /// Performs a read repair operation to ensure data consistency across nodes in a distributed database system.
+    ///
+    /// # Purpose
+    /// Read repair is a fundamental mechanism in distributed databases to ensure eventual consistency.
+    /// When data is read from multiple nodes, inconsistencies may arise due to network delays, partial failures,
+    /// or outdated replicas. This function identifies the most recent version of data for each key, updates
+    /// outdated nodes with the correct version, and returns the latest consistent data to the caller.
+    ///
+    /// # Parameters
+    /// - `contents_of_different_nodes: Vec<(Ipv4Addr, InternodeResponse)>`
+    ///   - A collection of responses from different nodes. Each response includes:
+    ///     - The IP address of the responding node.
+    ///     - An `InternodeResponse` containing query results and metadata.
+    /// - `columns: Vec<Column>`
+    ///   - A vector of column metadata that defines the structure of the table. This includes information about
+    ///     primary keys and clustering columns used to identify and order rows.
+    /// - `self_ip: Ipv4Addr`
+    ///   - The IP address of the current node performing the read repair.
+    /// - `keyspace_name: String`
+    ///   - The name of the keyspace associated with the table being queried.
+    /// - `table: TableSchema`
+    ///   - The schema of the table being queried. This includes details about columns, keys, and clustering order.
+    /// - `connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>`
+    ///   - A thread-safe map of active connections to other nodes in the cluster.
+    ///     - Keys are node addresses as strings.
+    ///     - Values are thread-safe `TcpStream` objects for internode communication.
+    /// - `partitioner: Partitioner`
+    ///   - The partitioner responsible for determining the placement of data in the cluster based on primary keys.
+    /// - `storage_path: PathBuf`
+    ///   - The file system path for accessing local storage.
+    ///
+    /// # Returns
+    /// - `Result<Vec<String>, NodeError>`
+    ///   - On success:
+    ///     - Returns a `Vec<String>` containing the rows of the latest consistent data, formatted as strings.
+    ///   - On failure:
+    ///     - Returns `Err(NodeError)` if an error occurs during the repair process or node communication.
+    ///
+    /// # Behavior
+    /// 1. **Key Index Extraction**:
+    ///    - Extracts indices for primary key and clustering columns from the `columns` metadata to identify rows uniquely.
+    /// 2. **Identify Latest Versions**:
+    ///    - Compares responses from all nodes to determine the most recent version of each row based on timestamps.
+    ///    - Uses the `find_latest_versions` helper function to construct a mapping of keys to their latest values.
+    /// 3. **Repair Outdated Nodes**:
+    ///    - Updates nodes with outdated data by sending the latest version of inconsistent rows:
+    ///      - If the outdated node is not the current node (`self_ip`), sends an update query to the affected node.
+    ///      - If the outdated node is the current node, applies the update locally using the storage engine.
+    ///    - Uses the `repair_nodes` helper function for this step.
+    /// 4. **Return Consistent Data**:
+    ///    - Returns the rows corresponding to the latest consistent data after performing repairs.
+    ///
+    /// # Key Internal Logic
+    /// - **Primary and Clustering Keys**:
+    ///   - Primary keys are used to determine data partitioning.
+    ///   - Clustering columns define the order of rows within a partition.
+    /// - **Timestamp Comparison**:
+    ///   - Timestamps are used to identify the most recent version of a row.
+    ///   - Rows with older timestamps are considered outdated and are repaired.
+    /// - **Node Communication**:
+    ///   - Uses internode communication to propagate updates to other nodes as part of the repair process.
+    ///
+    /// # Notes
+    /// - This function is not public but is a cornerstone of maintaining consistency in the system.
+    /// - It assumes that `contents_of_different_nodes` contains well-formed responses from participating nodes.
+    /// - Read repair can introduce additional network traffic and disk I/O, but it ensures that the database converges
+    ///   towards a consistent state.
+    ///
+    /// # Errors
+    /// - Returns `NodeError` in the following scenarios:
+    ///   - Failures in node communication while sending updates.
+    ///   - Issues in constructing or applying updates on local or remote nodes.
+    ///   - Errors in parsing or processing timestamps or values.
+    ///
+    /// # Importance
+    /// Read repair is critical for ensuring that distributed databases provide accurate and consistent results to users.
+    /// While it is an internal mechanism, its role in reconciling inconsistencies makes it essential for achieving
+    /// the system's eventual consistency guarantees.
+
     fn read_repair(
         contents_of_different_nodes: Vec<(Ipv4Addr, InternodeResponse)>,
         columns: Vec<Column>,
@@ -481,18 +655,54 @@ impl InternodeProtocolHandler {
         result
     }
 
-    /// Closes an open query and sends an error response back to the client.
+    /// Adds an error response to an open query and sends the final error response to the client if the query is complete.
+    ///
+    /// # Purpose
+    /// This function handles error scenarios for distributed queries. It marks an open query with an error response
+    /// and checks if all required responses for the query have been received. If the query is complete, it constructs
+    /// an error frame and sends it back to the client.
     ///
     /// # Parameters
-    /// - `query_handler`: A mutable reference to the `OpenQueryHandler` managing open queries.
-    /// - `open_query_id`: The ID of the open query being closed due to an error.
+    /// - `query_handler: &mut OpenQueryHandler`
+    ///   - A mutable reference to the `OpenQueryHandler`, which tracks ongoing queries and their associated responses.
+    ///   - This handler is used to mark the query with an error response and check if all responses have been received.
+    /// - `open_query_id: i32`
+    ///   - The unique identifier of the open query being processed.
     ///
     /// # Returns
-    /// * `Result<(), NodeError>` - Returns `Ok(())` on successful error handling,
-    ///   or `NodeError` if there is an issue in processing the query.
+    /// - `Result<(), NodeError>`
+    ///   - On success:
+    ///     - Returns `Ok(())`, indicating that the error response was successfully added and processed.
+    ///   - On failure:
+    ///     - Returns `Err(NodeError)` if there is an issue writing the error response to the client or flushing the connection.
+    ///
+    /// # Behavior
+    /// 1. **Add Error Response**:
+    ///    - Marks the query identified by `open_query_id` as having encountered an error using the `query_handler`.
+    ///    - Determines if the query is complete (i.e., all responses, including the error response, have been received).
+    /// 2. **Construct Error Frame**:
+    ///    - If the query is complete:
+    ///      - Creates an error response frame using the `Frame::Error` constructor with a `ServerError` message.
+    /// 3. **Send Error Response**:
+    ///    - Sends the error response frame to the client over the connection associated with the query.
+    ///    - Ensures the connection is flushed to deliver the response promptly.
     ///
     /// # Errors
-    /// - This function returns `NodeError` if there is a failure in sending the error response.
+    /// - Returns `NodeError` in the following cases:
+    ///   - Failure to write the error response frame to the client connection.
+    ///   - Failure to flush the connection after writing the error frame.
+    ///
+    /// # Notes
+    /// - This function is part of the error handling mechanism for distributed queries in a database cluster.
+    /// - It ensures that the client is notified of errors in a timely and structured manner.
+    /// - The `query_handler` must be properly initialized and managed to ensure consistent query tracking.
+    ///
+    /// # Example Workflow
+    /// - A query encounters an error on one or more nodes.
+    /// - This function is called to mark the query as having an error response.
+    /// - If all responses for the query have been received, it constructs an error frame and sends it to the client.
+    /// - If the query is not yet complete, no action is taken beyond marking the error response.
+
     pub fn add_error_response_to_open_query_and_send_response_if_closed(
         query_handler: &mut OpenQueryHandler,
         open_query_id: i32,
@@ -666,7 +876,7 @@ impl InternodeProtocolHandler {
         Ok(())
     }
 
-    /// Handles a response command from another node.
+    // Handles a response command from another node.
     fn handle_response_command(
         &self,
         node: &Arc<Mutex<Node>>,
@@ -799,15 +1009,8 @@ impl InternodeProtocolHandler {
             let open_query = if let Some(value) = query_handler.get_query_mut(&open_query_id) {
                 value
             } else {
-                // Si es `None`, retorna `Ok(())`.
                 return Ok(());
             };
-
-            // if let Some(table) = open_query.get_table() {
-            //     table_name = table.get_name()
-            // } else {
-            //     table_name = "".to_string();
-            // }
 
             table = open_query.get_table();
             // Copiar los valores necesarios para evitar el uso de `open_query` posteriormente

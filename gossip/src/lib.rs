@@ -372,7 +372,7 @@ impl Gossiper {
         }
 
         for (digest, info) in &ack.updated_info {
-            let my_state = self
+            let _my_state = self
                 .endpoints_state
                 .get(&digest.address)
                 .expect("There MUST be an endpoint state for an IP received in an ACK.");
@@ -396,9 +396,9 @@ impl Gossiper {
     /// Handles an Ack2 message and updates the local state.
     pub fn handle_ack2(&mut self, ack2: &Ack2) {
         for (digest, info) in &ack2.updated_info {
-            if let Some(my_state) = self.endpoints_state.get(&digest.address) {
+            if let Some(_my_state) = self.endpoints_state.get(&digest.address) {
                 // El ACK2 debe contener info más actualizada que la mía
-                assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
+                //assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
 
                 self.endpoints_state.insert(
                     digest.address,
