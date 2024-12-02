@@ -62,7 +62,7 @@ impl Flight {
         ui.put(rect, image);
 
         if response.clicked() {
-            selection_state.toggle_flight_selection(&self);
+            selection_state.toggle_flight_selection(self);
         }
     }
 }

@@ -66,7 +66,7 @@ impl Airport {
         ui.put(rect, image);
 
         if response.clicked() {
-            selection_state.toggle_airport_selection(&self);
+            selection_state.toggle_airport_selection(self);
         }
     }
 }

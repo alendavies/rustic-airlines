@@ -126,6 +126,12 @@ impl Provider for MockProvider {
 
 pub struct Db;
 
+impl Default for Db {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Db {
     pub fn new() -> Self {
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
@@ -141,61 +147,49 @@ impl Provider for Db {
     fn get_airports_by_country(country: &str) -> std::result::Result<Vec<Airport>, DBError> {
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
 
-        let query = format!("SELECT * FROM sky.airports WHERE country = 'ARG'");
+        let query = "SELECT * FROM sky.airports WHERE country = 'ARG'".to_string();
 
         let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
 
         let mut airports: Vec<Airport> = Vec::new();
-        match result {
-            QueryResult::Result(result_::Result::Rows(res)) => {
-                for row in res.rows_content {
-                    let mut airport = Airport {
-                        name: String::new(),
-                        iata: String::new(),
-                        position: Position::from_lat_lon(0.0, 0.0),
-                        country: String::from(country),
-                    };
+        if let QueryResult::Result(result_::Result::Rows(res)) = result {
+            for row in res.rows_content {
+                let mut airport = Airport {
+                    name: String::new(),
+                    iata: String::new(),
+                    position: Position::from_lat_lon(0.0, 0.0),
+                    country: String::from(country),
+                };
 
-                    if let Some(iata) = row.get("iata") {
-                        match iata {
-                            rows::ColumnValue::Ascii(iata) => {
-                                airport.iata = iata.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(iata) = row.get("iata") {
+                    if let rows::ColumnValue::Ascii(iata) = iata {
+                        airport.iata = iata.to_string();
                     }
-
-                    if let Some(name) = row.get("name") {
-                        match name {
-                            rows::ColumnValue::Ascii(name) => {
-                                airport.name = name.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let (Some(lat), Some(lon)) = (row.get("lat"), row.get("lon")) {
-                        match (lat, lon) {
-                            (
-                                rows::ColumnValue::Double(latitud),
-                                rows::ColumnValue::Double(longitud),
-                            ) => {
-                                airport.position = Position::from_lat_lon(*latitud, *longitud);
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    airports.push(airport);
+                } else {
+                    return Err(DBError);
                 }
+
+                if let Some(name) = row.get("name") {
+                    if let rows::ColumnValue::Ascii(name) = name {
+                        airport.name = name.to_string();
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                if let (Some(lat), Some(lon)) = (row.get("lat"), row.get("lon")) {
+                    if let (
+                            rows::ColumnValue::Double(latitud),
+                            rows::ColumnValue::Double(longitud),
+                        ) = (lat, lon) {
+                        airport.position = Position::from_lat_lon(*latitud, *longitud);
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                airports.push(airport);
             }
-            _ => {}
         }
 
         Ok(airports)
@@ -218,91 +212,70 @@ impl Provider for Db {
 
         let mut flights: Vec<Flight> = Vec::new();
 
-        match result {
-            QueryResult::Result(result_::Result::Rows(res)) => {
-                for row in res.rows_content {
-                    let mut flight = Flight {
-                        number: String::new(),
-                        status: String::new(),
-                        position: Position::from_lat_lon(0.0, 0.0),
-                        heading: 0.0,
-                        departure_time: 0,
-                        arrival_time: 0,
-                        airport: String::new(),
-                        direction: String::new(),
-                        info: None,
-                    };
+        if let QueryResult::Result(result_::Result::Rows(res)) = result {
+            for row in res.rows_content {
+                let mut flight = Flight {
+                    number: String::new(),
+                    status: String::new(),
+                    position: Position::from_lat_lon(0.0, 0.0),
+                    heading: 0.0,
+                    departure_time: 0,
+                    arrival_time: 0,
+                    airport: String::new(),
+                    direction: String::new(),
+                    info: None,
+                };
 
-                    if let Some(number) = row.get("number") {
-                        match number {
-                            rows::ColumnValue::Ascii(number) => {
-                                flight.number = number.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(number) = row.get("number") {
+                    if let rows::ColumnValue::Ascii(number) = number {
+                        flight.number = number.to_string();
                     }
-
-                    if let Some(status) = row.get("status") {
-                        match status {
-                            rows::ColumnValue::Ascii(status) => {
-                                flight.status = status.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(departure_time) = row.get("departure_time") {
-                        match departure_time {
-                            rows::ColumnValue::Timestamp(departure_time) => {
-                                flight.departure_time = *departure_time;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(arrival_time) = row.get("arrival_time") {
-                        match arrival_time {
-                            rows::ColumnValue::Timestamp(arrival_time) => {
-                                flight.arrival_time = *arrival_time;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(airport) = row.get("airport") {
-                        match airport {
-                            rows::ColumnValue::Ascii(airport) => {
-                                flight.airport = airport.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(direction) = row.get("direction") {
-                        match direction {
-                            rows::ColumnValue::Ascii(direction) => {
-                                flight.direction = direction.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    flights.push(flight);
+                } else {
+                    return Err(DBError);
                 }
+
+                if let Some(status) = row.get("status") {
+                    if let rows::ColumnValue::Ascii(status) = status {
+                        flight.status = status.to_string();
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                if let Some(departure_time) = row.get("departure_time") {
+                    if let rows::ColumnValue::Timestamp(departure_time) = departure_time {
+                        flight.departure_time = *departure_time;
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                if let Some(arrival_time) = row.get("arrival_time") {
+                    if let rows::ColumnValue::Timestamp(arrival_time) = arrival_time {
+                        flight.arrival_time = *arrival_time;
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                if let Some(airport) = row.get("airport") {
+                    if let rows::ColumnValue::Ascii(airport) = airport {
+                        flight.airport = airport.to_string();
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                if let Some(direction) = row.get("direction") {
+                    if let rows::ColumnValue::Ascii(direction) = direction {
+                        flight.direction = direction.to_string();
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                flights.push(flight);
             }
-            _ => {}
         }
 
         Ok(flights)
@@ -328,91 +301,70 @@ impl Provider for Db {
 
         let mut flights: Vec<Flight> = Vec::new();
 
-        match result {
-            QueryResult::Result(result_::Result::Rows(res)) => {
-                for row in res.rows_content {
-                    let mut flight = Flight {
-                        number: String::new(),
-                        status: String::new(),
-                        position: Position::from_lat_lon(0.0, 0.0),
-                        heading: 0.0,
-                        departure_time: 0,
-                        arrival_time: 0,
-                        airport: String::new(),
-                        direction: String::new(),
-                        info: None,
-                    };
+        if let QueryResult::Result(result_::Result::Rows(res)) = result {
+            for row in res.rows_content {
+                let mut flight = Flight {
+                    number: String::new(),
+                    status: String::new(),
+                    position: Position::from_lat_lon(0.0, 0.0),
+                    heading: 0.0,
+                    departure_time: 0,
+                    arrival_time: 0,
+                    airport: String::new(),
+                    direction: String::new(),
+                    info: None,
+                };
 
-                    if let Some(number) = row.get("number") {
-                        match number {
-                            rows::ColumnValue::Ascii(number) => {
-                                flight.number = number.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(number) = row.get("number") {
+                    if let rows::ColumnValue::Ascii(number) = number {
+                        flight.number = number.to_string();
                     }
-
-                    if let Some(status) = row.get("status") {
-                        match status {
-                            rows::ColumnValue::Ascii(status) => {
-                                flight.status = status.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(departure_time) = row.get("departure_time") {
-                        match departure_time {
-                            rows::ColumnValue::Timestamp(departure_time) => {
-                                flight.departure_time = *departure_time;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(arrival_time) = row.get("arrival_time") {
-                        match arrival_time {
-                            rows::ColumnValue::Timestamp(arrival_time) => {
-                                flight.arrival_time = *arrival_time;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(airport) = row.get("airport") {
-                        match airport {
-                            rows::ColumnValue::Ascii(airport) => {
-                                flight.airport = airport.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    if let Some(direction) = row.get("direction") {
-                        match direction {
-                            rows::ColumnValue::Ascii(direction) => {
-                                flight.direction = direction.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
-                    }
-
-                    flights.push(flight);
+                } else {
+                    return Err(DBError);
                 }
+
+                if let Some(status) = row.get("status") {
+                    if let rows::ColumnValue::Ascii(status) = status {
+                        flight.status = status.to_string();
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                if let Some(departure_time) = row.get("departure_time") {
+                    if let rows::ColumnValue::Timestamp(departure_time) = departure_time {
+                        flight.departure_time = *departure_time;
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                if let Some(arrival_time) = row.get("arrival_time") {
+                    if let rows::ColumnValue::Timestamp(arrival_time) = arrival_time {
+                        flight.arrival_time = *arrival_time;
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                if let Some(airport) = row.get("airport") {
+                    if let rows::ColumnValue::Ascii(airport) = airport {
+                        flight.airport = airport.to_string();
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                if let Some(direction) = row.get("direction") {
+                    if let rows::ColumnValue::Ascii(direction) = direction {
+                        flight.direction = direction.to_string();
+                    }
+                } else {
+                    return Err(DBError);
+                }
+
+                flights.push(flight);
             }
-            _ => {}
         }
 
         Ok(flights)
@@ -438,77 +390,56 @@ impl Provider for Db {
             destination: Default::default(),
         };
 
-        match result {
-            QueryResult::Result(result_::Result::Rows(res)) => {
-                for row in res.rows_content {
-                    if let Some(number) = row.get("number") {
-                        match number {
-                            rows::ColumnValue::Ascii(number) => {
-                                flight_info.number = number.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+        if let QueryResult::Result(result_::Result::Rows(res)) = result {
+            for row in res.rows_content {
+                if let Some(number) = row.get("number") {
+                    if let rows::ColumnValue::Ascii(number) = number {
+                        flight_info.number = number.to_string();
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(fuel) = row.get("fuel") {
-                        match fuel {
-                            rows::ColumnValue::Double(fuel) => {
-                                flight_info.fuel = *fuel;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(fuel) = row.get("fuel") {
+                    if let rows::ColumnValue::Double(fuel) = fuel {
+                        flight_info.fuel = *fuel;
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(height) = row.get("height") {
-                        match height {
-                            rows::ColumnValue::Int(height) => {
-                                flight_info.height = *height;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(height) = row.get("height") {
+                    if let rows::ColumnValue::Int(height) = height {
+                        flight_info.height = *height;
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(speed) = row.get("speed") {
-                        match speed {
-                            rows::ColumnValue::Int(speed) => {
-                                flight_info.speed = *speed;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(speed) = row.get("speed") {
+                    if let rows::ColumnValue::Int(speed) = speed {
+                        flight_info.speed = *speed;
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(origin) = row.get("origin") {
-                        match origin {
-                            rows::ColumnValue::Ascii(origin) => {
-                                flight_info.origin = origin.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(origin) = row.get("origin") {
+                    if let rows::ColumnValue::Ascii(origin) = origin {
+                        flight_info.origin = origin.to_string();
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(destination) = row.get("destination") {
-                        match destination {
-                            rows::ColumnValue::Ascii(destination) => {
-                                flight_info.destination = destination.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(destination) = row.get("destination") {
+                    if let rows::ColumnValue::Ascii(destination) = destination {
+                        flight_info.destination = destination.to_string();
                     }
+                } else {
+                    return Err(DBError);
                 }
             }
-            _ => {}
         }
 
         Ok(flight_info)
@@ -535,120 +466,93 @@ impl Provider for Db {
 
         let mut flights: Vec<Flight> = Vec::new();
 
-        match result {
-            QueryResult::Result(result_::Result::Rows(res)) => {
-                for row in res.rows_content {
-                    let mut flight = Flight {
-                        number: String::new(),
-                        status: String::new(),
-                        position: Position::from_lat_lon(0.0, 0.0),
-                        heading: 0.0,
-                        departure_time: 0,
-                        arrival_time: 0,
-                        airport: String::new(),
-                        direction: String::new(),
-                        info: None,
-                    };
+        if let QueryResult::Result(result_::Result::Rows(res)) = result {
+            for row in res.rows_content {
+                let mut flight = Flight {
+                    number: String::new(),
+                    status: String::new(),
+                    position: Position::from_lat_lon(0.0, 0.0),
+                    heading: 0.0,
+                    departure_time: 0,
+                    arrival_time: 0,
+                    airport: String::new(),
+                    direction: String::new(),
+                    info: None,
+                };
 
-                    if let Some(number) = row.get("number") {
-                        match number {
-                            rows::ColumnValue::Ascii(number) => {
-                                flight.number = number.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(number) = row.get("number") {
+                    if let rows::ColumnValue::Ascii(number) = number {
+                        flight.number = number.to_string();
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(status) = row.get("status") {
-                        match status {
-                            rows::ColumnValue::Ascii(status) => {
-                                flight.status = status.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(status) = row.get("status") {
+                    if let rows::ColumnValue::Ascii(status) = status {
+                        flight.status = status.to_string();
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(departure_time) = row.get("departure_time") {
-                        match departure_time {
-                            rows::ColumnValue::Timestamp(departure_time) => {
-                                flight.departure_time = *departure_time;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(departure_time) = row.get("departure_time") {
+                    if let rows::ColumnValue::Timestamp(departure_time) = departure_time {
+                        flight.departure_time = *departure_time;
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(arrival_time) = row.get("arrival_time") {
-                        match arrival_time {
-                            rows::ColumnValue::Timestamp(arrival_time) => {
-                                flight.arrival_time = *arrival_time;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(arrival_time) = row.get("arrival_time") {
+                    if let rows::ColumnValue::Timestamp(arrival_time) = arrival_time {
+                        flight.arrival_time = *arrival_time;
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(airport) = row.get("airport") {
-                        match airport {
-                            rows::ColumnValue::Ascii(airport) => {
-                                flight.airport = airport.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(airport) = row.get("airport") {
+                    if let rows::ColumnValue::Ascii(airport) = airport {
+                        flight.airport = airport.to_string();
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(direction) = row.get("direction") {
-                        match direction {
-                            rows::ColumnValue::Ascii(direction) => {
-                                flight.direction = direction.to_string();
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(direction) = row.get("direction") {
+                    if let rows::ColumnValue::Ascii(direction) = direction {
+                        flight.direction = direction.to_string();
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let (Some(lat), Some(lon)) = (row.get("lat"), row.get("lon")) {
-                        match (lat, lon) {
-                            (
-                                rows::ColumnValue::Double(latitud),
-                                rows::ColumnValue::Double(longitud),
-                            ) => {
-                                flight.position = Position::from_lat_lon(*latitud, *longitud);
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let (Some(lat), Some(lon)) = (row.get("lat"), row.get("lon")) {
+                    if let (
+                            rows::ColumnValue::Double(latitud),
+                            rows::ColumnValue::Double(longitud),
+                        ) = (lat, lon) {
+                        flight.position = Position::from_lat_lon(*latitud, *longitud);
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if let Some(angle) = row.get("angle") {
-                        match angle {
-                            rows::ColumnValue::Float(angle) => {
-                                flight.heading = *angle;
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return Err(DBError);
+                if let Some(angle) = row.get("angle") {
+                    if let rows::ColumnValue::Float(angle) = angle {
+                        flight.heading = *angle;
                     }
+                } else {
+                    return Err(DBError);
+                }
 
-                    if flight.status == FlightStatus::OnTime.as_str()
-                        || flight.status == FlightStatus::Delayed.as_str()
-                    {
-                        flights.push(flight);
-                    }
+                if flight.status == FlightStatus::OnTime.as_str()
+                    || flight.status == FlightStatus::Delayed.as_str()
+                {
+                    flights.push(flight);
                 }
             }
-            _ => {}
         }
 
         Ok(flights)
@@ -667,13 +571,10 @@ impl Provider for Db {
             .execute(query_check.as_str(), "all")
             .map_err(|_| DBError)?;
 
-        match result_check {
-            QueryResult::Result(result_::Result::Rows(res)) => {
-                if !res.rows_content.is_empty() {
-                    return Err(DBError);
-                }
+        if let QueryResult::Result(result_::Result::Rows(res)) = result_check {
+            if !res.rows_content.is_empty() {
+                return Err(DBError);
             }
-            _ => {}
         }
 
         let flight_info = match flight.info {
