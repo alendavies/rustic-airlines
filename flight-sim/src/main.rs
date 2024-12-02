@@ -105,7 +105,7 @@ fn start_flight_check_thread(sim_state: Arc<RwLock<SimState>>) {
         match sim_state {
             Ok(mut sim_state) => {
                 if let Err(_) = sim_state.check_for_new_flights() {
-                    eprintln!("");
+                    ()
                 }
             }
             Err(_) => eprintln!("Error acquiring write lock for SimState."),

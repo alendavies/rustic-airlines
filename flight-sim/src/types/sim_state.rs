@@ -22,7 +22,7 @@ pub struct SimState {
     pub current_time: Arc<Mutex<NaiveDateTime>>,
     time_rate: Arc<Mutex<Duration>>,
     pool: ThreadPool,
-    client: Arc<Mutex<Client>>,
+    client: Arc<RwLock<Client>>,
 }
 
 impl SimState {
@@ -35,7 +35,7 @@ impl SimState {
             current_time: Arc::new(Mutex::new(Utc::now().naive_utc())),
             time_rate: Arc::new(Mutex::new(Duration::from_secs(30))),
             pool: ThreadPool::new(4),
-            client: Arc::new(Mutex::new(client)),
+            client: Arc::new(RwLock::new(client)),
         };
 
         state.start_time_update();
@@ -53,7 +53,7 @@ impl SimState {
         }
         let flight_arc = Arc::new(RwLock::new(flight));
         if !already_in_db {
-            let mut client = self.client.lock().map_err(|_| SimError::ClientError)?;
+            let mut client = self.client.write().map_err(|_| SimError::ClientError)?;
             client
                 .insert_flight(&flight_arc.read().unwrap())
                 .map_err(|_| SimError::new("Client Error: Error inserting flight into DB"))?;
@@ -68,7 +68,7 @@ impl SimState {
 
     /// Adds an airport to the simulation and inserts it into the database.
     pub fn add_airport(&mut self, airport: Airport) -> Result<(), SimError> {
-        let mut client = self.client.lock().map_err(|_| SimError::ClientError)?;
+        let mut client = self.client.write().map_err(|_| SimError::ClientError)?;
         client
             .insert_airport(&airport)
             .map_err(|_| SimError::new("Client Error: Error inserting flight into DB"))?;
@@ -170,7 +170,7 @@ impl SimState {
                 .read()
                 .map_err(|_| SimError::Other("LockError".to_string()))?;
 
-            let mut client = self.client.try_lock().map_err(|_| SimError::ClientError)?;
+            let mut client = self.client.try_write().map_err(|_| SimError::ClientError)?;
             client
                 .get_all_new_flights(current_time, &flight_states, &self.airports)
                 .map_err(|_| SimError::ClientError)?
@@ -327,7 +327,7 @@ impl SimState {
                             }
                         }
 
-                        if let Ok(mut db_client) = client.try_lock() {
+                        if let Ok(mut db_client) = client.try_write() {
                             if let Err(e) = db_client.update_flight(&flight_data) {
                                 eprintln!(
                                     "Failed to update flight {}: {:?}",
@@ -347,7 +347,7 @@ impl SimState {
 }
 
 fn update_flight_state(
-    client: &Arc<Mutex<Client>>,
+    client: &Arc<RwLock<Client>>,
     flight_states: &Arc<RwLock<HashMap<String, FlightStatus>>>,
     flight: &Flight,
     new_status: FlightStatus,
@@ -357,7 +357,7 @@ fn update_flight_state(
         .map_err(|_| SimError::Other("LockError".to_string()))?;
     states.insert(flight.flight_number.to_string(), new_status);
 
-    if let Ok(mut db_client) = client.try_lock() {
+    if let Ok(mut db_client) = client.try_write() {
         if let Err(e) = db_client.update_flight_status(flight) {
             eprintln!(
                 "Failed to update flight state in database {}: {:?}",

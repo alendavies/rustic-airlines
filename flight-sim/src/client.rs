@@ -263,6 +263,7 @@ impl Client {
             );
             return Ok(());
         }
+
         Ok(())
     }
 

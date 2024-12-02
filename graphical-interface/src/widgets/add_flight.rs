@@ -195,7 +195,7 @@ impl WidgetAddFlight {
                             match P::add_flight(self.to_flight(airports)) {
                                 Ok(_) => {
                                     self.error_message = None;
-                                    should_close = true; 
+                                    should_close = true;
                                 }
                                 Err(_) => {
                                     self.error_message = Some(
@@ -217,7 +217,7 @@ impl WidgetAddFlight {
         let pos_flight = airports
             .iter()
             .find(|airport| airport.iata == self.origin)
-            .map(|airport| airport.position.clone())
+            .map(|airport| airport.position)
             .unwrap_or_else(|| Position::from_lat_lon(0.0, 0.0));
 
         let info = FlightInfo {
@@ -230,22 +230,14 @@ impl WidgetAddFlight {
         };
 
         let departure_time =
-            match self
+            self
                 .departure_date
-                .and_hms_opt(self.departure_hour, self.departure_minute, 0)
-            {
-                Some(datetime) => datetime,
-                None => Default::default(),
-            };
+                .and_hms_opt(self.departure_hour, self.departure_minute, 0).unwrap_or_default();
 
         let arrival_time =
-            match self
+            self
                 .arrival_date
-                .and_hms_opt(self.arrival_hour, self.arrival_minute, 0)
-            {
-                Some(datetime) => datetime,
-                None => Default::default(),
-            };
+                .and_hms_opt(self.arrival_hour, self.arrival_minute, 0).unwrap_or_default();
 
         Flight {
             number: self.flight_number.clone(),

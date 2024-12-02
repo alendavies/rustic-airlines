@@ -12,5 +12,5 @@ pub struct Flight {
     pub arrival_time: i64,
     pub airport: String,
     pub direction: String,
-    pub info: Option<FlightInfo>
+    pub info: Option<FlightInfo>,
 }
