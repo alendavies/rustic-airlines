@@ -1,6 +1,9 @@
-use egui_extras::{Column, TableBuilder};
-use crate::{db::{Db, Provider}, types::{Flight, FlightStatus}};
 use super::View;
+use crate::{
+    db::{Db, Provider},
+    types::{Flight, FlightStatus},
+};
+use egui_extras::{Column, TableBuilder};
 
 pub enum FlightType {
     Arrival,
@@ -30,30 +33,27 @@ impl WidgetFlightsTable {
 
     fn fetch_flights(&mut self) {
         self.flights = Some(match self.flight_type {
-            FlightType::Arrival => Db::get_arrival_flights(&self.airport, self.selected_date).unwrap(),
-            FlightType::Departure => Db::get_departure_flights(&self.airport, self.selected_date).unwrap(),
+            FlightType::Arrival => {
+                Db::get_arrival_flights(&self.airport, self.selected_date).unwrap()
+            }
+            FlightType::Departure => {
+                Db::get_departure_flights(&self.airport, self.selected_date).unwrap()
+            }
         });
     }
 
     fn allowed_transitions(current_status: &FlightStatus) -> Vec<FlightStatus> {
         match current_status {
-            FlightStatus::Scheduled => vec![
-                FlightStatus::Finished,
-                FlightStatus::Canceled,
-            ],
+            FlightStatus::Scheduled => vec![FlightStatus::Finished, FlightStatus::Canceled],
             FlightStatus::OnTime => vec![
                 FlightStatus::Delayed,
                 FlightStatus::Finished,
                 FlightStatus::Canceled,
             ],
-            FlightStatus::Delayed => vec![
-                FlightStatus::Finished,
-                FlightStatus::Canceled,
-            ],
-            FlightStatus::Finished | FlightStatus::Canceled => vec![
-                FlightStatus::Finished,
-                FlightStatus::Canceled,
-            ],
+            FlightStatus::Delayed => vec![FlightStatus::Finished, FlightStatus::Canceled],
+            FlightStatus::Finished | FlightStatus::Canceled => {
+                vec![FlightStatus::Finished, FlightStatus::Canceled]
+            }
         }
     }
 }
@@ -72,7 +72,8 @@ impl View for WidgetFlightsTable {
                         .strong()
                         .color(egui::Color32::WHITE),
                 );
-                let date_response = ui.add(egui_extras::DatePickerButton::new(&mut self.selected_date));
+                let date_response =
+                    ui.add(egui_extras::DatePickerButton::new(&mut self.selected_date));
 
                 if date_response.changed() {
                     self.fetch_flights();
@@ -133,8 +134,12 @@ impl View for WidgetFlightsTable {
 
                                     row.col(|ui| {
                                         if self.edit_mode {
-                                            let current_state = FlightStatus::from_str(&flight.status).unwrap();
-                                            let available_states = WidgetFlightsTable::allowed_transitions(&current_state);
+                                            let current_state =
+                                                FlightStatus::from_str(&flight.status).unwrap();
+                                            let available_states =
+                                                WidgetFlightsTable::allowed_transitions(
+                                                    &current_state,
+                                                );
 
                                             let edited_state = self
                                                 .edited_flight_states
@@ -146,7 +151,10 @@ impl View for WidgetFlightsTable {
                                                 .show_ui(ui, |ui| {
                                                     for state in available_states {
                                                         if ui
-                                                            .selectable_label(*edited_state == state, state.as_str())
+                                                            .selectable_label(
+                                                                *edited_state == state,
+                                                                state.as_str(),
+                                                            )
                                                             .clicked()
                                                         {
                                                             *edited_state = state;
@@ -166,24 +174,33 @@ impl View for WidgetFlightsTable {
                                     if self.edit_mode {
                                         row.col(|ui| {
                                             if ui.button("Save").clicked() {
-                                                if let Some(new_status) = self.edited_flight_states.get(&flight.number) {
+                                                if let Some(new_status) =
+                                                    self.edited_flight_states.get(&flight.number)
+                                                {
                                                     let direction = match self.flight_type {
                                                         FlightType::Arrival => "ARRIVAL",
                                                         FlightType::Departure => "DEPARTURE",
                                                     };
 
                                                     let mut updated_flight = flight.clone();
-                                                    updated_flight.status = new_status.as_str().to_string();
-                                                    match Db::update_state(updated_flight, direction) {
+                                                    updated_flight.status =
+                                                        new_status.as_str().to_string();
+                                                    match Db::update_state(
+                                                        updated_flight,
+                                                        direction,
+                                                    ) {
                                                         Ok(_) => {
                                                             // Refresh flights and clear the edited state
                                                             self.fetch_flights();
-                                                            self.edited_flight_states.remove(&flight.number);
+                                                            self.edited_flight_states
+                                                                .remove(&flight.number);
                                                         }
                                                         Err(_) => {
                                                             ui.label(
-                                                                egui::RichText::new("Failed to update.")
-                                                                    .color(egui::Color32::RED),
+                                                                egui::RichText::new(
+                                                                    "Failed to update.",
+                                                                )
+                                                                .color(egui::Color32::RED),
                                                             );
                                                         }
                                                     }
@@ -201,5 +218,3 @@ impl View for WidgetFlightsTable {
         });
     }
 }
-
-

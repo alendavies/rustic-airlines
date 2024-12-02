@@ -7,11 +7,11 @@ pub struct MapBounds {
     pub max_lon: f64,
 }
 
-impl MapBounds{
+impl MapBounds {
     pub fn is_within_bounds(&self, pos: &Position) -> bool {
-        pos.lat() >= self.min_lat && 
-        pos.lat() <= self.max_lat && 
-        pos.lon() >= self.min_lon && 
-        pos.lon() <= self.max_lon
+        pos.lat() >= self.min_lat
+            && pos.lat() <= self.max_lat
+            && pos.lon() >= self.min_lon
+            && pos.lon() <= self.max_lon
     }
 }

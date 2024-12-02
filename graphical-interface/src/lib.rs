@@ -4,9 +4,9 @@ pub mod db;
 mod map;
 mod plugins;
 mod state;
+mod types;
 mod widgets;
 mod windows;
-mod types;
 use map::MyApp;
 
 pub fn run() -> Result<(), eframe::Error> {

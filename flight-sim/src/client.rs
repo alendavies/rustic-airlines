@@ -138,7 +138,6 @@ impl Client {
             flight.origin.iata_code,
             flight.destination.iata_code
         );
-        
 
         if let Err(e) = self
             .cassandra_client

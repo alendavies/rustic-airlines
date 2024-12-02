@@ -28,10 +28,9 @@ impl WidgetAirport {
 }
 
 impl WidgetAirport {
-    
     pub fn show(&mut self, ctx: &egui::Context) -> bool {
         let mut open = true; // Variable para manejar si la ventana sigue abierta
-    
+
         egui::Window::new(format!("Aeropuerto {}", self.selected_airport.name))
             .resizable(false)
             .collapsible(true)
@@ -39,7 +38,7 @@ impl WidgetAirport {
             .fixed_pos([20.0, 20.0])
             .show(ctx, |ui| {
                 ui.add_space(10.0); // Espacio superior
-    
+
                 // Información del aeropuerto
                 ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE); // Forzar color de texto blanco
                 ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(30); // Fondo oscuro
@@ -53,9 +52,9 @@ impl WidgetAirport {
                             .size(16.0),
                     );
                 });
-    
+
                 ui.add_space(15.0); // Separador entre la información y el selector
-    
+
                 // Selector y contenido de vuelos
                 ui.horizontal(|ui| {
                     ui.label(
@@ -73,9 +72,9 @@ impl WidgetAirport {
                             ui.selectable_value(&mut self.open_tab, Tabs::Arrivals, "Llegadas");
                         });
                 });
-    
+
                 ui.add_space(10.0); // Espacio entre el selector y la tabla
-    
+
                 // Mostrar tabla centrada
                 match self.open_tab {
                     Tabs::Departures => ui.vertical_centered(|ui| {
@@ -86,10 +85,10 @@ impl WidgetAirport {
                     }),
                 }
             });
-    
+
         open // Retorna si la ventana sigue abierta o no
     }
-    
+
     // fn ui(self, ui: &mut egui::Ui) -> egui::Response {
     //     let response = ui.allocate_response(egui::vec2(0., 0.), egui::Sense::hover());
 
@@ -271,5 +270,3 @@ impl View for WidgetArrivals {
         });
     }
 } */
-
-

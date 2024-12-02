@@ -195,7 +195,7 @@ impl WidgetAddFlight {
                             match P::add_flight(self.to_flight(airports)) {
                                 Ok(_) => {
                                     self.error_message = None;
-                                    should_close = true; 
+                                    should_close = true;
                                 }
                                 Err(_) => {
                                     self.error_message = Some(

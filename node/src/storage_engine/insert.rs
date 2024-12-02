@@ -282,7 +282,7 @@ impl StorageEngine {
         columns: &[Column],
     ) -> Result<std::cmp::Ordering, StorageEngineError> {
         if clustering_indices.len() == 0 {
-            return Ok(std::cmp::Ordering::Less)
+            return Ok(std::cmp::Ordering::Less);
         }
         for &(idx, ref order) in clustering_indices {
             let row_val = row.get(idx).unwrap_or(&"");
