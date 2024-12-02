@@ -59,7 +59,7 @@ impl Flight {
     
         let total_distance = haversine_distance(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
         
-        Ok(Flight {
+        let mut flight = Flight {
             flight_number: flight_number.to_string(),
             status: FlightStatus::Scheduled,
             departure_time,
@@ -74,26 +74,25 @@ impl Flight {
             total_distance,
             distance_traveled: 0.0,
             average_speed,
-        })
+        };
+
+        flight.angle = flight.calculate_bearing() as f32;
+
+        Ok(flight)
     }
 
     fn calculate_bearing(&self) -> f64 {
-        let lat1 = self.latitude.to_radians();
-        let lon1 = self.longitude.to_radians();
-        let lat2 = self.destination.latitude.to_radians();
-        let lon2 = self.destination.longitude.to_radians();
+        let lat1 = self.origin.latitude;
+        let lon1 = self.origin.longitude;
+        let lat2 = self.destination.latitude;
+        let lon2 = self.destination.longitude;
 
         let delta_lon = lon2 - lon1;
+        let delta_lat = lat2 - lat1;
 
-        // Using the formula to calculate bearing
-        let x = delta_lon.sin() * lat2.cos();
-        let y = lat1.cos() * lat2.sin() - lat1.sin() * lat2.cos() * delta_lon.cos();
+        let bearing = delta_lat.atan2(delta_lon);
 
-        let bearing = y.atan2(x);
-
-        // Convert to degrees and normalize the bearing to be in the range [0, 360)
-        let bearing_degrees = bearing.to_degrees();
-        (bearing_degrees + 360.0) % 360.0
+        bearing.to_degrees() + 90.0
     }
 
     // Calculate current latitude and longitude according to distance traveled (using radians)
@@ -110,16 +109,12 @@ impl Flight {
         self.latitude += lat_increment.to_degrees();
         self.longitude += lon_increment.to_degrees();
 
-        // Update the angle (bearing) after updating the position
-        self.angle = self.calculate_bearing() as f32;
     }
-
-
 
     /// Update the position of the flight and its fuel level based on the current time
     pub fn update_position(&mut self, current_time: NaiveDateTime) {
         if self.status == FlightStatus::Scheduled && current_time >= self.departure_time {
-            if self.altitude == 0 {self.altitude = 10000};
+            if self.altitude == 0 {self.altitude = 10000}; // Default plane altitude in case it wasn't specified.
             self.status = FlightStatus::OnTime;
         }
         
@@ -130,13 +125,14 @@ impl Flight {
 
             // Calculate traveled distance and update position
             let distance_traveled = self.average_speed as f64 * elapsed_hours;
-            self.update_position_with_direction(distance_traveled);
             self.distance_traveled = distance_traveled.min(self.total_distance);
+            self.update_position_with_direction(distance_traveled);
             self.fuel_level = (100.0 - elapsed_hours * 5.0).max(0.0); // Burn fuel over time
 
             // Update altitude when approaching the destination
             self.altitude = if self.distance_traveled >= self.total_distance * 0.95 {
-                self.altitude - 500
+                let altitude = self.altitude - 500;
+                if altitude < 0 {0} else {altitude}
             } else {
                 self.altitude
             };

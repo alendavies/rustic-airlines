@@ -20,8 +20,7 @@ pub struct MyApp<P: Provider> {
     flight_widget: Option<WidgetFlight>,
     add_flight_widget: Option<WidgetAddFlight>,
     db: P,
-    last_update: Instant,
-    update_interval: Duration, 
+    last_update: f64,
     country_tracker: CountryTracker,
 }
 
@@ -47,23 +46,11 @@ impl<P: Provider> MyApp<P> {
             flight_widget: None,
             add_flight_widget: None,
             db,
-            last_update: Instant::now(),
-            update_interval: Duration::from_secs(5), // Actualiza cada 5 segundos
+            last_update: 0.0,
             country_tracker: CountryTracker::new()
         }
     }
 
-    fn maybe_update_view_state(&mut self) {
-        if self.last_update.elapsed() >= self.update_interval {
-            self.last_update = Instant::now();
-            self.view_state.update_airports(&self.db);
-            if let Some(selected_airport) = &self.selection_state.borrow().airport {
-                if let Ok(new_flights) = P::get_flights_by_airport(&selected_airport.iata) {
-                    self.view_state.flights = new_flights;
-                }
-            }
-        }
-    }
 }
 
 impl<P: Provider> eframe::App for MyApp<P> {
@@ -72,8 +59,18 @@ impl<P: Provider> eframe::App for MyApp<P> {
         let map_bounds = calculate_map_bounds(&self.map_memory);
         self.country_tracker.update_visible_countries(&map_bounds);
 
+        if ctx.input(|i| i.time - self.last_update) >= 1.0 {
+            self.view_state.update_airports(&self.db);
+            
+            if let Some(selected_airport) = &self.selection_state.borrow().airport {
+                self.view_state.update_flights(&self.db, selected_airport);
+            }
 
-        self.maybe_update_view_state(); // Periodic update for flights based on the selected airport.
+            println!("update");
+
+            // Update last update time
+            self.last_update = ctx.input(|i| i.time);
+        }
 
         let rimless = egui::Frame {
             fill: ctx.style().visuals.panel_fill,

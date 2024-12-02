@@ -106,7 +106,7 @@ impl WidgetFlight {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Fuel Level:").size(16.0).strong());
                         ui.label(
-                            RichText::new(format!("{:.2}%", self.flight_data.fuel * 100.0))
+                            RichText::new(format!("{:.2}%", self.flight_data.fuel))
                                 .size(16.0)
                                 .color(Color32::from_rgb(255, 100, 100)), // Red color for emphasis
                         );
