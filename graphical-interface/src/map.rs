@@ -1,11 +1,16 @@
-use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
+use std::{cell::RefCell, rc::Rc};
 
 use egui::Context;
 use egui_extras::install_image_loaders;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position, Tiles};
 
 use crate::{
-    db::Provider, plugins, state::{SelectionState, ViewState}, types::{CountryTracker, MapBounds}, widgets::{WidgetAddFlight, WidgetAirport, WidgetFlight}, windows
+    db::Provider,
+    plugins,
+    state::{SelectionState, ViewState},
+    types::{CountryTracker, MapBounds},
+    widgets::{WidgetAddFlight, WidgetAirport, WidgetFlight},
+    windows,
 };
 
 const INITIAL_LAT: f64 = -34.608406;
@@ -38,30 +43,25 @@ impl<P: Provider> MyApp<P> {
             )),
             map_memory: initial_map_memory,
             selection_state: Rc::new(RefCell::new(SelectionState::new())),
-            view_state: ViewState::new(
-                vec![],
-                P::get_airports().unwrap_or_default(),
-            ),
+            view_state: ViewState::new(vec![], P::get_airports().unwrap_or_default()),
             airport_widget: None,
             flight_widget: None,
             add_flight_widget: None,
             db,
             last_update: 0.0,
-            country_tracker: CountryTracker::new()
+            country_tracker: CountryTracker::new(),
         }
     }
-
 }
 
 impl<P: Provider> eframe::App for MyApp<P> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-
         let map_bounds = calculate_map_bounds(&self.map_memory);
         self.country_tracker.update_visible_countries(&map_bounds);
 
         if ctx.input(|i| i.time - self.last_update) >= 1.0 {
             self.view_state.update_airports(&self.db);
-            
+
             if let Some(selected_airport) = &self.selection_state.borrow().airport {
                 self.view_state.update_flights(&self.db, selected_airport);
             }
@@ -85,7 +85,7 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 let airport_plugin =
                     plugins::Airports::new(&self.view_state.airports, self.selection_state.clone());
 
-                let flight_plugin = 
+                let flight_plugin =
                     plugins::Flights::new(&self.view_state.flights, self.selection_state.clone());
 
                 let map = Map::new(Some(tiles), &mut self.map_memory, my_position)
@@ -101,7 +101,7 @@ impl<P: Provider> eframe::App for MyApp<P> {
                             if !widget.show(ctx) {
                                 self.selection_state.borrow_mut().airport = None;
                                 self.airport_widget = None;
-                                self.view_state.flights.clear(); 
+                                self.view_state.flights.clear();
                             }
                         } else {
                             self.airport_widget = Some(WidgetAirport::new(airport.clone()));
@@ -140,17 +140,19 @@ impl<P: Provider> eframe::App for MyApp<P> {
                 let _button_response = egui::Area::new("add_flight_button".into())
                     .anchor(egui::Align2::RIGHT_BOTTOM, [-10.0, -10.0])
                     .show(ctx, |ui| {
-                        let button_size = [150.0, 60.0]; 
+                        let button_size = [150.0, 60.0];
 
-                        if ui.add_sized(button_size, egui::Button::new("Add Flight").rounding(10.0)).clicked() {
+                        if ui
+                            .add_sized(button_size, egui::Button::new("Add Flight").rounding(10.0))
+                            .clicked()
+                        {
                             self.add_flight_widget = Some(WidgetAddFlight::new());
                         }
                     });
 
-               
                 if let Some(widget) = &mut self.add_flight_widget {
                     if !widget.show(ctx, &self.db, &self.view_state.airports) {
-                        self.add_flight_widget = None; 
+                        self.add_flight_widget = None;
                     }
                 }
 
@@ -163,14 +165,13 @@ impl<P: Provider> eframe::App for MyApp<P> {
 }
 
 fn calculate_map_bounds(map_memory: &MapMemory) -> MapBounds {
-
     let center_pos = match map_memory.detached() {
         Some(pos) => pos,
         None => Position::from_lat_lon(INITIAL_LAT, INITIAL_LON), // Fallback to initial position
     };
 
     let zoom = map_memory.zoom();
-    
+
     // Rough calculation of visible area based on zoom
     // These multipliers are approximate and may need tuning
     let lat_span = 180.0 * (0.4 / zoom);
@@ -182,8 +183,4 @@ fn calculate_map_bounds(map_memory: &MapMemory) -> MapBounds {
         min_lon: center_pos.lon() - (lon_span / 2.0),
         max_lon: center_pos.lon() + (lon_span / 2.0),
     }
-
 }
-
-
-
