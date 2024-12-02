@@ -88,7 +88,6 @@ impl WidgetAddFlight {
                         ui.add(egui::DragValue::new(&mut self.arrival_minute).range(0..=59));
                     });
 
-                    // Flight Info
                     ui.horizontal(|ui| {
                         ui.label("Fuel level:");
                         ui.add(egui::DragValue::new(&mut self.fuel).speed(1).range(0..=100));
@@ -115,12 +114,15 @@ impl WidgetAddFlight {
                         ui.label(" km/h");
                     });
 
+                    let mut sorted_airports = airports.to_vec();
+                    sorted_airports.sort_by(|a, b| a.iata.cmp(&b.iata));
+
                     ui.horizontal(|ui| {
                         ui.label("Origin:");
                         egui::ComboBox::from_id_salt("origin_combo")
                             .selected_text(&self.origin)
                             .show_ui(ui, |ui| {
-                                for airport in airports {
+                                for airport in sorted_airports.iter() {
                                     if ui
                                         .selectable_label(
                                             self.origin == airport.iata,
@@ -139,7 +141,7 @@ impl WidgetAddFlight {
                         egui::ComboBox::from_id_salt("destination_combo")
                             .selected_text(&self.destination)
                             .show_ui(ui, |ui| {
-                                for airport in airports {
+                                for airport in sorted_airports.iter() {
                                     if ui
                                         .selectable_label(
                                             self.destination == airport.iata,
@@ -160,7 +162,6 @@ impl WidgetAddFlight {
                     if ui.button("Submit").clicked() {
                         let mut errors = vec![];
 
-                        // Validate all fields
                         if self.flight_number.is_empty() {
                             errors.push("Flight Number is required.");
                         }
@@ -194,7 +195,7 @@ impl WidgetAddFlight {
                             match P::add_flight(self.to_flight(airports)) {
                                 Ok(_) => {
                                     self.error_message = None;
-                                    should_close = true; // Close the widget on success
+                                    should_close = true; 
                                 }
                                 Err(_) => {
                                     self.error_message = Some(

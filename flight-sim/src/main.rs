@@ -104,8 +104,8 @@ fn start_flight_check_thread(sim_state: Arc<RwLock<SimState>>) {
 
         match sim_state {
             Ok(mut sim_state) => {
-                if let Err(e) = sim_state.check_for_new_flights() {
-                    eprintln!("Error checking for new flights: {}", e);
+                if let Err(_) = sim_state.check_for_new_flights() {
+                    eprintln!("");
                 }
             }
             Err(_) => eprintln!("Error acquiring write lock for SimState."),
@@ -196,7 +196,7 @@ fn prompt_input(prompt: &str) -> String {
     io::stdin()
         .read_line(&mut input)
         .expect("Failed to read input");
-    input.trim().to_string() // Remove any trailing newline or extra space
+    input.trim().to_string()
 }
 
 fn print_help() {
@@ -233,7 +233,7 @@ fn add_test_data(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> 
         (
             "COR",
             "ARG",
-            "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella",
+            "Aeropuerto Internacional Ingeniero Aeronautico Ambrosio Taravella",
             -31.321,
             -64.213,
         ),
@@ -296,7 +296,7 @@ fn add_test_data(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> 
         (
             "JUJ",
             "ARG",
-            "Aeropuerto Internacional Gobernador Horacio Guzmán",
+            "Aeropuerto Internacional Gobernador Horacio Guzman",
             -24.392,
             -65.097,
         ),
@@ -331,7 +331,7 @@ fn add_test_data(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> 
         (
             "RGL",
             "ARG",
-            "Aeropuerto Internacional Piloto Civil Norberto Fernández",
+            "Aeropuerto Internacional Piloto Civil Norberto Fernandez",
             -51.609,
             -69.312,
         ),
@@ -373,40 +373,230 @@ fn add_test_data(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> 
     let tomorrow = today + chrono::Duration::days(1);
 
     let flight_data = vec![
-        ("AR1234", "AEP", "MDZ", yesterday, yesterday + chrono::Duration::hours(2), 550),
-        ("AR5678", "MDZ", "AEP", today, today + chrono::Duration::hours(2), 550),
-        ("AR9101", "EZE", "BRC", today, today + chrono::Duration::hours(3), 600),
-        ("AR1122", "BRC", "EZE", tomorrow, tomorrow + chrono::Duration::hours(3), 600),
-        ("AR2233", "COR", "USH", yesterday, yesterday + chrono::Duration::hours(4), 700),
-        ("AR3344", "USH", "COR", today, today + chrono::Duration::hours(4), 700),
-        ("AR4455", "FTE", "REL", today, today + chrono::Duration::hours(2), 400),
-        ("AR5566", "REL", "FTE", tomorrow, tomorrow + chrono::Duration::hours(2), 400),
-        ("AR6677", "CRD", "NQN", yesterday, yesterday + chrono::Duration::hours(2), 500),
-        ("AR7788", "NQN", "CRD", today, today + chrono::Duration::hours(2), 500),
-        ("AR8899", "SLA", "JUJ", today, today + chrono::Duration::minutes(45), 300),
-        ("AR9900", "JUJ", "SLA", tomorrow, tomorrow + chrono::Duration::minutes(45), 300),
-        ("AR1011", "TUC", "CNQ", yesterday, yesterday + chrono::Duration::hours(3), 650),
-        ("AR1212", "CNQ", "TUC", today, today + chrono::Duration::hours(3), 650),
-        ("AR1313", "RES", "PSS", today, today + chrono::Duration::hours(2), 450),
-        ("AR1414", "PSS", "RES", tomorrow, tomorrow + chrono::Duration::hours(2), 450),
-        ("AR1515", "RGL", "CTC", yesterday, yesterday + chrono::Duration::hours(4), 700),
-        ("AR1616", "CTC", "RGL", today, today + chrono::Duration::hours(4), 700),
-        ("AR1717", "RIA", "AEP", today, today + chrono::Duration::hours(3), 500),
-        ("AR1818", "AEP", "RIA", tomorrow, tomorrow + chrono::Duration::hours(2), 500),
-        ("AR1920", "EZE", "ROS", today, today + chrono::Duration::hours(2), 550),
-        ("AR2021", "ROS", "EZE", tomorrow, tomorrow + chrono::Duration::hours(2), 550),
-        ("AR2122", "NQN", "AEP", yesterday, yesterday + chrono::Duration::hours(3), 450),
-        ("AR2223", "AEP", "NQN", today, today + chrono::Duration::hours(3), 450),
-        ("AR2324", "COR", "MDZ", tomorrow, tomorrow + chrono::Duration::hours(2), 500),
-        ("AR2425", "MDZ", "COR", today, today + chrono::Duration::hours(2), 500),
+        (
+            "AR1234",
+            "AEP",
+            "MDZ",
+            yesterday,
+            yesterday + chrono::Duration::hours(2),
+            550,
+        ),
+        (
+            "AR5678",
+            "MDZ",
+            "AEP",
+            today,
+            today + chrono::Duration::hours(2),
+            550,
+        ),
+        (
+            "AR9101",
+            "EZE",
+            "BRC",
+            today,
+            today + chrono::Duration::hours(3),
+            600,
+        ),
+        (
+            "AR1122",
+            "BRC",
+            "EZE",
+            tomorrow,
+            tomorrow + chrono::Duration::hours(3),
+            600,
+        ),
+        (
+            "AR2233",
+            "COR",
+            "USH",
+            yesterday,
+            yesterday + chrono::Duration::hours(4),
+            700,
+        ),
+        (
+            "AR3344",
+            "USH",
+            "COR",
+            today,
+            today + chrono::Duration::hours(4),
+            700,
+        ),
+        (
+            "AR4455",
+            "FTE",
+            "REL",
+            today,
+            today + chrono::Duration::hours(2),
+            400,
+        ),
+        (
+            "AR5566",
+            "REL",
+            "FTE",
+            tomorrow,
+            tomorrow + chrono::Duration::hours(2),
+            400,
+        ),
+        (
+            "AR6677",
+            "CRD",
+            "NQN",
+            yesterday,
+            yesterday + chrono::Duration::hours(2),
+            500,
+        ),
+        (
+            "AR7788",
+            "NQN",
+            "CRD",
+            today,
+            today + chrono::Duration::hours(2),
+            500,
+        ),
+        (
+            "AR8899",
+            "SLA",
+            "JUJ",
+            today,
+            today + chrono::Duration::minutes(45),
+            300,
+        ),
+        (
+            "AR9900",
+            "JUJ",
+            "SLA",
+            tomorrow,
+            tomorrow + chrono::Duration::minutes(45),
+            300,
+        ),
+        (
+            "AR1011",
+            "TUC",
+            "CNQ",
+            yesterday,
+            yesterday + chrono::Duration::hours(3),
+            650,
+        ),
+        (
+            "AR1212",
+            "CNQ",
+            "TUC",
+            today,
+            today + chrono::Duration::hours(3),
+            650,
+        ),
+        (
+            "AR1313",
+            "RES",
+            "PSS",
+            today,
+            today + chrono::Duration::hours(2),
+            450,
+        ),
+        (
+            "AR1414",
+            "PSS",
+            "RES",
+            tomorrow,
+            tomorrow + chrono::Duration::hours(2),
+            450,
+        ),
+        (
+            "AR1515",
+            "RGL",
+            "CTC",
+            yesterday,
+            yesterday + chrono::Duration::hours(4),
+            700,
+        ),
+        (
+            "AR1616",
+            "CTC",
+            "RGL",
+            today,
+            today + chrono::Duration::hours(4),
+            700,
+        ),
+        (
+            "AR1717",
+            "RIA",
+            "AEP",
+            today,
+            today + chrono::Duration::hours(3),
+            500,
+        ),
+        (
+            "AR1818",
+            "AEP",
+            "RIA",
+            tomorrow,
+            tomorrow + chrono::Duration::hours(2),
+            500,
+        ),
+        (
+            "AR1920",
+            "EZE",
+            "ROS",
+            today,
+            today + chrono::Duration::hours(2),
+            550,
+        ),
+        (
+            "AR2021",
+            "ROS",
+            "EZE",
+            tomorrow,
+            tomorrow + chrono::Duration::hours(2),
+            550,
+        ),
+        (
+            "AR2122",
+            "NQN",
+            "AEP",
+            yesterday,
+            yesterday + chrono::Duration::hours(3),
+            450,
+        ),
+        (
+            "AR2223",
+            "AEP",
+            "NQN",
+            today,
+            today + chrono::Duration::hours(3),
+            450,
+        ),
+        (
+            "AR2324",
+            "COR",
+            "MDZ",
+            tomorrow,
+            tomorrow + chrono::Duration::hours(2),
+            500,
+        ),
+        (
+            "AR2425",
+            "MDZ",
+            "COR",
+            today,
+            today + chrono::Duration::hours(2),
+            500,
+        ),
     ];
 
-    for (flight_number, origin, destination, departure_time, arrival_time, avg_speed) in flight_data {
+    for (flight_number, origin, destination, departure_time, arrival_time, avg_speed) in flight_data
+    {
         let departure_str = departure_time.format("%d-%m-%Y %H:%M:%S").to_string();
         let arrival_str = arrival_time.format("%d-%m-%Y %H:%M:%S").to_string();
         let flight = Flight::new_from_console(
-            &sim_state.airports(), flight_number, origin, destination, &departure_str, &arrival_str, avg_speed
-        ).map_err(|_| SimError::Other("Error".to_string()))?;
+            &sim_state.airports(),
+            flight_number,
+            origin,
+            destination,
+            &departure_str,
+            &arrival_str,
+            avg_speed,
+        )
+        .map_err(|_| SimError::Other("Error".to_string()))?;
 
         sim_state.add_flight(flight, false)?;
     }

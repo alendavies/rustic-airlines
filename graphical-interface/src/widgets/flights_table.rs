@@ -38,8 +38,6 @@ impl WidgetFlightsTable {
     fn allowed_transitions(current_status: &FlightStatus) -> Vec<FlightStatus> {
         match current_status {
             FlightStatus::Scheduled => vec![
-                FlightStatus::OnTime,
-                FlightStatus::Delayed,
                 FlightStatus::Finished,
                 FlightStatus::Canceled,
             ],

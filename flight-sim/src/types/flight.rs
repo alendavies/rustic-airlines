@@ -104,7 +104,7 @@ impl Flight {
 
     // Calculate current latitude and longitude according to distance traveled (using radians)
     fn update_position_with_direction(&mut self, distance_traveled_km: f64) {
-        let progress_ratio = distance_traveled_km / self.total_distance;
+        let progress_ratio = (distance_traveled_km / self.total_distance).min(1.0);
         self.latitude = self.origin.latitude
             + progress_ratio * (self.destination.latitude - self.origin.latitude);
         self.longitude = self.origin.longitude

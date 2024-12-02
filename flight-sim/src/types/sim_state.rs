@@ -158,9 +158,9 @@ impl SimState {
         &self.airports
     }
 
+    /// Constantly checks for flights in the database to see if they should be updated on the sim.
     pub fn check_for_new_flights(&mut self) -> Result<(), SimError> {
         let (flights_to_add, flights_to_update) = {
-            let mut client = self.client.lock().map_err(|_| SimError::ClientError)?;
             let current_time = *self
                 .current_time
                 .lock()
@@ -170,6 +170,7 @@ impl SimState {
                 .read()
                 .map_err(|_| SimError::Other("LockError".to_string()))?;
 
+            let mut client = self.client.try_lock().map_err(|_| SimError::ClientError)?;
             client
                 .get_all_new_flights(current_time, &flight_states, &self.airports)
                 .map_err(|_| SimError::ClientError)?
@@ -290,7 +291,7 @@ impl SimState {
         self.pool.execute(move || loop {
             let current = *current_time.lock().unwrap();
 
-            if let Ok(mut flight_data) = flight.write() {
+            if let Ok(mut flight_data) = flight.try_write() {
                 match flight_data.status {
                     FlightStatus::Scheduled if current >= flight_data.departure_time => {
                         flight_data.update_position(current);
@@ -326,7 +327,7 @@ impl SimState {
                             }
                         }
 
-                        if let Ok(mut db_client) = client.lock() {
+                        if let Ok(mut db_client) = client.try_lock() {
                             if let Err(e) = db_client.update_flight(&flight_data) {
                                 eprintln!(
                                     "Failed to update flight {}: {:?}",
@@ -356,7 +357,7 @@ fn update_flight_state(
         .map_err(|_| SimError::Other("LockError".to_string()))?;
     states.insert(flight.flight_number.to_string(), new_status);
 
-    if let Ok(mut db_client) = client.lock() {
+    if let Ok(mut db_client) = client.try_lock() {
         if let Err(e) = db_client.update_flight_status(flight) {
             eprintln!(
                 "Failed to update flight state in database {}: {:?}",
