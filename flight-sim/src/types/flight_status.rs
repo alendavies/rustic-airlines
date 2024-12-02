@@ -6,7 +6,7 @@ pub enum FlightStatus {
     OnTime,
     Delayed,
     Finished,
-    Canceled
+    Canceled,
 }
 
 impl FlightStatus {
@@ -16,7 +16,7 @@ impl FlightStatus {
             FlightStatus::OnTime => "on time",
             FlightStatus::Delayed => "delayed",
             FlightStatus::Finished => "finished",
-            FlightStatus::Canceled => "canceled"
+            FlightStatus::Canceled => "canceled",
         }
     }
 

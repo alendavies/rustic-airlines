@@ -8,17 +8,21 @@ pub struct Airport {
 }
 
 impl Airport {
-
-    pub fn new(iata_code: String, country: String, name: String, latitude: f64, longitude: f64) -> Self {
+    pub fn new(
+        iata_code: String,
+        country: String,
+        name: String,
+        latitude: f64,
+        longitude: f64,
+    ) -> Self {
         Airport {
             iata_code,
             country,
             name,
             latitude,
-            longitude
+            longitude,
         }
     }
-
 }
 
 impl Default for Airport {
@@ -28,7 +32,7 @@ impl Default for Airport {
             country: "XXX".to_string(),
             name: "Default Airport".to_string(),
             latitude: 0.0,
-            longitude: 0.0
+            longitude: 0.0,
         }
     }
 }
