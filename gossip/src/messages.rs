@@ -159,17 +159,17 @@ impl Digest {
 /// A `GossipMessage` used to communicate between nodes in the cluster.
 ///
 /// ### Fields
-/// - `from`: The IP address of the sender.
+/// - `from`: The IP address of the receiver.
 /// - `payload`: The payload of the message.
 pub struct GossipMessage {
-    pub from: Ipv4Addr,
+    pub to: Ipv4Addr,
     pub payload: Payload,
 }
 
 impl GossipMessage {
     /// Create a new `GossipMessage`.
-    pub fn new(from: Ipv4Addr, payload: Payload) -> Self {
-        GossipMessage { from, payload }
+    pub fn new(to: Ipv4Addr, payload: Payload) -> Self {
+        GossipMessage { to, payload }
     }
 }
 
@@ -212,7 +212,7 @@ impl GossipMessage {
     pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
 
-        bytes.extend_from_slice(&self.from.to_bits().to_be_bytes());
+        bytes.extend_from_slice(&self.to.to_bits().to_be_bytes());
 
         let payload_type = match &self.payload {
             Payload::Syn(_) => PayloadType::Syn as u8,
@@ -266,7 +266,7 @@ impl GossipMessage {
             PayloadType::Ack2 => Payload::Ack2(Ack2::from_bytes(&bytes_payload)?),
         };
 
-        Ok(Self { from: ip, payload })
+        Ok(Self { to: ip, payload })
     }
 }
 

@@ -6,17 +6,17 @@ edition = "2021"
 [workspace]
 members = [
     "driver",
-    "node",
     "partitioner",
     "query-creator",
     "native_protocol",
     "graphical-interface",
     "node_launcher",
     "gossip",
-    "flight-sim"
-, "repl"]
+    "flight-sim",
+    "repl",
+    "node_2", "internode_protocol",
+]
 
 [dev-dependencies]
-driver = { path = "driver" }  # Solo para los tests de integración
-native_protocol = { path = "native_protocol" }  # Solo para los tests de integración
-
+driver = { path = "driver" }                   # Solo para los tests de integración
+native_protocol = { path = "native_protocol" } # Solo para los tests de integración

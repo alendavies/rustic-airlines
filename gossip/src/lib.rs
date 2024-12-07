@@ -1,9 +1,11 @@
 //! This module contains the implementation of the gossip protocol.
 //! TODO: complete
-
+pub mod error;
+pub mod messages;
+pub mod structures;
 use chrono::{self, Utc};
-
-use messages::{Ack, Ack2, Digest, GossipMessage, Syn};
+use error::GossipError;
+use messages::{Ack, Ack2, Digest, GossipMessage, Payload, Syn};
 use query_creator::clauses::{
     keyspace::create_keyspace_cql::CreateKeyspace, table::create_table_cql::CreateTable,
 };
@@ -12,97 +14,35 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt,
     net::Ipv4Addr,
+    sync::{
+        mpsc::{Receiver, Sender},
+        Arc, RwLock,
+    },
+    thread,
+    time::Duration,
 };
 use structures::{
     application_state::{KeyspaceSchema, NodeStatus, Schema, TableSchema},
     endpoint_state::EndpointState,
     heartbeat_state::HeartbeatState,
 };
-pub mod messages;
-pub mod structures;
 
-/// Struct to represent the gossiper node.
-///
-/// ### Fields
-/// - `endpoints_state`: HashMap containing the state of all the endpoints that the gossiper knows about.
-#[derive(Clone)]
-pub struct Gossiper {
-    pub endpoints_state: HashMap<Ipv4Addr, EndpointState>,
-}
+/// Represents the endpoints states of the gossiper.
+struct GossiperState(HashMap<Ipv4Addr, EndpointState>);
 
-#[derive(Debug)]
-/// Enum to represent the different errors that can occur during the gossip protocol.
-pub enum GossipError {
-    SynError,
-    NoEndpointStateForIp,
-    NoSuchKeyspace,
-    KeyspaceAlreadyExists,
-    TableAlreadyExists,
-}
-
-impl fmt::Display for GossipError {
-    /// Implementation of the `fmt` method to convert the error into a readable string.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let description = match self {
-            GossipError::SynError => "Syn error occurred",
-            GossipError::NoEndpointStateForIp => "There is no endpoint state for the given ip",
-            GossipError::NoSuchKeyspace => "The given keyspace does not exist",
-            GossipError::KeyspaceAlreadyExists => "The given keyspace already exists",
-            GossipError::TableAlreadyExists => "The given table already exists",
-        };
-        write!(f, "{}", description)
-    }
-}
-
-impl Default for Gossiper {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Gossiper {
-    /// Create a new Gossiper instance with an empty state.
-    pub fn new() -> Self {
-        Self {
-            endpoints_state: HashMap::new(),
-        }
+impl GossiperState {
+    /// Create a new GossiperState instance with an empty state.
+    fn new() -> Self {
+        Self(HashMap::new())
     }
 
     /// Increment the version of the heartbeat state of the endpoint with the given ip.
     pub fn heartbeat(&mut self, ip: Ipv4Addr) -> Result<(), GossipError> {
-        self.endpoints_state
+        self.0
             .get_mut(&ip)
             .ok_or(GossipError::NoEndpointStateForIp)?
             .heartbeat_state
             .inc_version();
-
-        Ok(())
-    }
-
-    /// Set the application state of the endpoint with the given ip.
-    pub fn with_endpoint_state(mut self, ip: Ipv4Addr) -> Self {
-        self.endpoints_state.insert(ip, EndpointState::default());
-        self
-    }
-
-    /// Inserts the given ip with a default state into the gossiper.
-    pub fn with_seeds(mut self, seeds_ip: Vec<Ipv4Addr>) -> Self {
-        for ip in seeds_ip {
-            self.endpoints_state.insert(ip, EndpointState::default());
-        }
-        self
-    }
-
-    /// Changes the status of the application state of the endpoint with the given ip.
-    pub fn change_status(&mut self, ip: Ipv4Addr, status: NodeStatus) -> Result<(), GossipError> {
-        let app_state = &mut self
-            .endpoints_state
-            .get_mut(&ip)
-            .ok_or(GossipError::NoEndpointStateForIp)?
-            .application_state;
-
-        app_state.status = status;
-        app_state.version += 1;
 
         Ok(())
     }
@@ -112,7 +52,7 @@ impl Gossiper {
         let mut most_updated_schema = None;
         let mut most_updated_timestamp = 0;
 
-        for state in self.endpoints_state.values() {
+        for state in self.0.values() {
             if state.application_state.schema.timestamp > most_updated_timestamp {
                 most_updated_schema = Some(&state.application_state.schema);
                 most_updated_timestamp = state.application_state.schema.timestamp;
@@ -122,175 +62,47 @@ impl Gossiper {
         most_updated_schema.cloned()
     }
 
-    /// Removes the keyspace from the application state of the endpoint with the given ip.
-    pub fn remove_keyspace(&mut self, ip: Ipv4Addr, keyspace: &str) -> Result<(), GossipError> {
-        // Find the app state of the given ip
-        let app_state = &mut self
-            .endpoints_state
+    /// Changes the status of the application state of the endpoint with the given ip.
+    pub fn change_status(&mut self, ip: Ipv4Addr, status: NodeStatus) -> Result<(), GossipError> {
+        let state = self
+            .0
             .get_mut(&ip)
-            .ok_or(GossipError::NoEndpointStateForIp)?
-            .application_state;
+            .ok_or(GossipError::NoEndpointStateForIp)?;
 
-        // TODO: make it an app state or schema method which also alters the timestamp
-        app_state.schema.keyspaces.remove(keyspace);
-
-        app_state.version += 1;
-        app_state.schema.timestamp = Utc::now().timestamp_millis();
+        state.application_state.status = status;
+        state.application_state.version += 1;
 
         Ok(())
-    }
-
-    /// Adds the keyspace to the application state of the endpoint with the given ip.
-    pub fn add_keyspace(
-        &mut self,
-        ip: Ipv4Addr,
-        keyspace: CreateKeyspace,
-    ) -> Result<(), GossipError> {
-        // Find the app state of the given ip
-        let app_state = &mut self
-            .endpoints_state
-            .get_mut(&ip)
-            .ok_or(GossipError::NoEndpointStateForIp)?
-            .application_state;
-
-        // Add the keyspace to the schema
-        if !app_state
-            .schema
-            .keyspaces
-            .keys()
-            .any(|k| *k == keyspace.get_name())
-        {
-            app_state.schema.keyspaces.insert(
-                keyspace.get_name(),
-                KeyspaceSchema {
-                    inner: keyspace,
-                    tables: Vec::new(),
-                },
-            );
-        } else {
-            return Err(GossipError::KeyspaceAlreadyExists);
-        }
-
-        app_state.version += 1;
-        app_state.schema.timestamp = Utc::now().timestamp_millis();
-
-        Ok(())
-    }
-
-    /// Add the table to the keyspace of the application state of the endpoint with the given ip.
-    pub fn add_table(
-        &mut self,
-        ip: Ipv4Addr,
-        table: CreateTable,
-        kesyapce_name: &str,
-    ) -> Result<(), GossipError> {
-        // Find the app state of the given ip
-        let app_state = &mut self
-            .endpoints_state
-            .get_mut(&ip)
-            .ok_or(GossipError::NoEndpointStateForIp)?
-            .application_state;
-
-        // Test if the keyspace of the table exists
-        let keyspace_exists = app_state
-            .schema
-            .keyspaces
-            .keys()
-            .any(|k| *k == kesyapce_name);
-
-        if keyspace_exists {
-            let keyspace = app_state
-                .schema
-                .keyspaces
-                .get_mut(kesyapce_name)
-                .ok_or(GossipError::NoSuchKeyspace)?;
-
-            // Check if the table already exists
-            for t in keyspace.tables.iter() {
-                if t.inner.get_name() == table.get_name() {
-                    return Err(GossipError::TableAlreadyExists);
-                }
-            }
-
-            let table_schema = TableSchema::new(table);
-
-            keyspace.tables.push(table_schema);
-        } else {
-            return Err(GossipError::NoSuchKeyspace);
-        }
-
-        app_state.version += 1;
-        app_state.schema.timestamp = Utc::now().timestamp_millis();
-
-        Ok(())
-    }
-
-    /// Removes the table from the keyspace of the application state of the endpoint with the given ip.
-    pub fn remove_table(
-        &mut self,
-        ip: Ipv4Addr,
-        keyspace: &str,
-        table: &str,
-    ) -> Result<(), GossipError> {
-        // Find the app state of the given ip
-        let app_state = &mut self
-            .endpoints_state
-            .get_mut(&ip)
-            .ok_or(GossipError::NoEndpointStateForIp)?
-            .application_state;
-
-        // Find the given keyspace in the schema
-        let k = app_state
-            .schema
-            .keyspaces
-            .iter_mut()
-            .find(|(keyspace_name, _)| *keyspace_name == keyspace);
-
-        // If the keyspace exists, remove the table from it
-        if let Some((_, k_schema)) = k {
-            k_schema.tables.retain(|t| t.inner.get_name() != table);
-            app_state.version += 1;
-            app_state.schema.timestamp = Utc::now().timestamp_millis();
-
-            Ok(())
-        } else {
-            Err(GossipError::NoSuchKeyspace)
-        }
-    }
-
-    /// Marks the endpoint with the given ip as dead.
-    pub fn kill(&mut self, ip: Ipv4Addr) -> Result<(), GossipError> {
-        self.change_status(ip, NodeStatus::Dead)
     }
 
     /// Picks 3 random ips from the gossiper state, excluding the given ip.
-    pub fn pick_ips(&self, exclude: Ipv4Addr) -> Vec<&Ipv4Addr> {
+    pub fn pick_ips(&self, exclude: Ipv4Addr) -> Vec<Ipv4Addr> {
         let mut rng = thread_rng();
-        let ips: Vec<&Ipv4Addr> = self
-            .endpoints_state
+        let ips: Vec<Ipv4Addr> = self
+            .0
             .iter()
             .filter(|(&ip, state)| {
                 ip != exclude && state.application_state.status != NodeStatus::Dead
             })
-            .map(|(ip, _)| ip)
+            .map(|(ip, _)| *ip)
             .choose_multiple(&mut rng, 3);
         ips
     }
 
     /// Creates a Syn message with the digests of the endpoints in the gossiper state.
-    pub fn create_syn(&self, from: Ipv4Addr) -> GossipMessage {
+    pub fn create_syn(&self, ip: Ipv4Addr) -> Result<GossipMessage, GossipError> {
         let digests: Vec<Digest> = self
-            .endpoints_state
+            .0
             .iter()
             .map(|(k, v)| Digest::from_heartbeat_state(*k, &v.heartbeat_state))
             .collect();
 
         let syn = Syn::new(digests);
 
-        GossipMessage {
-            from,
+        Ok(GossipMessage {
+            to: ip,
             payload: messages::Payload::Syn(syn),
-        }
+        })
     }
 
     /// Handles a Syn message and returns the corresponding Ack message.
@@ -299,7 +111,7 @@ impl Gossiper {
         let mut updated_info = BTreeMap::new();
 
         for digest in &syn.digests {
-            if let Some(my_state) = self.endpoints_state.get(&digest.address) {
+            if let Some(my_state) = self.0.get(&digest.address) {
                 let my_digest =
                     Digest::from_heartbeat_state(digest.address, &my_state.heartbeat_state);
 
@@ -344,7 +156,7 @@ impl Gossiper {
 
         for digest in &ack.stale_digests {
             let my_state = self
-                .endpoints_state
+                .0
                 .get(&digest.address)
                 .expect("There MUST be an endpoint state for an IP received in an ACK.");
 
@@ -372,16 +184,8 @@ impl Gossiper {
         }
 
         for (digest, info) in &ack.updated_info {
-            let _my_state = self
-                .endpoints_state
-                .get(&digest.address)
-                .expect("There MUST be an endpoint state for an IP received in an ACK.");
-
-            // El ACK debe contener info más actualizada que la mía
-            //assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
-
             // la actualizo
-            self.endpoints_state.insert(
+            self.0.insert(
                 digest.address,
                 EndpointState::new(
                     info.clone(),
@@ -396,11 +200,8 @@ impl Gossiper {
     /// Handles an Ack2 message and updates the local state.
     pub fn handle_ack2(&mut self, ack2: &Ack2) {
         for (digest, info) in &ack2.updated_info {
-            if let Some(_my_state) = self.endpoints_state.get(&digest.address) {
-                // El ACK2 debe contener info más actualizada que la mía
-                //assert!(digest.get_heartbeat_state() > my_state.heartbeat_state);
-
-                self.endpoints_state.insert(
+            if let Some(_my_state) = self.0.get(&digest.address) {
+                self.0.insert(
                     digest.address,
                     EndpointState::new(
                         info.clone(),
@@ -408,7 +209,7 @@ impl Gossiper {
                     ),
                 );
             } else {
-                self.endpoints_state.insert(
+                self.0.insert(
                     digest.address,
                     EndpointState::new(
                         info.clone(),
@@ -418,7 +219,254 @@ impl Gossiper {
             }
         }
     }
+
+    /// Marks the endpoint with the given ip as dead.
+    pub fn kill(&mut self, ip: Ipv4Addr) -> Result<(), GossipError> {
+        self.change_status(ip, NodeStatus::Dead)
+    }
 }
+
+/// Struct to represent the gossiper node.
+///
+/// ### Fields
+///
+/// - `endpoints_state`: HashMap containing the state of all the endpoints that the gossiper knows about.
+/// - `rx`: Receiver to receive gossip messages.
+/// - `tx`: Sender to send gossip messages.
+
+pub struct Gossiper {
+    rx: Receiver<GossipMessage>,
+    tx: Sender<GossipMessage>,
+    endpoints_state: Arc<RwLock<GossiperState>>,
+}
+
+impl Gossiper {
+    /// Create a new Gossiper instance with an empty state.
+    pub fn new(rx: Receiver<GossipMessage>, tx: Sender<GossipMessage>) -> Self {
+        Self {
+            rx,
+            tx,
+            endpoints_state: Arc::new(RwLock::new(GossiperState::new())),
+        }
+    }
+
+    pub fn start(self) {
+        // spawn two threads:
+        // one that reads from rx and process
+        // one that send to tx every second
+
+        let tx_clone = self.tx.clone();
+        let tx_clone_2 = tx_clone.clone();
+
+        let arc_clone = self.endpoints_state.clone();
+        let arc_clone_2 = arc_clone.clone();
+
+        // reads gossip messages from rx, processes and answers them
+        let reader_thread_handler = thread::spawn(move || {
+            for msg in &self.rx {
+                // handle gossip message
+                dbg!(&msg);
+
+                thread::sleep(Duration::from_millis(500)); // simulate gossip processing time
+
+                match msg.payload {
+                    Payload::Syn(syn) => {
+                        let ack = arc_clone.read().unwrap().handle_syn(&syn);
+
+                        let msg = GossipMessage::new(msg.to, Payload::Ack(ack));
+
+                        tx_clone.send(msg).unwrap();
+                    }
+                    Payload::Ack(ack) => {
+                        let ack2 = arc_clone.write().unwrap().handle_ack(&ack);
+                        let msg = GossipMessage::new(msg.to, Payload::Ack2(ack2));
+                        tx_clone.send(msg).unwrap();
+                    }
+                    Payload::Ack2(ack2) => {
+                        arc_clone.write().unwrap().handle_ack2(&ack2);
+                    }
+                }
+            }
+        });
+
+        // sends gossip messages to tx every second
+        let writer_thread_handler = thread::spawn(move || loop {
+            let ips = arc_clone_2
+                .read()
+                .unwrap()
+                .pick_ips(Ipv4Addr::new(127, 0, 0, 1));
+
+            for ip in ips {
+                let syn = arc_clone_2.read().unwrap().create_syn(ip).unwrap();
+
+                dbg!("gossiping");
+                tx_clone_2.send(syn).unwrap();
+            }
+            thread::sleep(Duration::from_millis(1500));
+        });
+
+        reader_thread_handler.join().unwrap();
+        writer_thread_handler.join().unwrap();
+    }
+
+    /// Set the application state of the endpoint with the given ip.
+    pub fn with_endpoint_state(self, ip: Ipv4Addr) -> Self {
+        self.endpoints_state
+            .write()
+            .unwrap()
+            .0
+            .insert(ip, EndpointState::default());
+        self
+    }
+
+    /// Inserts the given ip with a default state into the gossiper.
+    pub fn with_seeds(self, seeds_ip: Vec<Ipv4Addr>) -> Self {
+        for ip in seeds_ip {
+            self.endpoints_state
+                .write()
+                .unwrap()
+                .0
+                .insert(ip, EndpointState::default());
+        }
+        self
+    }
+}
+
+// /// Removes the keyspace from the application state of the endpoint with the given ip.
+// pub fn remove_keyspace(&mut self, ip: Ipv4Addr, keyspace: &str) -> Result<(), GossipError> {
+//     // Find the app state of the given ip
+//     let app_state = &mut self
+//         .endpoints_state
+//         .get_mut(&ip)
+//         .ok_or(GossipError::NoEndpointStateForIp)?
+//         .application_state;
+
+//     // TODO: make it an app state or schema method which also alters the timestamp
+//     app_state.schema.keyspaces.remove(keyspace);
+
+//     app_state.version += 1;
+//     app_state.schema.timestamp = Utc::now().timestamp_millis();
+
+//     Ok(())
+// }
+
+// /// Adds the keyspace to the application state of the endpoint with the given ip.
+// pub fn add_keyspace(
+//     &mut self,
+//     ip: Ipv4Addr,
+//     keyspace: CreateKeyspace,
+// ) -> Result<(), GossipError> {
+//     // Find the app state of the given ip
+//     let app_state = &mut self
+//         .endpoints_state
+//         .get_mut(&ip)
+//         .ok_or(GossipError::NoEndpointStateForIp)?
+//         .application_state;
+
+//     // Add the keyspace to the schema
+//     if !app_state
+//         .schema
+//         .keyspaces
+//         .keys()
+//         .any(|k| *k == keyspace.get_name())
+//     {
+//         app_state.schema.keyspaces.insert(
+//             keyspace.get_name(),
+//             KeyspaceSchema {
+//                 inner: keyspace,
+//                 tables: Vec::new(),
+//             },
+//         );
+//     } else {
+//         return Err(GossipError::KeyspaceAlreadyExists);
+//     }
+
+//     app_state.version += 1;
+//     app_state.schema.timestamp = Utc::now().timestamp_millis();
+
+//     Ok(())
+// }
+
+// /// Add the table to the keyspace of the application state of the endpoint with the given ip.
+// pub fn add_table(
+//     &mut self,
+//     ip: Ipv4Addr,
+//     table: CreateTable,
+//     kesyapce_name: &str,
+// ) -> Result<(), GossipError> {
+//     // Find the app state of the given ip
+//     let app_state = &mut self
+//         .endpoints_state
+//         .get_mut(&ip)
+//         .ok_or(GossipError::NoEndpointStateForIp)?
+//         .application_state;
+
+//     // Test if the keyspace of the table exists
+//     let keyspace_exists = app_state
+//         .schema
+//         .keyspaces
+//         .keys()
+//         .any(|k| *k == kesyapce_name);
+
+//     if keyspace_exists {
+//         let keyspace = app_state
+//             .schema
+//             .keyspaces
+//             .get_mut(kesyapce_name)
+//             .ok_or(GossipError::NoSuchKeyspace)?;
+
+//         // Check if the table already exists
+//         for t in keyspace.tables.iter() {
+//             if t.inner.get_name() == table.get_name() {
+//                 return Err(GossipError::TableAlreadyExists);
+//             }
+//         }
+
+//         let table_schema = TableSchema::new(table);
+
+//         keyspace.tables.push(table_schema);
+//     } else {
+//         return Err(GossipError::NoSuchKeyspace);
+//     }
+
+//     app_state.version += 1;
+//     app_state.schema.timestamp = Utc::now().timestamp_millis();
+
+//     Ok(())
+// }
+
+// /// Removes the table from the keyspace of the application state of the endpoint with the given ip.
+// pub fn remove_table(
+//     &mut self,
+//     ip: Ipv4Addr,
+//     keyspace: &str,
+//     table: &str,
+// ) -> Result<(), GossipError> {
+//     // Find the app state of the given ip
+//     let app_state = &mut self
+//         .endpoints_state
+//         .get_mut(&ip)
+//         .ok_or(GossipError::NoEndpointStateForIp)?
+//         .application_state;
+
+//     // Find the given keyspace in the schema
+//     let k = app_state
+//         .schema
+//         .keyspaces
+//         .iter_mut()
+//         .find(|(keyspace_name, _)| *keyspace_name == keyspace);
+
+//     // If the keyspace exists, remove the table from it
+//     if let Some((_, k_schema)) = k {
+//         k_schema.tables.retain(|t| t.inner.get_name() != table);
+//         app_state.version += 1;
+//         app_state.schema.timestamp = Utc::now().timestamp_millis();
+
+//         Ok(())
+//     } else {
+//         Err(GossipError::NoSuchKeyspace)
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -443,9 +491,7 @@ mod tests {
             ),
         )]);
 
-        let gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let gossiper = GossiperState(local_state.clone());
 
         let ack = gossiper.handle_syn(&syn);
 
@@ -453,16 +499,8 @@ mod tests {
         assert_eq!(
             ack.updated_info,
             BTreeMap::from([(
-                Digest::from_heartbeat_state(
-                    ip,
-                    &gossiper.endpoints_state.get(&ip).unwrap().heartbeat_state
-                ),
-                gossiper
-                    .endpoints_state
-                    .get(&ip)
-                    .unwrap()
-                    .application_state
-                    .clone()
+                Digest::from_heartbeat_state(ip, &gossiper.0.get(&ip).unwrap().heartbeat_state),
+                gossiper.0.get(&ip).unwrap().application_state.clone()
             )])
         );
     }
@@ -483,9 +521,7 @@ mod tests {
             ),
         )]);
 
-        let gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let gossiper = GossiperState(local_state.clone());
 
         let ack = gossiper.handle_syn(&syn);
 
@@ -493,16 +529,8 @@ mod tests {
         assert_eq!(
             ack.updated_info,
             BTreeMap::from([(
-                Digest::from_heartbeat_state(
-                    ip,
-                    &gossiper.endpoints_state.get(&ip).unwrap().heartbeat_state
-                ),
-                gossiper
-                    .endpoints_state
-                    .get(&ip)
-                    .unwrap()
-                    .application_state
-                    .clone()
+                Digest::from_heartbeat_state(ip, &gossiper.0.get(&ip).unwrap().heartbeat_state),
+                gossiper.0.get(&ip).unwrap().application_state.clone()
             )])
         );
     }
@@ -523,9 +551,7 @@ mod tests {
             ),
         )]);
 
-        let gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let gossiper = GossiperState(local_state.clone());
 
         let ack = gossiper.handle_syn(&syn);
 
@@ -533,7 +559,7 @@ mod tests {
             ack.stale_digests,
             vec![Digest::from_heartbeat_state(
                 ip,
-                &gossiper.endpoints_state.get(&ip).unwrap().heartbeat_state
+                &gossiper.0.get(&ip).unwrap().heartbeat_state
             )]
         );
         assert!(ack.updated_info.is_empty());
@@ -555,9 +581,7 @@ mod tests {
             ),
         )]);
 
-        let gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let gossiper = GossiperState(local_state.clone());
 
         let ack = gossiper.handle_syn(&syn);
 
@@ -565,7 +589,7 @@ mod tests {
             ack.stale_digests,
             vec![Digest::from_heartbeat_state(
                 ip,
-                &gossiper.endpoints_state.get(&ip).unwrap().heartbeat_state
+                &gossiper.0.get(&ip).unwrap().heartbeat_state
             )]
         );
         assert!(ack.updated_info.is_empty(),);
@@ -587,25 +611,15 @@ mod tests {
             ),
         )]);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let mut gossiper = GossiperState(local_state.clone());
 
         let ack2 = gossiper.handle_ack(&ack);
 
         assert_eq!(
             ack2.updated_info,
             BTreeMap::from([(
-                Digest::from_heartbeat_state(
-                    ip,
-                    &gossiper.endpoints_state.get(&ip).unwrap().heartbeat_state
-                ),
-                gossiper
-                    .endpoints_state
-                    .get(&ip)
-                    .unwrap()
-                    .application_state
-                    .clone()
+                Digest::from_heartbeat_state(ip, &gossiper.0.get(&ip).unwrap().heartbeat_state),
+                gossiper.0.get(&ip).unwrap().application_state.clone()
             )])
         )
     }
@@ -624,25 +638,15 @@ mod tests {
             ),
         )]);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let mut gossiper = GossiperState(local_state.clone());
 
         let ack2 = gossiper.handle_ack(&ack);
 
         assert_eq!(
             ack2.updated_info,
             BTreeMap::from([(
-                Digest::from_heartbeat_state(
-                    ip,
-                    &gossiper.endpoints_state.get(&ip).unwrap().heartbeat_state
-                ),
-                gossiper
-                    .endpoints_state
-                    .get(&ip)
-                    .unwrap()
-                    .application_state
-                    .clone()
+                Digest::from_heartbeat_state(ip, &gossiper.0.get(&ip).unwrap().heartbeat_state),
+                gossiper.0.get(&ip).unwrap().application_state.clone()
             )])
         )
     }
@@ -661,25 +665,15 @@ mod tests {
             ),
         )]);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let mut gossiper = GossiperState(local_state.clone());
 
         let ack2 = gossiper.handle_ack(&ack);
 
         assert_eq!(
             ack2.updated_info,
             BTreeMap::from([(
-                Digest::from_heartbeat_state(
-                    ip,
-                    &gossiper.endpoints_state.get(&ip).unwrap().heartbeat_state
-                ),
-                gossiper
-                    .endpoints_state
-                    .get(&ip)
-                    .unwrap()
-                    .application_state
-                    .clone()
+                Digest::from_heartbeat_state(ip, &gossiper.0.get(&ip).unwrap().heartbeat_state),
+                gossiper.0.get(&ip).unwrap().application_state.clone()
             )])
         )
     }
@@ -706,19 +700,17 @@ mod tests {
             ),
         )]);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let mut gossiper = GossiperState(local_state.clone());
 
         let ack2 = gossiper.handle_ack(&ack);
 
         assert!(ack2.updated_info.is_empty());
         assert_eq!(
-            gossiper.endpoints_state.get(&ip).unwrap().heartbeat_state,
+            gossiper.0.get(&ip).unwrap().heartbeat_state,
             HeartbeatState::new(8, 7)
         );
         assert_eq!(
-            gossiper.endpoints_state.get(&ip).unwrap().application_state,
+            gossiper.0.get(&ip).unwrap().application_state,
             ApplicationState::new(NodeStatus::Leaving, 9, Schema::default())
         );
     }
@@ -745,19 +737,17 @@ mod tests {
             ),
         )]);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let mut gossiper = GossiperState(local_state.clone());
 
         let ack2 = gossiper.handle_ack(&ack);
 
         assert!(ack2.updated_info.is_empty());
         assert_eq!(
-            gossiper.endpoints_state.get(&ip).unwrap().heartbeat_state,
+            gossiper.0.get(&ip).unwrap().heartbeat_state,
             HeartbeatState::new(7, 7)
         );
         assert_eq!(
-            gossiper.endpoints_state.get(&ip).unwrap().application_state,
+            gossiper.0.get(&ip).unwrap().application_state,
             ApplicationState::new(NodeStatus::Leaving, 9, Schema::default())
         );
     }
@@ -793,9 +783,7 @@ mod tests {
             ),
         ]);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let mut gossiper = GossiperState(local_state.clone());
 
         let ack2 = gossiper.handle_ack(&ack);
 
@@ -803,29 +791,17 @@ mod tests {
         assert_eq!(
             ack2.updated_info,
             BTreeMap::from([(
-                Digest::from_heartbeat_state(
-                    ip_1,
-                    &gossiper.endpoints_state.get(&ip_1).unwrap().heartbeat_state
-                ),
-                gossiper
-                    .endpoints_state
-                    .get(&ip_1)
-                    .unwrap()
-                    .application_state
-                    .clone()
+                Digest::from_heartbeat_state(ip_1, &gossiper.0.get(&ip_1).unwrap().heartbeat_state),
+                gossiper.0.get(&ip_1).unwrap().application_state.clone()
             )])
         );
         // the local_state should be updated for ip_2
         assert_eq!(
-            gossiper.endpoints_state.get(&ip_2).unwrap().heartbeat_state,
+            gossiper.0.get(&ip_2).unwrap().heartbeat_state,
             HeartbeatState::new(8, 7)
         );
         assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip_2)
-                .unwrap()
-                .application_state,
+            gossiper.0.get(&ip_2).unwrap().application_state,
             ApplicationState::new(NodeStatus::Removing, 9, Schema::default())
         );
     }
@@ -863,35 +839,25 @@ mod tests {
             ),
         ]);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let mut gossiper = GossiperState(local_state.clone());
 
         gossiper.handle_ack2(&ack2);
 
         // the local_state should be updated for both ips
         assert_eq!(
-            gossiper.endpoints_state.get(&ip_1).unwrap().heartbeat_state,
+            gossiper.0.get(&ip_1).unwrap().heartbeat_state,
             HeartbeatState::new(7, 6)
         );
         assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip_1)
-                .unwrap()
-                .application_state,
+            gossiper.0.get(&ip_1).unwrap().application_state,
             ApplicationState::new(NodeStatus::Normal, 7, Schema::default())
         );
         assert_eq!(
-            gossiper.endpoints_state.get(&ip_2).unwrap().heartbeat_state,
+            gossiper.0.get(&ip_2).unwrap().heartbeat_state,
             HeartbeatState::new(8, 7)
         );
         assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip_2)
-                .unwrap()
-                .application_state,
+            gossiper.0.get(&ip_2).unwrap().application_state,
             ApplicationState::new(NodeStatus::Removing, 9, Schema::default())
         );
     }
@@ -904,9 +870,7 @@ mod tests {
 
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::new();
 
-        let gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let gossiper = GossiperState(local_state.clone());
 
         let ack = gossiper.handle_syn(&syn);
 
@@ -925,26 +889,16 @@ mod tests {
 
         let local_state: HashMap<Ipv4Addr, EndpointState> = HashMap::new();
 
-        let mut gossiper = Gossiper {
-            endpoints_state: local_state.clone(),
-        };
+        let mut gossiper = GossiperState(local_state.clone());
 
         let _ = gossiper.handle_ack2(&ack);
 
         assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&new_ip)
-                .unwrap()
-                .heartbeat_state,
+            gossiper.0.get(&new_ip).unwrap().heartbeat_state,
             HeartbeatState::new(1, 1)
         );
         assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&new_ip)
-                .unwrap()
-                .application_state,
+            gossiper.0.get(&new_ip).unwrap().application_state,
             ApplicationState::new(NodeStatus::Bootstrap, 1, Schema::default())
         );
     }
@@ -1019,10 +973,7 @@ mod tests {
             Digest::new(new_ip, 1, 1),
         ]);
 
-        let mut gossiper_server = Gossiper {
-            endpoints_state: server_state.clone(),
-        };
-
+        let mut gossiper_server = GossiperState(server_state.clone());
         // server handles syn and sends ack to client
         let ack = gossiper_server.handle_syn(&syn);
 
@@ -1043,9 +994,7 @@ mod tests {
             )
         );
 
-        let mut gossiper_client = Gossiper {
-            endpoints_state: client_state.clone(),
-        };
+        let mut gossiper_client = GossiperState(client_state.clone());
 
         // client handles ack, updates its state and sends ack2 to server
         let ack2 = gossiper_client.handle_ack(&ack);
@@ -1067,10 +1016,7 @@ mod tests {
         // server handles ack2 and updates its state
         gossiper_server.handle_ack2(&ack2);
 
-        assert_eq!(
-            gossiper_server.endpoints_state,
-            gossiper_client.endpoints_state
-        );
+        assert_eq!(gossiper_server.0, gossiper_client.0);
     }
 
     #[test]
@@ -1084,7 +1030,7 @@ mod tests {
         };
 
         let gossip_msg = GossipMessage {
-            from: Ipv4Addr::new(127, 0, 0, 1),
+            to: Ipv4Addr::new(127, 0, 0, 1),
             payload: Payload::Syn(syn),
         };
 
@@ -1099,394 +1045,320 @@ mod tests {
     fn change_status() {
         let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::from([(
-                ip,
-                EndpointState::new(
-                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
-                    HeartbeatState::default(),
-                ),
-            )]),
-        };
+        let mut gossiper = GossiperState(HashMap::from([(
+            ip,
+            EndpointState::new(
+                ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
+                HeartbeatState::default(),
+            ),
+        )]));
 
         gossiper.change_status(ip, NodeStatus::Normal).unwrap();
 
         assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip)
-                .unwrap()
-                .application_state
-                .status,
+            gossiper.0.get(&ip).unwrap().application_state.status,
             NodeStatus::Normal
         );
-        assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip)
-                .unwrap()
-                .application_state
-                .version,
-            3
-        );
+        assert_eq!(gossiper.0.get(&ip).unwrap().application_state.version, 3);
     }
 
     #[test]
     fn change_status_non_existent() {
         let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::new(),
-        };
+        let mut gossiper = GossiperState(HashMap::new());
 
         let result = gossiper.change_status(ip, NodeStatus::Normal);
 
         assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
     }
 
-    #[test]
-    fn remove_keyspace() {
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
+    // #[test]
+    // fn remove_keyspace() {
+    //     let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::from([(
-                ip,
-                EndpointState::new(
-                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
-                    HeartbeatState::new(7, 2),
-                ),
-            )]),
-        };
+    //     let mut gossiper = GossiperState(HashMap::from([(
+    //         ip,
+    //         EndpointState::new(
+    //             ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
+    //             HeartbeatState::new(7, 2),
+    //         ),
+    //     )]));
 
-        gossiper.remove_keyspace(ip, "keyspace").unwrap();
+    //     gossiper.remove_keyspace(ip, "keyspace").unwrap();
 
-        assert!(gossiper
-            .endpoints_state
-            .get(&ip)
-            .unwrap()
-            .application_state
-            .schema
-            .keyspaces
-            .is_empty());
+    //     assert!(gossiper
+    //         .0
+    //         .get(&ip)
+    //         .unwrap()
+    //         .application_state
+    //         .schema
+    //         .keyspaces
+    //         .is_empty());
 
-        assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip)
-                .unwrap()
-                .application_state
-                .version,
-            3
-        );
-    }
+    //     assert_eq!(gossiper.0.get(&ip).unwrap().application_state.version, 3);
+    // }
 
-    #[test]
-    fn remove_keyspace_non_existent_ip() {
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
+    // #[test]
+    // fn remove_keyspace_non_existent_ip() {
+    //     let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::new(),
-        };
+    //     let mut gossiper = GossiperState(HashMap::new());
 
-        let result = gossiper.remove_keyspace(ip, "keyspace");
+    //     let result = gossiper.remove_keyspace(ip, "keyspace");
 
-        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
-    }
+    //     assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    // }
 
-    #[test]
-    fn add_keyspace() {
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
+    // #[test]
+    // fn add_keyspace() {
+    //     let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::from([(
-                ip,
-                EndpointState::new(
-                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
-                    HeartbeatState::new(7, 2),
-                ),
-            )]),
-        };
+    //     let mut gossiper = GossiperState(HashMap::from([(
+    //         ip,
+    //         EndpointState::new(
+    //             ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
+    //             HeartbeatState::new(7, 2),
+    //         ),
+    //     )]));
 
-        gossiper
-            .add_keyspace(
-                ip,
-                CreateKeyspace {
-                    name: "keyspace".to_string(),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
+    //     gossiper
+    //         .add_keyspace(
+    //             ip,
+    //             CreateKeyspace {
+    //                 name: "keyspace".to_string(),
+    //                 ..Default::default()
+    //             },
+    //         )
+    //         .unwrap();
 
-        assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip)
-                .unwrap()
-                .application_state
-                .schema
-                .keyspaces,
-            HashMap::from([(
-                "keyspace".to_string(),
-                KeyspaceSchema::new(
-                    CreateKeyspace {
-                        name: "keyspace".to_string(),
-                        ..Default::default()
-                    },
-                    Vec::new()
-                )
-            )])
-        );
-        assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip)
-                .unwrap()
-                .application_state
-                .version,
-            3
-        );
-    }
+    //     assert_eq!(
+    //         gossiper
+    //             .0
+    //             .get(&ip)
+    //             .unwrap()
+    //             .application_state
+    //             .schema
+    //             .keyspaces,
+    //         HashMap::from([(
+    //             "keyspace".to_string(),
+    //             KeyspaceSchema::new(
+    //                 CreateKeyspace {
+    //                     name: "keyspace".to_string(),
+    //                     ..Default::default()
+    //                 },
+    //                 Vec::new()
+    //             )
+    //         )])
+    //     );
+    //     assert_eq!(gossiper.0.get(&ip).unwrap().application_state.version, 3);
+    // }
 
-    #[test]
-    fn add_keyspace_non_existent_ip() {
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
+    // #[test]
+    // fn add_keyspace_non_existent_ip() {
+    //     let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::new(),
-        };
+    //     let mut gossiper = GossiperState(HashMap::new());
 
-        let result = gossiper.add_keyspace(ip, CreateKeyspace::default());
+    //     let result = gossiper.add_keyspace(ip, CreateKeyspace::default());
 
-        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
-    }
+    //     assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    // }
 
-    #[test]
-    fn remove_table() {
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
+    // #[test]
+    // fn remove_table() {
+    //     let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::from([(
-                ip,
-                EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Bootstrap,
-                        2,
-                        Schema {
-                            keyspaces: HashMap::from([(
-                                "keyspace".to_string(),
-                                KeyspaceSchema {
-                                    inner: CreateKeyspace {
-                                        name: "keyspace".to_string(),
-                                        ..Default::default()
-                                    },
-                                    tables: vec![TableSchema {
-                                        inner: CreateTable {
-                                            name: "table1".to_string(),
-                                            keyspace_used_name: "keyspace".to_string(),
-                                            ..Default::default()
-                                        },
-                                    }],
-                                },
-                            )]),
-                            ..Default::default()
-                        },
-                    ),
-                    HeartbeatState::new(7, 2),
-                ),
-            )]),
-        };
+    //     let mut gossiper = GossiperState(HashMap::from([(
+    //         ip,
+    //         EndpointState::new(
+    //             ApplicationState::new(
+    //                 NodeStatus::Bootstrap,
+    //                 2,
+    //                 Schema {
+    //                     keyspaces: HashMap::from([(
+    //                         "keyspace".to_string(),
+    //                         KeyspaceSchema {
+    //                             inner: CreateKeyspace {
+    //                                 name: "keyspace".to_string(),
+    //                                 ..Default::default()
+    //                             },
+    //                             tables: vec![TableSchema {
+    //                                 inner: CreateTable {
+    //                                     name: "table1".to_string(),
+    //                                     keyspace_used_name: "keyspace".to_string(),
+    //                                     ..Default::default()
+    //                                 },
+    //                             }],
+    //                         },
+    //                     )]),
+    //                     ..Default::default()
+    //                 },
+    //             ),
+    //             HeartbeatState::new(7, 2),
+    //         ),
+    //     )]));
 
-        gossiper.remove_table(ip, "keyspace", "table1").unwrap();
+    //     gossiper.remove_table(ip, "keyspace", "table1").unwrap();
 
-        assert!(gossiper
-            .endpoints_state
-            .get(&ip)
-            .unwrap()
-            .application_state
-            .schema
-            .keyspaces
-            .get("keyspace")
-            .unwrap()
-            .tables
-            .is_empty());
+    //     assert!(gossiper
+    //         .0
+    //         .get(&ip)
+    //         .unwrap()
+    //         .application_state
+    //         .schema
+    //         .keyspaces
+    //         .get("keyspace")
+    //         .unwrap()
+    //         .tables
+    //         .is_empty());
 
-        assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip)
-                .unwrap()
-                .application_state
-                .version,
-            3
-        );
-    }
+    //     assert_eq!(gossiper.0.get(&ip).unwrap().application_state.version, 3);
+    // }
 
-    #[test]
-    fn remove_table_non_existent_ip() {
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
+    // #[test]
+    // fn remove_table_non_existent_ip() {
+    //     let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::new(),
-        };
+    //     let mut gossiper = GossiperState(HashMap::new());
 
-        let result = gossiper.remove_table(ip, "keyspace", "table1");
+    //     let result = gossiper.remove_table(ip, "keyspace", "table1");
 
-        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
-    }
+    //     assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    // }
 
-    #[test]
-    fn remove_table_non_existent_keyspace() {
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
+    // #[test]
+    // fn remove_table_non_existent_keyspace() {
+    //     let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::from([(
-                ip,
-                EndpointState::new(
-                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
-                    HeartbeatState::new(7, 2),
-                ),
-            )]),
-        };
+    //     let mut gossiper = GossiperState(HashMap::from([(
+    //         ip,
+    //         EndpointState::new(
+    //             ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
+    //             HeartbeatState::new(7, 2),
+    //         ),
+    //     )]));
 
-        let result = gossiper.remove_table(ip, "keyspace", "table1");
+    //     let result = gossiper.remove_table(ip, "keyspace", "table1");
 
-        assert!(matches!(result, Err(GossipError::NoSuchKeyspace)));
-    }
+    //     assert!(matches!(result, Err(GossipError::NoSuchKeyspace)));
+    // }
 
-    #[test]
-    fn add_table() {
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
+    // #[test]
+    // fn add_table() {
+    //     let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::from([(
-                ip,
-                EndpointState::new(
-                    ApplicationState::new(
-                        NodeStatus::Bootstrap,
-                        2,
-                        Schema {
-                            keyspaces: HashMap::from([(
-                                "keyspace".to_string(),
-                                KeyspaceSchema {
-                                    inner: CreateKeyspace {
-                                        name: "keyspace".to_string(),
-                                        ..Default::default()
-                                    },
-                                    tables: Vec::new(),
-                                },
-                            )]),
-                            timestamp: 0,
-                        },
-                    ),
-                    HeartbeatState::new(7, 2),
-                ),
-            )]),
-        };
+    //     let mut gossiper = GossiperState(HashMap::from([(
+    //         ip,
+    //         EndpointState::new(
+    //             ApplicationState::new(
+    //                 NodeStatus::Bootstrap,
+    //                 2,
+    //                 Schema {
+    //                     keyspaces: HashMap::from([(
+    //                         "keyspace".to_string(),
+    //                         KeyspaceSchema {
+    //                             inner: CreateKeyspace {
+    //                                 name: "keyspace".to_string(),
+    //                                 ..Default::default()
+    //                             },
+    //                             tables: Vec::new(),
+    //                         },
+    //                     )]),
+    //                     timestamp: 0,
+    //                 },
+    //             ),
+    //             HeartbeatState::new(7, 2),
+    //         ),
+    //     )]));
 
-        gossiper
-            .add_table(
-                ip,
-                CreateTable {
-                    name: "table".to_string(),
-                    keyspace_used_name: "keyspace".to_string(),
-                    if_not_exists_clause: false,
-                    columns: Vec::new(),
-                    clustering_columns_in_order: Vec::new(),
-                },
-                "keyspace",
-            )
-            .unwrap();
+    //     gossiper
+    //         .add_table(
+    //             ip,
+    //             CreateTable {
+    //                 name: "table".to_string(),
+    //                 keyspace_used_name: "keyspace".to_string(),
+    //                 if_not_exists_clause: false,
+    //                 columns: Vec::new(),
+    //                 clustering_columns_in_order: Vec::new(),
+    //             },
+    //             "keyspace",
+    //         )
+    //         .unwrap();
 
-        assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip)
-                .unwrap()
-                .application_state
-                .schema,
-            Schema {
-                keyspaces: HashMap::from([(
-                    "keyspace".to_string(),
-                    KeyspaceSchema {
-                        inner: CreateKeyspace {
-                            name: "keyspace".to_string(),
-                            ..Default::default()
-                        },
-                        tables: vec![TableSchema {
-                            inner: CreateTable {
-                                name: "table".to_string(),
-                                keyspace_used_name: "keyspace".to_string(),
-                                if_not_exists_clause: false,
-                                columns: Vec::new(),
-                                clustering_columns_in_order: Vec::new(),
-                            },
-                        }],
-                    }
-                )]),
-                timestamp: 0
-            }
-        );
+    //     assert_eq!(
+    //         gossiper.0.get(&ip).unwrap().application_state.schema,
+    //         Schema {
+    //             keyspaces: HashMap::from([(
+    //                 "keyspace".to_string(),
+    //                 KeyspaceSchema {
+    //                     inner: CreateKeyspace {
+    //                         name: "keyspace".to_string(),
+    //                         ..Default::default()
+    //                     },
+    //                     tables: vec![TableSchema {
+    //                         inner: CreateTable {
+    //                             name: "table".to_string(),
+    //                             keyspace_used_name: "keyspace".to_string(),
+    //                             if_not_exists_clause: false,
+    //                             columns: Vec::new(),
+    //                             clustering_columns_in_order: Vec::new(),
+    //                         },
+    //                     }],
+    //                 }
+    //             )]),
+    //             timestamp: 0
+    //         }
+    //     );
 
-        assert_eq!(
-            gossiper
-                .endpoints_state
-                .get(&ip)
-                .unwrap()
-                .application_state
-                .version,
-            3
-        );
-    }
+    //     assert_eq!(gossiper.0.get(&ip).unwrap().application_state.version, 3);
+    // }
 
-    #[test]
-    fn add_table_non_existent_ip() {
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
+    // #[test]
+    // fn add_table_non_existent_ip() {
+    //     let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::new(),
-        };
+    //     let mut gossiper = GossiperState(HashMap::new());
 
-        let result = gossiper.add_table(
-            ip,
-            CreateTable {
-                name: "table".to_string(),
-                keyspace_used_name: "keyspace".to_string(),
-                if_not_exists_clause: false,
-                columns: Vec::new(),
-                clustering_columns_in_order: Vec::new(),
-            },
-            "keyspace",
-        );
+    //     let result = gossiper.add_table(
+    //         ip,
+    //         CreateTable {
+    //             name: "table".to_string(),
+    //             keyspace_used_name: "keyspace".to_string(),
+    //             if_not_exists_clause: false,
+    //             columns: Vec::new(),
+    //             clustering_columns_in_order: Vec::new(),
+    //         },
+    //         "keyspace",
+    //     );
 
-        assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
-    }
+    //     assert!(matches!(result, Err(GossipError::NoEndpointStateForIp)));
+    // }
 
-    #[test]
-    fn add_table_non_existent_keyspace() {
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
+    // #[test]
+    // fn add_table_non_existent_keyspace() {
+    //     let ip = Ipv4Addr::new(127, 0, 0, 1);
 
-        let mut gossiper = Gossiper {
-            endpoints_state: HashMap::from([(
-                ip,
-                EndpointState::new(
-                    ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
-                    HeartbeatState::new(7, 2),
-                ),
-            )]),
-        };
+    //     let mut gossiper = GossiperState(HashMap::from([(
+    //         ip,
+    //         EndpointState::new(
+    //             ApplicationState::new(NodeStatus::Bootstrap, 2, Schema::default()),
+    //             HeartbeatState::new(7, 2),
+    //         ),
+    //     )]));
 
-        let result = gossiper.add_table(
-            ip,
-            CreateTable {
-                name: "table".to_string(),
-                keyspace_used_name: "keyspace".to_string(),
-                if_not_exists_clause: false,
-                columns: Vec::new(),
-                clustering_columns_in_order: Vec::new(),
-            },
-            "keyspace",
-        );
+    //     let result = gossiper.add_table(
+    //         ip,
+    //         CreateTable {
+    //             name: "table".to_string(),
+    //             keyspace_used_name: "keyspace".to_string(),
+    //             if_not_exists_clause: false,
+    //             columns: Vec::new(),
+    //             clustering_columns_in_order: Vec::new(),
+    //         },
+    //         "keyspace",
+    //     );
 
-        assert!(matches!(result, Err(GossipError::NoSuchKeyspace)));
-    }
+    //     assert!(matches!(result, Err(GossipError::NoSuchKeyspace)));
+    // }
 }
