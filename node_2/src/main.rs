@@ -12,7 +12,8 @@ use internode_protocol::{
 };
 
 fn main() {
-    println!("Hello, world!");
+    let node = Node::new();
+    node.start();
 }
 
 pub struct Node {}
