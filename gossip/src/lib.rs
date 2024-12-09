@@ -14,7 +14,7 @@ use std::{
     net::Ipv4Addr,
 };
 use structures::{
-    application_state::{KeyspaceSchema, NodeStatus, Schema, TableSchema},
+    application_state::{ApplicationState, KeyspaceSchema, NodeStatus, Schema, TableSchema},
     endpoint_state::EndpointState,
     heartbeat_state::HeartbeatState,
 };
@@ -105,6 +105,19 @@ impl Gossiper {
         app_state.version += 1;
 
         Ok(())
+    }
+
+    /// Returns a copy of the application state of the endpoint with the given ip.
+    pub fn get_status(&self, ip: Ipv4Addr) -> Result<NodeStatus, GossipError> {
+        let app_state = self
+            .endpoints_state
+            .get(&ip)
+            .ok_or(GossipError::NoEndpointStateForIp)?
+            .application_state
+            .status
+            .clone(); // Asumiendo que ApplicationState implementa Clone
+
+        Ok(app_state)
     }
 
     /// Returns the schema with the largest timestamp from the known application states.

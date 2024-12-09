@@ -13,14 +13,16 @@ use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{thread, vec};
 
 // External libraries
 use chrono::Utc;
 use driver::server::{handle_client_request, Request};
 use errors::NodeError;
-use gossip::structures::application_state::{KeyspaceSchema, NodeStatus, Schema, TableSchema};
+use gossip::structures::application_state::{
+    ApplicationState, KeyspaceSchema, NodeStatus, Schema, TableSchema,
+};
 use gossip::Gossiper;
 use internode_protocol::message::{InternodeMessage, InternodeMessageContent};
 use internode_protocol::response::{
@@ -38,11 +40,11 @@ use query_creator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
 use query_creator::clauses::table::create_table_cql::CreateTable;
 use query_creator::clauses::types::column::Column;
 use query_creator::errors::CQLError;
-use query_creator::{GetTableName, GetUsedKeyspace, Query};
+use query_creator::{GetTableName, GetUsedKeyspace, NeedsKeyspace, NeedsTable, Query};
 use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
 use storage_engine::StorageEngine;
-use utils::connect_and_send_message;
+use utils::{check_keyspace, check_table, connect_and_send_message};
 
 const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
 const INTERNODE_PORT: u16 = 0x554D; // Hexadecimal of "UM" (FERRUM) = 21837
@@ -371,7 +373,7 @@ impl Node {
                     }
                 }
 
-                thread::sleep(std::time::Duration::from_millis(1200));
+                thread::sleep(std::time::Duration::from_millis(1000));
             }
         });
         Ok(())
@@ -849,17 +851,6 @@ impl Node {
             self_ip = node_guard.get_ip();
         }
 
-        // Creates a thread to handle node connections
-        let node_connections_node = Arc::clone(&node);
-        let node_connections = Arc::clone(&connections);
-        let self_ip_node = self_ip.clone();
-        let handle_node_thread = thread::spawn(move || {
-            Self::handle_node_connections(node_connections_node, node_connections, self_ip_node)
-                .unwrap_or_else(|err| {
-                    eprintln!("Error in internode connections: {:?}", err); // Or handle the error as needed
-                });
-        });
-
         // Creates a thread to handle gossip
         let gossip_connections = Arc::clone(&connections);
         let node_gossip = Arc::clone(&node);
@@ -867,6 +858,22 @@ impl Node {
             eprintln!("Error in gossip: {:?}", err); // Or handle the error as needed
         });
 
+        // thread::sleep(Duration::from_secs(1));
+        // let mut node_is_ready = false;
+        // while !node_is_ready {
+        //     thread::sleep(Duration::from_secs(1));
+        //     if node
+        //         .lock()?
+        //         .gossiper
+        //         .get_status(self_ip)
+        //         .map_err(|_| NodeError::GossipError)?
+        //         == NodeStatus::Normal
+        //     {
+        //         node_is_ready = true;
+        //     }
+        // }
+
+        //thread::sleep(Duration::from_secs(2));
         // Creates a thread to handle client connections
         let client_connections_node = Arc::clone(&node);
         let client_connections = Arc::clone(&connections);
@@ -879,6 +886,17 @@ impl Node {
                 self_ip_client,
             )
             .unwrap_or_else(|e| eprintln!("Error in client connections: {:?}", e));
+        });
+
+        // Creates a thread to handle node connections
+        let node_connections_node = Arc::clone(&node);
+        let node_connections = Arc::clone(&connections);
+        let self_ip_node = self_ip.clone();
+        let handle_node_thread = thread::spawn(move || {
+            Self::handle_node_connections(node_connections_node, node_connections, self_ip_node)
+                .unwrap_or_else(|err| {
+                    eprintln!("Error in internode connections: {:?}", err); // Or handle the error as needed
+                });
         });
 
         handle_node_thread
@@ -1119,6 +1137,16 @@ impl Node {
         let query = QueryCreator::new()
             .handle_query(query_str.to_string())
             .map_err(NodeError::CQLError)?;
+
+        if query.needs_keyspace() {
+            //println!("esta query: {:?} necesita un keyspace", query_str);
+            check_keyspace(node, &query, client_id, 3)?;
+        }
+
+        if query.needs_table() {
+            //println!("esta query: {:?} necesita una tabla", query_str);
+            check_table(node, &query, client_id, 3)?;
+        }
 
         let open_query_id;
         let self_ip: Ipv4Addr;

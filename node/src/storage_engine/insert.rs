@@ -125,6 +125,7 @@ impl StorageEngine {
 
                 if clustering_cmp == std::cmp::Ordering::Equal {
                     if is_same_partition && if_not_exist {
+                        println!("son dos filas iguales, escribo una cualquiera");
                         writeln!(temp_file, "{};{}", line_content, row_timestamp)
                             .map_err(|_| StorageEngineError::IoError)?;
                         current_byte_offset += line_length + 1;
@@ -161,6 +162,7 @@ impl StorageEngine {
 
                 writeln!(temp_file, "{};{}", line_content, row_timestamp)
                     .map_err(|_| StorageEngineError::IoError)?;
+
                 current_byte_offset += line_length + 1;
                 Self::update_index_map(
                     &row,

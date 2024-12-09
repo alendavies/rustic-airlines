@@ -1,5 +1,5 @@
 use driver::CassandraClient;
-use std::{net::Ipv4Addr, str::FromStr, thread, time::Duration};
+use std::{net::Ipv4Addr, str::FromStr};
 
 /// Example Rust program to interact with a Cassandra server.
 /// This program demonstrates:
@@ -35,16 +35,16 @@ fn main() {
     );".to_string(),
 
     // Insertar datos para SEXO = 'Masculino' con clustering_key 'Argentina'
-    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Juan Pérez', 30, 'juan.perez@example.com', '+5491123456789');".to_string(),
-    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Carlos Gómez', 35, 'carlos.gomez@example.com', '+5491145678901');".to_string(),
-    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Luis Martínez', 40, 'luis.martinez@example.com', '+5491167890123');".to_string(),
-    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Pedro Díaz', 29, 'pedro.diaz@example.com', '+5491189012345');".to_string(),
-    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Miguel Castro', 34, 'miguel.castro@example.com', '+5491111234567');".to_string(),
-    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Luis Romero', 33, 'luis.romero@example.com', '+5491122345678');".to_string(),
-    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Federico Sánchez', 27, 'federico.sanchez@example.com', '+5491156789012');".to_string(),
-    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Ricardo Torres', 26, 'ricardo.torres@example.com', '+5491178901234');".to_string(),
-    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Gustavo Díaz', 31, 'gustavo.diaz@example.com', '+5491190123456');".to_string(),
-    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'Marcelo Gutiérrez', 36, 'marcelo.gutierrez@example.com', '+5491987654321');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 30, 'juan.perez@example.com', '+5491123456789');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 35, 'carlos.gomez@example.com', '+5491145678901');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 40, 'luis.martinez@example.com', '+5491167890123');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 29, 'pedro.diaz@example.com', '+5491189012345');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 34, 'miguel.castro@example.com', '+5491111234567');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 33, 'luis.romero@example.com', '+5491122345678');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 27, 'federico.sanchez@example.com', '+5491156789012');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 26, 'ricardo.torres@example.com', '+5491178901234');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 31, 'gustavo.diaz@example.com', '+5491190123456');".to_string(),
+    "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 36, 'marcelo.gutierrez@example.com', '+5491987654321');".to_string(),
 
     // Insertar datos para SEXO = 'Masculino' con clustering_key 'Brasil'
     "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Brasil', 'João Silva', 31, 'joao.silva@example.com', '+5521987654321');".to_string(),
@@ -77,10 +77,10 @@ fn main() {
     // Ejecutar cada consulta en un loop
     let mut contador = 0;
     let len = queries.len();
-    for (i, query) in queries.iter().enumerate() {
-        if i == 2 {
-            thread::sleep(Duration::from_secs(2));
-        }
+    for (_, query) in queries.iter().enumerate() {
+        // if i == 2 {
+        //     thread::sleep(Duration::from_secs(2));
+        // }
         match client.execute(&query, "all") {
             Ok(query_result) => {
                 match query_result {

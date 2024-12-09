@@ -185,13 +185,14 @@ impl StorageEngine {
                         let timest: i64 = timestamp
                             .parse()
                             .map_err(|_| StorageEngineError::UnsupportedOperation)?;
+
                         self.insert(
                             &keyspace.get_name(),
                             &table.get_name(),
                             row.clone(),
                             table.get_columns(),
                             table.get_clustering_column_in_order(),
-                            false,
+                            true,
                             false,
                             timest,
                         )?;

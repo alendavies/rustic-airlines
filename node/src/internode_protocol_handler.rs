@@ -4,7 +4,7 @@ use crate::internode_protocol::message::{InternodeMessage, InternodeMessageConte
 use crate::internode_protocol::query::InternodeQuery;
 use crate::internode_protocol::response::{InternodeResponse, InternodeResponseStatus};
 use crate::open_query_handler::OpenQueryHandler;
-use crate::utils::connect_and_send_message;
+use crate::utils::{check_keyspace, check_table, connect_and_send_message};
 use crate::{storage_engine, Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
 use chrono::Utc;
 use gossip::messages::GossipMessage;
@@ -25,7 +25,7 @@ use query_creator::clauses::use_cql::Use;
 use query_creator::clauses::{
     delete_cql::Delete, insert_cql::Insert, select_cql::Select, update_cql::Update,
 };
-use query_creator::CreateClientResponse;
+use query_creator::{CreateClientResponse, NeedsKeyspace, NeedsTable, QueryCreator};
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
@@ -111,6 +111,7 @@ impl InternodeProtocolHandler {
     ) -> Result<(), NodeError> {
         match message.clone().content {
             InternodeMessageContent::Query(query) => {
+                println!("recibio una query: {:?}", query.query_string);
                 self.handle_query_command(node, query, connections, message.clone().from)?;
                 Ok(())
             }
@@ -729,6 +730,16 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         node_ip: Ipv4Addr,
     ) -> Result<(), NodeError> {
+        if query.needs_keyspace() {
+            let q = QueryCreator::new().handle_query(query.query_string.clone())?;
+            check_keyspace(node, &q, query.client_id as i32, 3)?;
+        }
+
+        if query.needs_table() {
+            let q = QueryCreator::new().handle_query(query.query_string.clone())?;
+            check_table(node, &q, query.client_id as i32, 3)?;
+        }
+
         if query.keyspace_name != "None" {
             {
                 let mut guard_node = node.lock()?;

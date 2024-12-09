@@ -52,6 +52,38 @@ pub trait GetTableName {
     fn get_table_name(&self) -> Option<String>;
 }
 
+/// A trait to determine if a query or operation requires a keyspace.
+///
+/// # Purpose
+/// This trait is used to indicate whether a particular query or operation
+/// needs a keyspace to be specified or not. It provides a way to check
+/// if a keyspace is required for the current operation.
+///
+/// # Method
+/// - `fn needs_keyspace(&self) -> bool`:
+///   - Returns:
+///     - `true` if the query or operation requires a keyspace.
+///     - `false` if no keyspace is required.
+pub trait NeedsKeyspace {
+    fn needs_keyspace(&self) -> bool;
+}
+
+/// A trait to determine if a query or operation requires a table.
+///
+/// # Purpose
+/// This trait is used to indicate whether a particular query or operation
+/// needs a table to be specified or not. It provides a way to check
+/// if a table is required for the current operation.
+///
+/// # Method
+/// - `fn needs_keyspace(&self) -> bool`:
+///   - Returns:
+///     - `true` if the query or operation requires a table.
+///     - `false` if no table is required.
+pub trait NeedsTable {
+    fn needs_table(&self) -> bool;
+}
+
 /// A trait for creating client-compatible responses from a query.
 ///
 /// # Purpose
@@ -389,6 +421,42 @@ impl NeededResponses for Query {
             Query::DropKeyspace(_) => NeededResponseCount::One,
             Query::AlterKeyspace(_) => NeededResponseCount::One,
             Query::Use(_) => NeededResponseCount::One,
+        }
+    }
+}
+
+impl NeedsKeyspace for Query {
+    fn needs_keyspace(&self) -> bool {
+        match self {
+            Query::CreateTable(_) => true,     // Consulta de creación de tabla
+            Query::DropTable(_) => true,       // Consulta de eliminación de tabla
+            Query::AlterTable(_) => true,      // Consulta de alteración de tabla
+            Query::CreateKeyspace(_) => false, // Consulta de creación de keyspace
+            Query::DropKeyspace(_) => false,   // Consulta de eliminación de keyspace
+            Query::AlterKeyspace(_) => false,  // Consulta de alteración de keyspace
+            Query::Use(_) => false,            // `USE` no es una consulta que necesite keyspace
+            Query::Select(_) => true,          // `SELECT` no es una consulta que necesite keyspace
+            Query::Insert(_) => true,          // `INSERT` no es una consulta que necesite keyspace
+            Query::Update(_) => true,          // `UPDATE` no es una consulta que necesite keyspace
+            Query::Delete(_) => true,          // `DELETE` no es una consulta que necesite keyspace
+        }
+    }
+}
+
+impl NeedsTable for Query {
+    fn needs_table(&self) -> bool {
+        match self {
+            Query::CreateTable(_) => false,    // Consulta de creación de tabla
+            Query::DropTable(_) => false,      // Consulta de eliminación de tabla
+            Query::AlterTable(_) => false,     // Consulta de alteración de tabla
+            Query::Select(_) => true,          // `SELECT` requiere una tabla
+            Query::Insert(_) => true,          // `INSERT` requiere una tabla
+            Query::Update(_) => true,          // `UPDATE` requiere una tabla
+            Query::Delete(_) => true,          // `DELETE` requiere una tabla
+            Query::CreateKeyspace(_) => false, // `CREATE KEYSPACE` no requiere tabla
+            Query::DropKeyspace(_) => false,   // `DROP KEYSPACE` no requiere tabla
+            Query::AlterKeyspace(_) => false,  // `ALTER KEYSPACE` no requiere tabla
+            Query::Use(_) => false,            // `USE` no requiere tabla
         }
     }
 }

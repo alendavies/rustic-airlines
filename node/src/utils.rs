@@ -1,10 +1,17 @@
+use gossip::structures::application_state::{KeyspaceSchema, TableSchema};
+use query_creator::errors::CQLError;
+use query_creator::{GetTableName, GetUsedKeyspace, Query};
+
 use crate::errors::NodeError;
 use crate::internode_protocol::message::InternodeMessage;
 use crate::internode_protocol::InternodeSerializable;
+use crate::Node;
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 /// Attempts to connect to a peer and send a message over the `TcpStream`.
 ///
@@ -119,4 +126,96 @@ pub fn connect_and_send_message(
         })?;
     }
     Ok(())
+}
+
+pub fn check_keyspace(
+    node: &Arc<Mutex<Node>>,
+    query: &Query,
+    client_id: i32,
+    max_retries: usize,
+) -> Result<Option<KeyspaceSchema>, NodeError> {
+    let mut attempts = 0;
+    let mut keyspace: Option<KeyspaceSchema>;
+
+    while attempts < max_retries {
+        if attempts != 0 {
+            thread::sleep(Duration::from_millis(1000));
+        }
+
+        // Bloquear el nodo
+        let guard_node = node.lock()?;
+
+        // Intentar obtener el keyspace
+        if let Some(keyspace_name) = query.get_used_keyspace() {
+            keyspace = guard_node.get_keyspace(&keyspace_name)?;
+        } else {
+            keyspace = guard_node.get_client_keyspace(client_id)?;
+        }
+
+        // Si se encuentra el keyspace, retornar
+        if keyspace.is_some() {
+            println!("logro encontrar el keyspace y este es {:?}", keyspace);
+            return Ok(keyspace);
+        }
+
+        // Si no se encuentra, esperar y reintentar
+        attempts += 1;
+    }
+
+    println!("no encontro un kesyapce y lo necesitaba");
+    // Si no se encuentra el keyspace después de los intentos, retornar error
+    Err(NodeError::CQLError(CQLError::InvalidSyntax))
+}
+
+pub fn check_table(
+    node: &Arc<Mutex<Node>>,
+    query: &Query,
+    client_id: i32,
+    max_retries: usize,
+) -> Result<Option<TableSchema>, NodeError> {
+    let mut attempts = 0;
+    let mut table: Option<TableSchema> = None;
+    let mut keyspace: Option<KeyspaceSchema>;
+
+    while attempts < max_retries {
+        if attempts != 0 {
+            thread::sleep(Duration::from_millis(1000));
+        }
+
+        // Bloquear el nodo
+        let guard_node = node.lock()?;
+
+        // Intentar obtener el keyspace
+        if let Some(keyspace_name) = query.get_used_keyspace() {
+            keyspace = guard_node.get_keyspace(&keyspace_name)?;
+        } else {
+            keyspace = guard_node.get_client_keyspace(client_id)?;
+        }
+
+        // Si no se encuentra el keyspace, retornar un error
+        if keyspace.is_none() {
+            println!("entro a necrsitar una tabla sin tener keysapce");
+            return Err(NodeError::CQLError(CQLError::InvalidSyntax)); // Keyspace no encontrado
+        }
+
+        // Si se obtiene el keyspace, intentar obtener la tabla
+        if let Some(ref k) = keyspace {
+            if let Some(table_name) = query.get_table_name() {
+                table = guard_node.get_table(table_name, k.clone()).ok();
+            } else {
+                table = None;
+            }
+        }
+
+        // Si se encuentra la tabla, retornar
+        if table.is_some() {
+            return Ok(table);
+        }
+
+        // Si no se encuentra la tabla, esperar y reintentar
+        attempts += 1;
+    }
+
+    // Si no se encuentra la tabla después de los intentos, retornar error
+    Err(NodeError::CQLError(CQLError::InvalidSyntax)) // Tabla no encontrada
 }
