@@ -5,7 +5,10 @@ pub mod messages;
 pub mod structures;
 use chrono::{self, Utc};
 use error::GossipError;
-use messages::{Ack, Ack2, Digest, GossipMessage, Payload, Syn};
+use messages::{
+    Ack, Ack2, Digest, GossipMessage, GossipMessageWithDestination, GossipMessageWithOrigin,
+    Payload, Syn,
+};
 use query_creator::clauses::{
     keyspace::create_keyspace_cql::CreateKeyspace, table::create_table_cql::CreateTable,
 };
@@ -75,6 +78,17 @@ impl GossiperState {
         Ok(())
     }
 
+    //pub fn pick_ips(&self) -> Vec<Ipv4Addr> {
+    //    let mut rng = thread_rng();
+    //    let ips: Vec<Ipv4Addr> = self
+    //        .0
+    //        .iter()
+    //        .filter(|(_, state)| state.application_state.status != NodeStatus::Dead)
+    //        .map(|(ip, _)| *ip)
+    //        .choose_multiple(&mut rng, 3);
+    //    ips
+    //}
+
     /// Picks 3 random ips from the gossiper state, excluding the given ip.
     pub fn pick_ips(&self, exclude: Ipv4Addr) -> Vec<Ipv4Addr> {
         let mut rng = thread_rng();
@@ -90,7 +104,7 @@ impl GossiperState {
     }
 
     /// Creates a Syn message with the digests of the endpoints in the gossiper state.
-    pub fn create_syn(&self, ip: Ipv4Addr) -> Result<GossipMessage, GossipError> {
+    pub fn create_syn(&self) -> Result<GossipMessage, GossipError> {
         let digests: Vec<Digest> = self
             .0
             .iter()
@@ -100,7 +114,6 @@ impl GossiperState {
         let syn = Syn::new(digests);
 
         Ok(GossipMessage {
-            to: ip,
             payload: messages::Payload::Syn(syn),
         })
     }
@@ -149,6 +162,8 @@ impl GossiperState {
             updated_info,
         }
     }
+
+    // TODO: falta actualizar los que el otro NO tiene. VER EL COMMIT DONDE MERGEAMOS GOSSIP
 
     /// Handles an Ack message and returns the corresponding Ack2 message.
     pub fn handle_ack(&mut self, ack: &Ack) -> Ack2 {
@@ -235,18 +250,29 @@ impl GossiperState {
 /// - `tx`: Sender to send gossip messages.
 
 pub struct Gossiper {
-    rx: Receiver<GossipMessage>,
-    tx: Sender<GossipMessage>,
+    self_ip: Ipv4Addr,
+    rx: Receiver<GossipMessageWithOrigin>,
+    tx: Sender<GossipMessageWithDestination>,
     endpoints_state: Arc<RwLock<GossiperState>>,
 }
 
 impl Gossiper {
     /// Create a new Gossiper instance with an empty state.
-    pub fn new(rx: Receiver<GossipMessage>, tx: Sender<GossipMessage>) -> Self {
+    pub fn new(
+        self_ip: Ipv4Addr,
+        rx: Receiver<GossipMessageWithOrigin>,
+        tx: Sender<GossipMessageWithDestination>,
+    ) -> Self {
+        let mut initial_endpoint_states = GossiperState::new();
+        initial_endpoint_states
+            .0
+            .insert(self_ip, EndpointState::default());
+
         Self {
+            self_ip,
             rx,
             tx,
-            endpoints_state: Arc::new(RwLock::new(GossiperState::new())),
+            endpoints_state: Arc::new(RwLock::new(initial_endpoint_states)),
         }
     }
 
@@ -255,6 +281,7 @@ impl Gossiper {
         // one that reads from rx and process
         // one that send to tx every second
 
+        let own_ip = self.self_ip.clone();
         let tx_clone = self.tx.clone();
         let tx_clone_2 = tx_clone.clone();
 
@@ -265,25 +292,71 @@ impl Gossiper {
         let reader_thread_handler = thread::spawn(move || {
             for msg in &self.rx {
                 // handle gossip message
-                dbg!(&msg);
+                //dbg!(&msg);
 
-                thread::sleep(Duration::from_millis(500)); // simulate gossip processing time
+                //thread::sleep(Duration::from_millis(500)); // simulate gossip processing time
 
-                match msg.payload {
+                match msg.message.payload {
                     Payload::Syn(syn) => {
                         let ack = arc_clone.read().unwrap().handle_syn(&syn);
+                        let ack = GossipMessage::new(Payload::Ack(ack));
 
-                        let msg = GossipMessage::new(msg.to, Payload::Ack(ack));
+                        println!(
+                            "RECEIVED SYN: {:?}",
+                            syn.digests.iter().map(|x| x.address).collect::<Vec<_>>()
+                        );
 
-                        tx_clone.send(msg).unwrap();
+                        let ack = GossipMessageWithDestination {
+                            to: msg.from,
+                            message: ack,
+                        };
+
+                        tx_clone.send(ack).unwrap();
                     }
                     Payload::Ack(ack) => {
                         let ack2 = arc_clone.write().unwrap().handle_ack(&ack);
-                        let msg = GossipMessage::new(msg.to, Payload::Ack2(ack2));
-                        tx_clone.send(msg).unwrap();
+                        let ack2 = GossipMessage::new(Payload::Ack2(ack2));
+
+                        println!(
+                            "RECEIVED ACK: [stale: {:?}] [updated: {:?}]",
+                            ack.stale_digests
+                                .iter()
+                                .map(|x| x.address)
+                                .collect::<Vec<_>>(),
+                            ack.updated_info
+                                .iter()
+                                .map(|x| x.0.address)
+                                .collect::<Vec<_>>()
+                        );
+
+                        let ack2 = GossipMessageWithDestination {
+                            to: msg.from,
+                            message: ack2,
+                        };
+
+                        tx_clone.send(ack2).unwrap();
                     }
                     Payload::Ack2(ack2) => {
                         arc_clone.write().unwrap().handle_ack2(&ack2);
+
+                        println!(
+                            "RECEIVED ACK2: [updated: {:?}]",
+                            ack2.updated_info
+                                .iter()
+                                .map(|x| x.0.address)
+                                .collect::<Vec<_>>()
+                        );
+
+                        println!(
+                            "THE RESULTING IPS: {:?}",
+                            arc_clone
+                                .read()
+                                .unwrap()
+                                .0
+                                .iter()
+                                .map(|(s, _)| s)
+                                .collect::<Vec<_>>()
+                        )
                     }
                 }
             }
@@ -291,16 +364,26 @@ impl Gossiper {
 
         // sends gossip messages to tx every second
         let writer_thread_handler = thread::spawn(move || loop {
-            let ips = arc_clone_2
-                .read()
-                .unwrap()
-                .pick_ips(Ipv4Addr::new(127, 0, 0, 1));
+            let _ = arc_clone_2.write().unwrap().heartbeat(own_ip);
+            let ips = arc_clone_2.read().unwrap().pick_ips(own_ip);
+            let syn = arc_clone_2.read().unwrap().create_syn().unwrap();
+            let syn_clone = syn.clone();
 
             for ip in ips {
-                let syn = arc_clone_2.read().unwrap().create_syn(ip).unwrap();
+                if let Payload::Syn(ref syn) = syn_clone.payload {
+                    println!(
+                        "SENDING SYN: {:?} TO {:?}",
+                        syn.digests.iter().map(|x| x.address).collect::<Vec<_>>(),
+                        ip
+                    );
+                }
 
-                dbg!("gossiping");
-                tx_clone_2.send(syn).unwrap();
+                let msg = GossipMessageWithDestination {
+                    to: ip,
+                    message: syn.clone(),
+                };
+
+                tx_clone_2.send(msg).unwrap();
             }
             thread::sleep(Duration::from_millis(1500));
         });

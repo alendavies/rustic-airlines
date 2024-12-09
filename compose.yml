@@ -1,0 +1,26 @@
+services:
+  seed:
+    build: .
+    volumes:
+      - ./:/app/
+    # ports:
+    #   - "13001:9998"
+    #   - "13002:9999"
+
+  replica:
+    build: .
+    volumes:
+      - ./:/app/
+    depends_on:
+      - seed
+    deploy:
+      replicas: 7
+
+    # deploy:
+    #   replicas: 3
+    # ports:
+    #   - "11001:99"
+
+
+# acá iría el flight sim
+# TODO: automatizar levatnando n nodos en vez de declrar uno por uno

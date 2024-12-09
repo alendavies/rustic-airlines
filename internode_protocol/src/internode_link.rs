@@ -1,48 +1,91 @@
 use std::{
-    io::Read,
-    net::{IpAddr, Ipv4Addr, TcpListener},
+    io::{Read, Write},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream},
     str::FromStr,
     sync::mpsc::{Receiver, Sender},
+    thread,
 };
 
-use crate::messages::{InternodeMessage, InternodeMessageContent};
+use gossip::messages::GossipMessage;
+
+use crate::{
+    messages::{InternodeMessage, InternodeMessageContent},
+    Serializable,
+};
 
 pub struct InternodeLink {
     /// Receiving stub from where we will receive messages to forward to other nodes
-    rx: Receiver<InternodeMessage>,
+    rx: Receiver<InternodeMessageWithDestinationAddress>,
     /// Sending stub to send messages received from other nodes
-    tx: Sender<InternodeMessage>,
+    tx: Sender<InternodeMessageWithOriginAddress>,
     // open connections
 }
 
+#[derive(Debug)]
+pub struct InternodeMessageWithOriginAddress {
+    pub message: InternodeMessage,
+    pub from: IpAddr,
+}
+
+#[derive(Debug)]
+pub struct InternodeMessageWithDestinationAddress {
+    pub message: InternodeMessage,
+    pub to: IpAddr,
+}
+
 impl InternodeLink {
-    pub fn new(rx: Receiver<InternodeMessage>, tx: Sender<InternodeMessage>) -> Self {
+    pub fn new(
+        rx: Receiver<InternodeMessageWithDestinationAddress>,
+        tx: Sender<InternodeMessageWithOriginAddress>,
+    ) -> Self {
         Self { rx, tx }
     }
 
-    pub fn start(&self) {
+    pub fn start(self) {
         // two threads, one for sending and one for receiving
         // todo!()
 
-        let socket = TcpListener::bind("0.0.0.0:9999").unwrap();
+        let tx_clone = self.tx.clone();
 
-        for stream in socket.incoming() {
-            let mut stream = stream.unwrap();
-            let mut buffer = [0; 1024];
+        let writer = thread::spawn(move || {
+            for msg in &self.rx {
+                //println!("Internode link sending: {:?} to {:?}", msg.message, msg.to);
 
-            stream.read(&mut buffer).unwrap();
+                if let Some(mut s) = TcpStream::connect(SocketAddr::new(msg.to, 9999)).ok() {
+                    s.write(&msg.message.as_bytes()).unwrap();
+                }
+            }
+        });
 
-            self.tx
-                .send(InternodeMessage::new(
-                    IpAddr::V4(Ipv4Addr::from_str("0.0.0.0").unwrap()),
-                    InternodeMessageContent::Dummy("recibí algo".to_string()),
-                ))
-                .unwrap();
-        }
+        let reader = thread::spawn(move || {
+            let socket = TcpListener::bind("0.0.0.0:9999").unwrap();
 
-        // for msg in &self.rx {
-        //     let mut stream = TcpStream::connect("node1:9999").unwrap();
-        //     stream.write(b"you are the f host!").unwrap();
-        // }
+            for stream in socket.incoming() {
+                let mut stream = stream.unwrap();
+                let mut buffer = [0; 1024];
+
+                match stream.read(&mut buffer) {
+                    Ok(0) => {}
+                    Ok(n) => {
+                        let msg = InternodeMessage::from_bytes(&buffer[..n]).unwrap();
+                        let msg = InternodeMessageWithOriginAddress {
+                            message: msg,
+                            from: stream.peer_addr().unwrap().ip(),
+                        };
+                        //println!("Internode link received: {:?}.", &msg);
+
+                        tx_clone.send(msg).unwrap();
+                    }
+                    Err(_) => todo!(),
+                }
+
+                //let bytes_read = stream.read(&mut buffer).unwrap();
+                //let string = String::from_utf8(buffer[..bytes_read].to_vec()).unwrap();
+                //println!("Internode link received: {:?}.", &string);
+            }
+        });
+
+        reader.join().unwrap();
+        writer.join().unwrap();
     }
 }

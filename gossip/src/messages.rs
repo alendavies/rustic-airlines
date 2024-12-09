@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     collections::BTreeMap,
     io::{Cursor, Read},
@@ -162,14 +163,24 @@ impl Digest {
 /// - `from`: The IP address of the receiver.
 /// - `payload`: The payload of the message.
 pub struct GossipMessage {
-    pub to: Ipv4Addr,
+    //pub to: Ipv4Addr,
     pub payload: Payload,
+}
+
+pub struct GossipMessageWithOrigin {
+    pub from: Ipv4Addr,
+    pub message: GossipMessage,
+}
+
+pub struct GossipMessageWithDestination {
+    pub to: Ipv4Addr,
+    pub message: GossipMessage,
 }
 
 impl GossipMessage {
     /// Create a new `GossipMessage`.
-    pub fn new(to: Ipv4Addr, payload: Payload) -> Self {
-        GossipMessage { to, payload }
+    pub fn new(payload: Payload) -> Self {
+        GossipMessage { payload }
     }
 }
 
@@ -212,7 +223,7 @@ impl GossipMessage {
     pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
 
-        bytes.extend_from_slice(&self.to.to_bits().to_be_bytes());
+        //bytes.extend_from_slice(&self.to.to_bits().to_be_bytes());
 
         let payload_type = match &self.payload {
             Payload::Syn(_) => PayloadType::Syn as u8,
@@ -237,21 +248,16 @@ impl GossipMessage {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, MessageError> {
         let mut cursor = Cursor::new(bytes);
 
-        let mut bytes_ip = [0u8; 4];
-        cursor
-            .read_exact(&mut bytes_ip)
-            .map_err(|_| MessageError::CursorError)?;
+        //let mut bytes_ip = [0u8; 4];
+        //cursor
+        //    .read_exact(&mut bytes_ip)
+        //    .map_err(|_| MessageError::CursorError)?;
+        //
         let mut bytes_type = [0u8; 1];
-        cursor
-            .read_exact(&mut bytes_type)
-            .map_err(|_| MessageError::CursorError)?;
+        cursor.read_exact(&mut bytes_type).unwrap();
 
         let mut bytes_payload = Vec::new();
-        cursor
-            .read_to_end(&mut bytes_payload)
-            .map_err(|_| MessageError::CursorError)?;
-
-        let ip = Ipv4Addr::from_bits(u32::from_be_bytes(bytes_ip));
+        cursor.read_to_end(&mut bytes_payload).unwrap();
 
         let payload_type = match u8::from_be_bytes(bytes_type) {
             0x00 => PayloadType::Syn,
@@ -266,7 +272,7 @@ impl GossipMessage {
             PayloadType::Ack2 => Payload::Ack2(Ack2::from_bytes(&bytes_payload)?),
         };
 
-        Ok(Self { to: ip, payload })
+        Ok(Self { payload })
     }
 }
 
@@ -438,53 +444,47 @@ impl Ack {
 
         let mut stale_len_bytes = [0u8; 4];
 
-        cursor
-            .read_exact(&mut stale_len_bytes)
-            .map_err(|_| MessageError::CursorError)?;
+        cursor.read_exact(&mut stale_len_bytes).unwrap();
 
         let stale_len = u32::from_be_bytes(stale_len_bytes);
 
         let mut info_len_bytes = [0u8; 4];
 
-        cursor
-            .read_exact(&mut info_len_bytes)
-            .map_err(|_| MessageError::CursorError)?;
+        cursor.read_exact(&mut info_len_bytes).unwrap();
 
         let info_len = u32::from_be_bytes(info_len_bytes);
 
         for _ in 0..stale_len {
             let mut info_type_bytes = [0u8; 4];
-            cursor
-                .read_exact(&mut info_type_bytes)
-                .map_err(|_| MessageError::CursorError)?;
+            cursor.read_exact(&mut info_type_bytes).unwrap();
 
             let info_type = u32::from_be_bytes(info_type_bytes);
 
             if info_type != InfoType::Digest as u32 {
-                return Err(MessageError::InvalidValue(format!(
-                    "Invalid InfoType value: {}",
-                    info_type
-                )));
+                panic!();
+                //return Err(MessageError::InvalidValue(format!(
+                //    "Invalid InfoType value: {}",
+                //    info_type
+                //)));
             }
 
-            let digest = Digest::from_bytes(&mut cursor).map_err(|_| MessageError::CursorError)?;
+            let digest = Digest::from_bytes(&mut cursor).unwrap();
 
             stale_digests.push(digest);
         }
 
         for _ in 0..info_len {
             let mut info_type_bytes = [0u8; 4];
-            cursor
-                .read_exact(&mut info_type_bytes)
-                .map_err(|_| MessageError::CursorError)?;
+            cursor.read_exact(&mut info_type_bytes).unwrap();
 
             let info_type = u32::from_be_bytes(info_type_bytes);
 
             if info_type != InfoType::DigestAndInfo as u32 {
-                return Err(MessageError::InvalidValue(format!(
-                    "Invalid InfoType value: {}",
-                    info_type
-                )));
+                panic!();
+                //return Err(MessageError::InvalidValue(format!(
+                //    "Invalid InfoType value: {}",
+                //    info_type
+                //)));
             }
 
             let digest = Digest::from_bytes(&mut cursor).map_err(|_| MessageError::CursorError)?;
