@@ -1,5 +1,6 @@
 use core::panic;
 use std::{
+    collections::HashMap,
     env,
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs},
     str::FromStr,
@@ -7,6 +8,7 @@ use std::{
     thread,
 };
 
+use clients_link::ClientsLink;
 use gossip::{
     messages::{GossipMessage, GossipMessageWithDestination, GossipMessageWithOrigin},
     Gossiper,
@@ -17,17 +19,30 @@ use internode_protocol::{
     },
     messages::{InternodeMessage, InternodeMessageContent},
 };
+use storage_engine::{CsvStorageEngine, StorageEngine};
 
 fn main() {
-    let node = Node::new();
+    let engine = CsvStorageEngine;
+    let node = Node::new(engine);
     node.start();
 }
 
-pub struct Node {}
+// struct OpenQueries;
+
+struct ClientInfo {
+    keyspace: String,
+}
+
+pub struct Node {
+    storage: Box<dyn StorageEngine>,
+    // open_queries: OpenQueries,
+}
 
 impl Node {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(storage: impl StorageEngine + 'static) -> Self {
+        Self {
+            storage: Box::new(storage),
+        }
     }
 
     pub fn start(&self) {
@@ -118,6 +133,20 @@ impl Node {
             }
         });
 
+        let (tx_client_inbound, rx_client_inbound) = mpsc::channel();
+        let (tx_client_outbound, rx_client_outbound) = mpsc::channel();
+
+        let client = thread::spawn(move || {
+            let link = ClientsLink::new(rx_client_outbound, tx_client_inbound);
+            link.start();
+        });
+
+        let client_request_queue = thread::spawn(move || {
+            for msg in rx_client_inbound {
+                dbg!(&msg);
+            }
+        });
+
         // receives messages from other nodes, unwraps them and decides what to do with them
         let internode_inbound_queue = thread::spawn(move || {
             for msg in rx_internode_inbound {
@@ -134,11 +163,13 @@ impl Node {
                         };
 
                         tx_gossip_inbound.send(msg).unwrap()
-                    }
+                    } // check if query can be closed, if yes, send to tx_client_outbound
                 }
             }
         });
 
+        client.join().unwrap();
+        client_request_queue.join().unwrap();
         internode.join().unwrap();
         gossip_handler.join().unwrap();
         gossip_outbound_queue.join().unwrap();

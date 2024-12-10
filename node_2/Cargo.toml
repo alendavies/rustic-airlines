@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 gossip = { path = "../gossip" }
 internode_protocol = { path = "../internode_protocol" }
+storage-engine = { path = "../storage-engine" }
+clients-link = { path = "../clients-link" }

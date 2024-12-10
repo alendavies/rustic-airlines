@@ -14,7 +14,7 @@ members = [
     "gossip",
     "flight-sim",
     "repl",
-    "node_2", "internode_protocol",
+    "node_2", "internode_protocol", "storage-engine", "clients-link",
 ]
 
 [dev-dependencies]
