@@ -128,11 +128,6 @@ impl GossiperState {
                 let my_digest =
                     Digest::from_heartbeat_state(digest.address, &my_state.heartbeat_state);
 
-                if digest.generation == my_digest.generation && digest.version == my_digest.version
-                {
-                    continue;
-                }
-
                 match digest
                     .get_heartbeat_state()
                     .cmp(&my_digest.get_heartbeat_state())
@@ -177,10 +172,6 @@ impl GossiperState {
 
             let my_digest = Digest::from_heartbeat_state(digest.address, &my_state.heartbeat_state);
 
-            if digest.generation == my_digest.generation && digest.version == my_digest.version {
-                continue;
-            }
-
             match digest
                 .get_heartbeat_state()
                 .cmp(&my_digest.get_heartbeat_state())
@@ -215,23 +206,14 @@ impl GossiperState {
     /// Handles an Ack2 message and updates the local state.
     pub fn handle_ack2(&mut self, ack2: &Ack2) {
         for (digest, info) in &ack2.updated_info {
-            if let Some(_my_state) = self.0.get(&digest.address) {
-                self.0.insert(
-                    digest.address,
-                    EndpointState::new(
-                        info.clone(),
-                        HeartbeatState::new(digest.generation, digest.version),
-                    ),
-                );
-            } else {
-                self.0.insert(
-                    digest.address,
-                    EndpointState::new(
-                        info.clone(),
-                        HeartbeatState::new(digest.generation, digest.version),
-                    ),
-                );
-            }
+            // actualizo mi state con la info que me llegó
+            self.0.insert(
+                digest.address,
+                EndpointState::new(
+                    info.clone(),
+                    HeartbeatState::new(digest.generation, digest.version),
+                ),
+            );
         }
     }
 
@@ -1113,7 +1095,6 @@ mod tests {
         };
 
         let gossip_msg = GossipMessage {
-            to: Ipv4Addr::new(127, 0, 0, 1),
             payload: Payload::Syn(syn),
         };
 
