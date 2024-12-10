@@ -1,16 +1,15 @@
 use core::panic;
 use std::{
-    collections::HashMap,
     env,
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs},
-    str::FromStr,
-    sync::mpsc::{self, Receiver},
+    net::{IpAddr, Ipv4Addr, ToSocketAddrs},
+    sync::mpsc::{self},
     thread,
+    time::Duration,
 };
 
-use clients_link::ClientsLink;
+use clients_link::{ClientResponse, ClientsLink};
 use gossip::{
-    messages::{GossipMessage, GossipMessageWithDestination, GossipMessageWithOrigin},
+    messages::{GossipMessageWithDestination, GossipMessageWithOrigin},
     Gossiper,
 };
 use internode_protocol::{
@@ -134,16 +133,18 @@ impl Node {
         });
 
         let (tx_client_inbound, rx_client_inbound) = mpsc::channel();
-        let (tx_client_outbound, rx_client_outbound) = mpsc::channel();
+        // let (tx_client_outbound, rx_client_outbound) = mpsc::channel();
 
         let client = thread::spawn(move || {
-            let link = ClientsLink::new(rx_client_outbound, tx_client_inbound);
+            let link = ClientsLink::new(tx_client_inbound);
             link.start();
         });
 
         let client_request_queue = thread::spawn(move || {
             for msg in rx_client_inbound {
                 dbg!(&msg);
+                thread::sleep(Duration::from_secs(2));
+                msg.reply_channel.send(ClientResponse).unwrap();
             }
         });
 
