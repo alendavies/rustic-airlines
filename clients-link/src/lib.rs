@@ -49,6 +49,8 @@ impl ClientsLink {
                             stream.flush().unwrap();
                         }
                         Frame::Query(query) => {
+                            dbg!(&query);
+
                             // dummy query
                             let parsed_query =
                                 QueryCreator::new().handle_query(query.query).unwrap();
@@ -60,8 +62,6 @@ impl ClientsLink {
                                 },
                                 _ => todo!(),
                             };
-
-                            dbg!(&request);
 
                             arc_tx.send(request).unwrap();
                         }
