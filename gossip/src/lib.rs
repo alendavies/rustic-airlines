@@ -236,6 +236,12 @@ pub struct Gossiper {
     rx: Receiver<GossipMessageWithOrigin>,
     tx: Sender<GossipMessageWithDestination>,
     endpoints_state: Arc<RwLock<GossiperState>>,
+    tx_event: Sender<Event>,
+}
+
+pub enum Event {
+    NodeJoined(Ipv4Addr),
+    NodeLeft(Ipv4Addr),
 }
 
 impl Gossiper {
@@ -244,6 +250,7 @@ impl Gossiper {
         self_ip: Ipv4Addr,
         rx: Receiver<GossipMessageWithOrigin>,
         tx: Sender<GossipMessageWithDestination>,
+        tx_event: Sender<Event>,
     ) -> Self {
         let mut initial_endpoint_states = GossiperState::new();
         initial_endpoint_states
@@ -255,6 +262,7 @@ impl Gossiper {
             rx,
             tx,
             endpoints_state: Arc::new(RwLock::new(initial_endpoint_states)),
+            tx_event,
         }
     }
 
@@ -272,6 +280,7 @@ impl Gossiper {
 
         // reads gossip messages from rx, processes and answers them
         let reader_thread_handler = thread::spawn(move || {
+            let tx_event = self.tx_event.clone();
             for msg in &self.rx {
                 // handle gossip message
                 //dbg!(&msg);
@@ -296,7 +305,14 @@ impl Gossiper {
                         tx_clone.send(ack).unwrap();
                     }
                     Payload::Ack(ack) => {
+                        let old_states = self.endpoints_state.read().unwrap().0.clone();
                         let ack2 = arc_clone.write().unwrap().handle_ack(&ack);
+                        let new_states = self.endpoints_state.read().unwrap().0.clone();
+
+                        if old_states != new_states {
+                            update_partitioner(&tx_event, old_states, new_states);
+                        }
+
                         let ack2 = GossipMessage::new(Payload::Ack2(ack2));
 
                         println!(
@@ -319,7 +335,13 @@ impl Gossiper {
                         tx_clone.send(ack2).unwrap();
                     }
                     Payload::Ack2(ack2) => {
+                        let old_states = self.endpoints_state.read().unwrap().0.clone();
                         arc_clone.write().unwrap().handle_ack2(&ack2);
+                        let new_states = self.endpoints_state.read().unwrap().0.clone();
+
+                        if old_states != new_states {
+                            update_partitioner(&tx_event, old_states, new_states);
+                        }
 
                         println!(
                             "RECEIVED ACK2: [updated: {:?}]",
@@ -394,6 +416,35 @@ impl Gossiper {
                 .insert(ip, EndpointState::default());
         }
         self
+    }
+}
+
+fn update_partitioner(
+    tx: &Sender<Event>,
+    old_states: HashMap<Ipv4Addr, EndpointState>,
+    new_states: HashMap<Ipv4Addr, EndpointState>,
+) {
+    let old_ips: Vec<Ipv4Addr> = old_states.keys().cloned().collect();
+    let new_ips: Vec<Ipv4Addr> = new_states.keys().cloned().collect();
+
+    let joined_ips: Vec<Ipv4Addr> = new_ips
+        .iter()
+        .filter(|ip| !old_ips.contains(ip))
+        .cloned()
+        .collect();
+
+    let left_ips: Vec<Ipv4Addr> = old_ips
+        .iter()
+        .filter(|ip| !new_ips.contains(ip))
+        .cloned()
+        .collect();
+
+    for ip in joined_ips {
+        tx.send(Event::NodeJoined(ip)).unwrap();
+    }
+
+    for ip in left_ips {
+        tx.send(Event::NodeLeft(ip)).unwrap();
     }
 }
 

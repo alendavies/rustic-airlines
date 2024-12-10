@@ -18,11 +18,13 @@ use internode_protocol::{
     },
     messages::{InternodeMessage, InternodeMessageContent},
 };
+use partitioner::Partitioner;
 use storage_engine::{CsvStorageEngine, StorageEngine};
 
 fn main() {
     let engine = CsvStorageEngine;
-    let node = Node::new(engine);
+    let partitioner = Partitioner::new();
+    let node = Node::new(engine, partitioner);
     node.start();
 }
 
@@ -34,13 +36,15 @@ struct ClientInfo {
 
 pub struct Node {
     storage: Box<dyn StorageEngine>,
+    partitioner: Partitioner,
     // open_queries: OpenQueries,
 }
 
 impl Node {
-    pub fn new(storage: impl StorageEngine + 'static) -> Self {
+    pub fn new(storage: impl StorageEngine + 'static, partitioner: Partitioner) -> Self {
         Self {
             storage: Box::new(storage),
+            partitioner,
         }
     }
 
@@ -109,9 +113,11 @@ impl Node {
             panic!()
         }
 
+        let (tx_event, rx_event) = mpsc::channel::<Event>();
+
         let gossip_handler = thread::spawn(move || {
-            let gossiper =
-                Gossiper::new(self_ip, rx_gossip_inbound, tx_gossip_outbound).with_seeds(vec![x]);
+            let gossiper = Gossiper::new(self_ip, rx_gossip_inbound, tx_gossip_outbound, tx_event)
+                .with_seeds(vec![x]);
             gossiper.start();
         });
 
