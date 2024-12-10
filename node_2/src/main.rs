@@ -119,7 +119,7 @@ impl Node {
 
         let partitioner_clone = self.partitioner.clone();
 
-        thread::spawn(move || {
+        let handle_events = thread::spawn(move || {
             for event in rx_event {
                 dbg!(&event);
 
@@ -194,5 +194,6 @@ impl Node {
         gossip_handler.join().unwrap();
         gossip_outbound_queue.join().unwrap();
         internode_inbound_queue.join().unwrap();
+        handle_events.join().unwrap();
     }
 }
