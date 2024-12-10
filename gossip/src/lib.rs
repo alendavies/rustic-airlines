@@ -239,6 +239,7 @@ pub struct Gossiper {
     tx_event: Sender<Event>,
 }
 
+#[derive(Debug)]
 pub enum Event {
     NodeJoined(Ipv4Addr),
     NodeLeft(Ipv4Addr),

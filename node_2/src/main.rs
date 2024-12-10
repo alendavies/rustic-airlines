@@ -10,7 +10,7 @@ use std::{
 use clients_link::{ClientResponse, ClientsLink};
 use gossip::{
     messages::{GossipMessageWithDestination, GossipMessageWithOrigin},
-    Gossiper,
+    Event, Gossiper,
 };
 use internode_protocol::{
     internode_link::{
@@ -28,16 +28,9 @@ fn main() {
     node.start();
 }
 
-// struct OpenQueries;
-
-struct ClientInfo {
-    keyspace: String,
-}
-
 pub struct Node {
     storage: Box<dyn StorageEngine>,
     partitioner: Partitioner,
-    // open_queries: OpenQueries,
 }
 
 impl Node {
@@ -119,6 +112,12 @@ impl Node {
             let gossiper = Gossiper::new(self_ip, rx_gossip_inbound, tx_gossip_outbound, tx_event)
                 .with_seeds(vec![x]);
             gossiper.start();
+        });
+
+        thread::spawn(move || {
+            for event in rx_event {
+                dbg!(&event);
+            }
         });
 
         let tx_internode_outbound_clone = tx_internode_outbound.clone();
