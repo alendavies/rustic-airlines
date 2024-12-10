@@ -2,7 +2,10 @@ use core::panic;
 use std::{
     env,
     net::{IpAddr, Ipv4Addr, ToSocketAddrs},
-    sync::mpsc::{self},
+    sync::{
+        mpsc::{self},
+        Arc, RwLock,
+    },
     thread,
     time::Duration,
 };
@@ -30,14 +33,14 @@ fn main() {
 
 pub struct Node {
     storage: Box<dyn StorageEngine>,
-    partitioner: Partitioner,
+    partitioner: Arc<RwLock<Partitioner>>,
 }
 
 impl Node {
     pub fn new(storage: impl StorageEngine + 'static, partitioner: Partitioner) -> Self {
         Self {
             storage: Box::new(storage),
-            partitioner,
+            partitioner: Arc::new(RwLock::new(partitioner)),
         }
     }
 
@@ -114,9 +117,20 @@ impl Node {
             gossiper.start();
         });
 
+        let partitioner_clone = self.partitioner.clone();
+
         thread::spawn(move || {
             for event in rx_event {
                 dbg!(&event);
+
+                match event {
+                    Event::NodeJoined(ip) => {
+                        partitioner_clone.write().unwrap().remove_node(ip).unwrap();
+                    }
+                    Event::NodeLeft(ip) => {
+                        partitioner_clone.write().unwrap().remove_node(ip).unwrap();
+                    }
+                }
             }
         });
 
