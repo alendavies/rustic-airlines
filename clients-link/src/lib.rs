@@ -1,5 +1,5 @@
 use std::{
-    io::Read,
+    io::{Read, Write},
     net::TcpListener,
     sync::{
         mpsc::{Receiver, Sender},
@@ -41,7 +41,13 @@ impl ClientsLink {
                 match stream.read(&mut buffer) {
                     Ok(0) => {}
                     Ok(n) => match Frame::from_bytes(&buffer[..n]).unwrap() {
-                        Frame::Startup => todo!(),
+                        Frame::Startup => {
+                            let response = Frame::Ready.to_bytes().unwrap();
+                            println!("STARTUP from {:?}", &stream.peer_addr().unwrap());
+
+                            stream.write(&response).unwrap();
+                            stream.flush().unwrap();
+                        }
                         Frame::Query(query) => {
                             // dummy query
                             let parsed_query =
@@ -54,6 +60,8 @@ impl ClientsLink {
                                 },
                                 _ => todo!(),
                             };
+
+                            dbg!(&request);
 
                             arc_tx.send(request).unwrap();
                         }

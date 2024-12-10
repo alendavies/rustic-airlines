@@ -50,6 +50,7 @@ impl Serializable for Frame {
     /// .                                                 .
     /// .                                                 .
     /// +-------------------------------------------------+
+    // TODO: shouldnt be RESULT
     fn to_bytes(&self) -> std::result::Result<Vec<u8>, NativeError> {
         let mut bytes = Vec::new();
 
