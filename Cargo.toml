@@ -13,7 +13,7 @@ members = [
     "graphical-interface",
     "node_launcher",
     "gossip",
-     "logger"
+     "logger",
     "flight-sim"
 , "repl"]
 
