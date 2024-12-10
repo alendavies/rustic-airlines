@@ -125,7 +125,7 @@ impl Node {
 
                 match event {
                     Event::NodeJoined(ip) => {
-                        partitioner_clone.write().unwrap().remove_node(ip).unwrap();
+                        partitioner_clone.write().unwrap().add_node(ip).unwrap();
                     }
                     Event::NodeLeft(ip) => {
                         partitioner_clone.write().unwrap().remove_node(ip).unwrap();
