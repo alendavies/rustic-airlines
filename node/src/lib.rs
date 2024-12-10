@@ -321,7 +321,7 @@ impl Node {
                 // After each gossip round, update the partitioner
                 {
                     // Bloqueo del mutex solo para extraer lo necesario
-                    let (storage_path, self_ip, keyspaces) = {
+                    let (storage_path, self_ip, keyspaces, logger) = {
                         let node_guard = match node.lock() {
                             Ok(guard) => guard,
                             Err(_) => return NodeError::LockError,
@@ -330,7 +330,8 @@ impl Node {
                         (
                             node_guard.storage_path.clone(), // Clonar el path de almacenamiento
                             node_guard.get_ip().to_string(), // Clonar el IP
-                            node_guard.schema.keyspaces.clone(), // Clonar los keyspaces desde el guard     // Referencia mutable al particionador
+                            node_guard.schema.keyspaces.clone(),
+                            node_guard.get_logger(), // Clonar los keyspaces desde el guard     // Referencia mutable al particionador
                         )
                     };
                     let mut node_guard = match node.lock() {
@@ -371,8 +372,8 @@ impl Node {
                                 needs_to_redistribute = true;
                                 partitioner.add_node(*ip).ok();
                                 let _ = log.info(
-                                    &format!("NEW NODE {:?}! .. New Ring: {:?}", ip, partitioner),
-                                    Color::Red,
+                                    &format!("NEW NODE {:?} .. New Ring: {:?}", ip, partitioner),
+                                    Color::Green,
                                     true,
                                 );
                             }
@@ -380,13 +381,13 @@ impl Node {
                     }
 
                     if needs_to_redistribute {
-                        let _ = log.info(&format!("REDISTRIBUTION..."), Color::Red, true);
+                        let _ = log.info(&format!("START REDISTRIBUTION..."), Color::Cyan, true);
                         let keyspaces: Vec<KeyspaceSchema> = keyspaces.values().cloned().collect();
 
                         storage_engine::StorageEngine::new(storage_path.clone(), self_ip.clone())
-                            .redistribute_data(keyspaces, partitioner, connections.clone())
+                            .redistribute_data(keyspaces, partitioner, logger, connections.clone())
                             .ok();
-                        let _ = log.info(&format!("END REDISTRIBUTION..."), Color::Red, true);
+                        let _ = log.info(&format!("END REDISTRIBUTION..."), Color::Cyan, true);
                     }
                 }
 
@@ -993,7 +994,14 @@ impl Node {
 
         let mut reader = BufReader::new(stream_guard.try_clone().map_err(NodeError::IoError)?);
 
-        let client_id = { node.lock()?.generate_client_id() };
+        let client_id;
+        let log;
+
+        {
+            let mut guard_node = node.lock()?;
+            client_id = guard_node.generate_client_id();
+            log = guard_node.get_logger();
+        };
 
         loop {
             // Clean the buffer
@@ -1023,6 +1031,16 @@ impl Node {
                             // Handle the query
                             let query_str = query.get_query();
                             let query_consistency_level: &str = &query.get_consistency();
+                            log.info(
+                                &format!(
+                                    "NATIVE: I RECEIVED {:?} whit CL: {:?} from client {:?}",
+                                    query_str.replace("\n", ""),
+                                    query_consistency_level,
+                                    stream_guard.peer_addr()?
+                                ),
+                                Color::Blue,
+                                true,
+                            )?;
                             let client_stream = stream_guard.try_clone()?;
 
                             let result = Node::handle_query_execution(

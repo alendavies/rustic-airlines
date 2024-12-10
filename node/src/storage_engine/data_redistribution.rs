@@ -10,6 +10,7 @@ use std::{
 use std::time::Duration;
 
 use gossip::structures::application_state::{KeyspaceSchema, TableSchema};
+use logger::{Color, Logger};
 use partitioner::Partitioner;
 
 use crate::{
@@ -28,6 +29,7 @@ impl StorageEngine {
         &self,
         keyspaces: Vec<KeyspaceSchema>,
         partitioner: &Partitioner,
+        logger: Logger,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), StorageEngineError> {
         for keyspace in keyspaces {
@@ -46,6 +48,7 @@ impl StorageEngine {
                     self.process_file(
                         &normal_file_path,
                         &partitioner,
+                        logger.clone(),
                         keyspace.clone(),
                         table.clone(),
                         false,
@@ -59,6 +62,7 @@ impl StorageEngine {
                     self.process_file(
                         &replication_file_path,
                         &partitioner,
+                        logger.clone(),
                         keyspace.clone(),
                         table.clone(),
                         true,
@@ -76,6 +80,7 @@ impl StorageEngine {
         &self,
         file_path: &std::path::Path,
         partitioner: &Partitioner,
+        logger: Logger,
         keyspace: KeyspaceSchema,
         table: TableSchema,
         is_replication: bool,
@@ -217,6 +222,7 @@ impl StorageEngine {
                         timestamp_n,
                         false,
                         connections.clone(),
+                        logger.clone(),
                     );
                 }
 
@@ -273,6 +279,7 @@ impl StorageEngine {
                             timestamp_n,
                             true,
                             connections.clone(),
+                            logger.clone(),
                         );
                     }
                 }
@@ -307,6 +314,7 @@ impl StorageEngine {
         timestamp: i64,
         is_replication: bool,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>, // Ajusta el tipo si es necesario
+        logger: Logger,
     ) {
         // Crear el mensaje de internodo
         let message = InternodeMessage::new(
@@ -320,10 +328,27 @@ impl StorageEngine {
                 timestamp,
             }),
         );
-
         // Enviar el mensaje al nodo objetivo
+        let rep = if is_replication {
+            "AS REPLICATION "
+        } else {
+            ""
+        };
 
-        let duration = Duration::from_millis(500);
+        logger
+            .info(
+                &format!(
+                    "INTERNODE (REDISTRIBUTION): I SENT {:?}{:?} to {:?}",
+                    rep,
+                    serialized_message.to_string(),
+                    target_ip
+                ),
+                Color::Green,
+                true,
+            )
+            .ok();
+
+        let duration = Duration::from_millis(100);
         thread::sleep(duration);
         let result = connect_and_send_message(target_ip, INTERNODE_PORT, connections, message);
         // Manejar errores o resultados

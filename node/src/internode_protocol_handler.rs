@@ -110,13 +110,35 @@ impl InternodeProtocolHandler {
         message: InternodeMessage,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
+        let log = { node.lock()?.get_logger() };
         match message.clone().content {
             InternodeMessageContent::Query(query) => {
+                let open_query_id_str = if query.open_query_id == 0 {
+                    "REDISTRIBUTION"
+                } else {
+                    &format!("{:?}", query.open_query_id)
+                };
+                log.info(
+                    &format!(
+                        "INTERNODE ({:?}): I RECEIVED {:?} from {:?}",
+                        open_query_id_str, query.query_string, message.from
+                    ),
+                    Color::Blue,
+                    true,
+                )?;
                 self.handle_query_command(node, query, connections, message.clone().from)?;
                 Ok(())
             }
             InternodeMessageContent::Response(response) => {
-                let _ = self.handle_response_command(node, &response, message.from, connections);
+                log.info(
+                    &format!(
+                        "INTERNODE (Query: {:?}): I RECEIVED {:?} from {:?}",
+                        response.open_query_id, response.status, message.from
+                    ),
+                    Color::Blue,
+                    true,
+                )?;
+                self.handle_response_command(node, &response, message.from, connections)?;
 
                 Ok(())
             }
@@ -247,10 +269,10 @@ impl InternodeProtocolHandler {
 
             logger.info(
                 &format!(
-                    "Client: I sent OK RESPONSE to client {:?}",
-                    connection.peer_addr()
+                    "NATIVE: I sent FRAME RESPONSE to client {:?}",
+                    connection.peer_addr()?
                 ),
-                Color::Magenta,
+                Color::Green,
                 true,
             )?;
 
@@ -871,10 +893,10 @@ impl InternodeProtocolHandler {
             if query.open_query_id != 0 {
                 logger.info(
                     &format!(
-                        "INTERNODE: I response OK to coordinator node: {:?}",
-                        node_ip
+                        "INTERNODE (Query: {:?}): I SENT OK to coordinator node: {:?}",
+                        query.open_query_id, node_ip
                     ),
-                    Color::Yellow,
+                    Color::Green,
                     true,
                 )?;
 
