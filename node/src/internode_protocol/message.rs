@@ -176,7 +176,6 @@ impl InternodeSerializable for InternodeMessage {
 
         let header =
             InternodeHeader::from_bytes(&header_bytes).map_err(|_| InternodeMessageError)?;
-
         let mut content_bytes = vec![0u8; header.length as usize];
         cursor
             .read_exact(&mut content_bytes)
@@ -186,14 +185,13 @@ impl InternodeSerializable for InternodeMessage {
             Opcode::Query => InternodeMessageContent::Query(
                 InternodeQuery::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?,
             ),
-            Opcode::Response => InternodeMessageContent::Response(
-                InternodeResponse::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?,
-            ),
+            Opcode::Response => InternodeMessageContent::Response({
+                InternodeResponse::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?
+            }),
             Opcode::Gossip => InternodeMessageContent::Gossip(
                 GossipMessage::from_bytes(&content_bytes).map_err(|_| InternodeMessageError)?,
             ),
         };
-
         let message = InternodeMessage {
             from: header.ip,
             content,

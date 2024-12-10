@@ -1,14 +1,46 @@
 use crate::{errors::CQLError, QueryCreator};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
+/// Represents a `CREATE KEYSPACE` operation in CQL.
+///
+/// # Fields
+/// - `name: String`
+///   - The name of the keyspace to be created.
+/// - `if_not_exists_clause: bool`
+///   - Indicates whether the `IF NOT EXISTS` clause is included.
+/// - `replication_class: String`
+///   - The replication strategy class for the keyspace (e.g., `SimpleStrategy`).
+/// - `replication_factor: u32`
+///   - The replication factor for the keyspace.
+///
+/// # Purpose
+/// This struct models the `CREATE KEYSPACE` operation in CQL, enabling parsing, validation, and serialization of such operations.
 pub struct CreateKeyspace {
     pub name: String,
     pub if_not_exists_clause: bool,
-    pub replication_class: String,
+    pub replication_class: String, // TODO: enum?
     pub replication_factor: u32,
 }
 
 impl CreateKeyspace {
+    /// Creates a new `CreateKeyspace` instance from a vector of query tokens.
+    ///
+    /// # Parameters
+    /// - `query: Vec<String>`:
+    ///   - A vector of strings representing the tokens of a CQL `CREATE KEYSPACE` query.
+    ///
+    /// # Returns
+    /// - `Ok(CreateKeyspace)`:
+    ///   - If the query is valid and can be successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the query is invalid or improperly formatted.
+    ///
+    /// # Validation
+    /// - The query must begin with `CREATE KEYSPACE`.
+    /// - The query may optionally include `IF NOT EXISTS`.
+    /// - The query must include `WITH REPLICATION = { ... }`.
+    /// - The replication class must be `SimpleStrategy`.
+    /// - The replication factor must be a valid unsigned integer.
     pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
         if query.len() < 10
             || query[0].to_uppercase() != "CREATE"
@@ -74,27 +106,60 @@ impl CreateKeyspace {
         })
     }
 
+    /// Retrieves the name of the keyspace.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - The name of the keyspace.
     pub fn get_name(&self) -> String {
         self.name.clone()
     }
 
+    /// Retrieves the replication class of the keyspace.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - The replication class (e.g., `SimpleStrategy`).
     pub fn get_replication_class(&self) -> String {
         self.replication_class.clone()
     }
 
+    /// Retrieves the replication factor of the keyspace.
+    ///
+    /// # Returns
+    /// - `u32`:
+    ///   - The replication factor.
     pub fn get_replication_factor(&self) -> u32 {
-        self.replication_factor.clone()
+        self.replication_factor
     }
 
+    /// Updates the replication class of the keyspace.
+    ///
+    /// # Parameters
+    /// - `replication_class: String`:
+    ///   - The new replication class to set.
     pub fn update_replication_class(&mut self, replication_class: String) {
         self.replication_class = replication_class;
     }
 
+    /// Updates the replication factor of the keyspace.
+    ///
+    /// # Parameters
+    /// - `replication_factor: u32`:
+    ///   - The new replication factor to set.
     pub fn update_replication_factor(&mut self, replication_factor: u32) {
         self.replication_factor = replication_factor;
     }
 
-    /// Serializa la estructura `CreateKeyspace` a una consulta CQL
+    /// Serializes the `CreateKeyspace` structure to a CQL query string.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - A string representing the `CREATE KEYSPACE` CQL query in the following format:
+    ///     ```sql
+    ///     CREATE KEYSPACE [IF NOT EXISTS] <keyspace_name> WITH replication = {'class': '<replication_class>', 'replication_factor': <replication_factor>};
+    ///     ```
+    ///
     pub fn serialize(&self) -> String {
         format!(
             "CREATE KEYSPACE {}{} WITH replication = {{'class': '{}', 'replication_factor': {}}};",
@@ -109,7 +174,17 @@ impl CreateKeyspace {
         )
     }
 
-    /// Deserializa una consulta CQL en formato `String` y convierte a la estructura `CreateKeyspace`
+    /// Deserializes a CQL query string into a `CreateKeyspace` structure.
+    ///
+    /// # Parameters
+    /// - `query: &str`:
+    ///   - A string representing a CQL `CREATE KEYSPACE` query.
+    ///
+    /// # Returns
+    /// - `Ok(CreateKeyspace)`:
+    ///   - If the query is valid and can be successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the query is invalid or improperly formatted.
     pub fn deserialize(query: &str) -> Result<Self, CQLError> {
         // Divide la consulta en tokens y convierte a `Vec<String>`
         let tokens = QueryCreator::tokens_from_query(query);

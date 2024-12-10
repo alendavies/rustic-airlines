@@ -4,14 +4,18 @@ use crate::{
     utils::{is_by, is_order},
 };
 
-/// Struct that epresents the `ORDER BY` SQL clause.
-/// The `ORDER BY` clause is used to sort the result set in ascending or descending order in a `SELECT` clause.
+/// Represents the `ORDER BY` clause in CQL queries.
+///
+/// The `ORDER BY` clause is used to sort the results of a query in ascending (`ASC`) or descending (`DESC`) order.
 ///
 /// # Fields
+/// - `columns: Vec<String>`
+///   - A list of columns by which the result set will be sorted.
+/// - `order: String`
+///   - The order of sorting. It can be either `"ASC"` for ascending or `"DESC"` for descending.
 ///
-/// * `columns` - The columns to sort the result set by.
-/// * `order` - The order to sort the result set by. It can be either `ASC` or `DESC`.
-///
+/// # Purpose
+/// This struct is used to parse, represent, and serialize the `ORDER BY` clause in queries.
 #[derive(Debug, PartialEq, Clone)]
 pub struct OrderBy {
     pub columns: Vec<String>,
@@ -19,27 +23,23 @@ pub struct OrderBy {
 }
 
 impl OrderBy {
-    /// Creates and returns a new `OrderBy` instance from a vector of `&str` tokens.
+    /// Creates a new `OrderBy` instance from tokens.
     ///
-    /// # Arguments
+    /// # Parameters
+    /// - `tokens: Vec<String>`:
+    ///   - A vector of strings representing the `ORDER BY` clause.
     ///
-    /// * `tokens` - A vector of `&str` tokens that represent the `ORDER BY` clause.
+    /// # Returns
+    /// - `Ok(OrderBy)`:
+    ///   - If the tokens are valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the tokens are invalid or improperly formatted.
     ///
-    /// The tokens should be in the following order: `ORDER`, `BY`, `columns`, `order`.
-    ///
-    /// The `columns` should be comma-separated.
-    ///
-    /// The `order` can be `ASC` or `DESC`.
-    /// If the `order` is not specified, the result set will be sorted in ascending order.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let tokens = vec!["ORDER", "BY", "name", "DESC"];
-    /// let order_by = OrderBy::new_from_tokens(tokens).unwrap();
-    /// assert_eq!(order_by., OrderBy { columns: vec!["name".to_string()], order: "DESC".to_string() });
-    /// ```
-    ///
+    /// # Notes
+    /// - The expected token order is:
+    ///   `"ORDER", "BY", "columns", "[ASC|DESC]"`.
+    /// - The `columns` should be comma-separated.
+    /// - If the order (`ASC` or `DESC`) is not specified, it defaults to ascending (`ASC`).
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 3 {
             return Err(CQLError::InvalidSyntax);
@@ -71,6 +71,14 @@ impl OrderBy {
         Ok(Self { columns, order })
     }
 
+    /// Serializes the `OrderBy` instance into a CQL query string.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - A string representation of the `ORDER BY` clause in the following format:
+    ///     ```sql
+    ///     ORDER BY column1, column2 ASC|DESC
+    ///     ```
     pub fn serialize(&self) -> String {
         let columns_str = self.columns.join(", ");
         if self.order.is_empty() {
@@ -80,6 +88,16 @@ impl OrderBy {
         }
     }
 
+    /// Deserializes a string into an `OrderBy` instance.
+    ///
+    /// # Parameters
+    /// - `query: &str`:
+    ///   - A string representing the `ORDER BY` clause.
+    ///
+    /// # Returns
+    /// - `Ok(OrderBy)`:
+    ///   - If the string is valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
     pub fn deserialize(&mut self, query: &str) -> Result<OrderBy, CQLError> {
         let tokens = QueryCreator::tokens_from_query(query);
         Self::new_from_tokens(tokens)

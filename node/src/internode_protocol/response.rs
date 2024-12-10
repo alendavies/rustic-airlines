@@ -254,43 +254,39 @@ impl InternodeSerializable for InternodeResponse {
     fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
 
+        // Serializa el ID de la query abierta
         bytes.extend(&self.open_query_id.to_be_bytes());
 
+        // Serializa el estado
         let status_byte = match self.status {
             InternodeResponseStatus::Ok => 0x00,
             InternodeResponseStatus::Error => 0x01,
         };
         bytes.push(status_byte);
 
-        let content_bytes = if let Some(content) = &self.content {
-            Some(content.as_bytes())
+        // Serializa el contenido
+        if let Some(content) = &self.content {
+            let content_bytes = content.as_bytes();
+            bytes.extend((content_bytes.len() as u16).to_be_bytes()); // Longitud del contenido
+            bytes.extend(content_bytes); // Contenido
         } else {
-            None
-        };
-
-        if let Some(c_bytes) = content_bytes {
-            bytes.extend((c_bytes.len() as u16).to_be_bytes());
-            bytes.extend(&c_bytes);
-        } else {
-            bytes.push(0);
+            bytes.extend(0u16.to_be_bytes()); // Longitud del contenido = 0
         }
 
         bytes
     }
 
-    /// Deserializes the `InternodeResponse` from a slice of `u8`.
-    fn from_bytes(bytes: &[u8]) -> Result<Self, InternodeMessageError>
-    where
-        Self: Sized,
-    {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, InternodeMessageError> {
         let mut cursor = Cursor::new(bytes);
 
+        // Deserializa el ID de la query abierta
         let mut open_query_id_bytes = [0u8; 4];
         cursor
             .read_exact(&mut open_query_id_bytes)
             .map_err(|_| InternodeMessageError)?;
         let open_query_id = u32::from_be_bytes(open_query_id_bytes);
 
+        // Deserializa el estado
         let mut status_byte = [0u8; 1];
         cursor
             .read_exact(&mut status_byte)
@@ -301,21 +297,20 @@ impl InternodeSerializable for InternodeResponse {
             _ => return Err(InternodeMessageError),
         };
 
+        // Deserializa el contenido
         let mut content_len_bytes = [0u8; 2];
-
         cursor
             .read_exact(&mut content_len_bytes)
             .map_err(|_| InternodeMessageError)?;
-
         let content_len = u16::from_be_bytes(content_len_bytes);
 
-        let mut content_bytes = vec![0u8; content_len as usize];
-        cursor
-            .read_exact(&mut content_bytes)
-            .map_err(|_| InternodeMessageError)?;
-        let content = if content_bytes.is_empty() {
+        let content = if content_len == 0 {
             None
         } else {
+            let mut content_bytes = vec![0u8; content_len as usize];
+            cursor
+                .read_exact(&mut content_bytes)
+                .map_err(|_| InternodeMessageError)?;
             Some(
                 InternodeResponseContent::from_bytes(&content_bytes)
                     .map_err(|_| InternodeMessageError)?,
@@ -462,5 +457,46 @@ mod tests {
         let parsed_content = InternodeResponseContent::from_bytes(&content_bytes);
 
         assert!(parsed_content.is_err());
+    }
+
+    #[test]
+    fn test_response_with_none_content_to_bytes() {
+        let response = InternodeResponse {
+            open_query_id: 1,
+            status: InternodeResponseStatus::Ok,
+            content: None,
+        };
+
+        let response_bytes = response.as_bytes();
+
+        let mut bytes = Vec::new();
+
+        bytes.extend(response.open_query_id.to_be_bytes());
+
+        let status_byte = match response.status {
+            InternodeResponseStatus::Ok => 0x00,
+            InternodeResponseStatus::Error => 0x01,
+        };
+        bytes.push(status_byte);
+
+        // No content
+        bytes.extend(0u16.to_be_bytes()); // Content length = 0
+
+        assert_eq!(response_bytes, bytes);
+    }
+
+    #[test]
+    fn test_response_with_none_content_from_bytes() {
+        let response = InternodeResponse {
+            open_query_id: 1,
+            status: InternodeResponseStatus::Ok,
+            content: None,
+        };
+
+        let response_bytes = response.as_bytes();
+
+        let parsed_response = InternodeResponse::from_bytes(&response_bytes).unwrap();
+
+        assert_eq!(parsed_response, response);
     }
 }

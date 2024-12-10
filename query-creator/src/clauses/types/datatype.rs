@@ -1,21 +1,65 @@
+use crate::{errors::CQLError, operator::Operator};
 use uuid::Uuid;
 
-use crate::{errors::CQLError, operator::Operator};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Enum that represents different data types supported in CQL (Cassandra Query Language).
+/// Each variant corresponds to a data type in CQL and is associated with a specific integer value.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum DataType {
-    Int,
-    String,
-    Boolean,
-    Float,
-    Double,
-    Timestamp,
-    Uuid,
-    // Blob,
+    /// Represents an integer (CQL `INT`).
+    Int = 0x00,
+
+    /// Represents a string (CQL `TEXT` or `STRING`).
+    String = 0x01,
+
+    /// Represents a boolean (CQL `BOOLEAN`).
+    Boolean = 0x02,
+
+    /// Represents a float (CQL `FLOAT`).
+    Float = 0x03,
+
+    /// Represents a double (CQL `DOUBLE`).
+    Double = 0x04,
+
+    /// Represents a timestamp (CQL `TIMESTAMP`).
+    Timestamp = 0x05,
+
+    /// Represents a UUID (CQL `UUID`).
+    Uuid = 0x06,
+}
+
+impl std::str::FromStr for DataType {
+    type Err = CQLError;
+
+    /// Converts a string representation of a CQL data type to a `DataType` enum.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - The string representation of a CQL data type (e.g., "INT", "TEXT").
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the corresponding `DataType` variant if the string is valid,
+    /// or a `CQLError::InvalidSyntax` error if the string doesn't match any valid type.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "INT" => Ok(DataType::Int),
+            "TEXT" | "STRING" => Ok(DataType::String),
+            "BOOLEAN" => Ok(DataType::Boolean),
+            "FLOAT" => Ok(DataType::Float),
+            "DOUBLE" => Ok(DataType::Double),
+            "TIMESTAMP" => Ok(DataType::Timestamp),
+            "UUID" => Ok(DataType::Uuid),
+            _ => Err(CQLError::InvalidSyntax),
+        }
+    }
 }
 
 impl DataType {
-    /// Devuelve el nombre del tipo de datos como una cadena CQL
+    /// Returns the string representation of the data type (CQL syntax).
+    ///
+    /// # Returns
+    ///
+    /// A string representing the CQL data type (e.g., `"INT"`, `"TEXT"`).
     pub fn to_string(&self) -> &str {
         match self {
             DataType::Int => "INT",
@@ -25,11 +69,22 @@ impl DataType {
             DataType::Double => "DOUBLE",
             DataType::Timestamp => "TIMESTAMP",
             DataType::Uuid => "UUID",
-            // DataType::Blob => "BLOB",
         }
     }
 
-    pub fn compare(&self, x: &String, y: &String, operator: &Operator) -> Result<bool, CQLError> {
+    /// Compares two values (as strings) of the current `DataType` with a specified operator (e.g., `=`, `>`, `<`).
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - The first value to compare (as a string).
+    /// * `y` - The second value to compare (as a string).
+    /// * `operator` - The comparison operator (e.g., `Equal`, `Greater`, `Lesser`).
+    ///
+    /// # Returns
+    ///
+    /// A `Result<bool, CQLError>`, where `Ok(true)` or `Ok(false)` indicates whether the comparison is true or false,
+    /// and `Err(CQLError::InvalidCondition)` indicates that the values could not be parsed for comparison.
+    pub fn compare(&self, x: &str, y: &str, operator: &Operator) -> Result<bool, CQLError> {
         match self {
             DataType::Int => {
                 let x = x.parse::<i32>().map_err(|_| CQLError::InvalidCondition)?;
@@ -58,8 +113,8 @@ impl DataType {
                 let y = y.parse::<bool>().map_err(|_| CQLError::InvalidCondition)?;
                 match operator {
                     Operator::Equal => Ok(x == y),
-                    Operator::Greater => Ok(x > y),
-                    Operator::Lesser => Ok(x < y),
+                    Operator::Greater => Ok(x & !y),
+                    Operator::Lesser => Ok(!x & y),
                 }
             }
             DataType::Float => {
@@ -83,22 +138,15 @@ impl DataType {
             DataType::Timestamp => {
                 let x = x.parse::<i64>().map_err(|_| CQLError::InvalidCondition)?;
                 let y = y.parse::<i64>().map_err(|_| CQLError::InvalidCondition)?;
-
-                let res = match operator {
+                match operator {
                     Operator::Equal => Ok(x == y),
                     Operator::Greater => Ok(x > y),
                     Operator::Lesser => Ok(x < y),
-                };
-
-                res
+                }
             }
             DataType::Uuid => {
-                let x = x
-                    .parse::<uuid::Uuid>()
-                    .map_err(|_| CQLError::InvalidCondition)?;
-                let y = y
-                    .parse::<uuid::Uuid>()
-                    .map_err(|_| CQLError::InvalidCondition)?;
+                let x = x.parse::<Uuid>().map_err(|_| CQLError::InvalidCondition)?;
+                let y = y.parse::<Uuid>().map_err(|_| CQLError::InvalidCondition)?;
                 match operator {
                     Operator::Equal => Ok(x == y),
                     Operator::Greater => Ok(x > y),
@@ -108,47 +156,30 @@ impl DataType {
         }
     }
 
-    /// Verifica si el valor dado es válido para el tipo de datos especificado
+    /// Checks if a given string value is valid for the specified `DataType`.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The value to check, represented as a string.
+    ///
+    /// # Returns
+    ///
+    /// A boolean indicating whether the value is valid for the specified data type.
     pub fn is_valid_value(&self, value: &str) -> bool {
         match self {
-            DataType::Int => value.parse::<i32>().is_ok(), // Verifica si es un entero válido
-            DataType::String => true,                      // Cualquier cadena es válida para TEXT
+            DataType::Int => value.parse::<i32>().is_ok(),
+            DataType::String => true,
             DataType::Boolean => {
                 value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
             }
-            DataType::Float => value.parse::<f32>().is_ok(), // Verifica si es un float válido
-            DataType::Double => value.parse::<f64>().is_ok(), // Verifica si es un double válido
-            DataType::Timestamp => self.is_valid_timestamp(value), // Verifica si es un timestamp válido
-            DataType::Uuid => value.parse::<Uuid>().is_ok(),       // Verifica si es un UUID válido
-
-                                                                    // DataType::Blob => self.is_valid_blob(value), // Verifica si es un BLOB válido (hexadecimal)
+            DataType::Float => value.parse::<f32>().is_ok(),
+            DataType::Double => value.parse::<f64>().is_ok(),
+            DataType::Timestamp => self.is_valid_timestamp(value),
+            DataType::Uuid => value.parse::<Uuid>().is_ok(),
         }
     }
 
-    /// Crea un DataType a partir de una cadena
-    pub fn from_str(value: &str) -> Result<Self, CQLError> {
-        match value.to_uppercase().as_str() {
-            "INT" => Ok(DataType::Int),
-            "TEXT" => Ok(DataType::String),
-            "STRING" => Ok(DataType::String),
-            "BOOLEAN" => Ok(DataType::Boolean),
-            "FLOAT" => Ok(DataType::Float),
-            "DOUBLE" => Ok(DataType::Double),
-            "TIMESTAMP" => Ok(DataType::Timestamp),
-            "UUID" => Ok(DataType::Uuid),
-            // "BLOB" => Ok(DataType::Blob),
-            _ => Err(CQLError::InvalidSyntax),
-        }
-    }
-
-    /// Verifica si una cadena es un timestamp válido en formato CQL
     fn is_valid_timestamp(&self, value: &str) -> bool {
         chrono::DateTime::parse_from_rfc3339(value).is_ok() || value.parse::<i64>().is_ok()
-        // Cassandra también permite timestamps en milisegundos
     }
-
-    // /// Verifica si una cadena es un BLOB válido (hexadecimal)
-    // fn is_valid_blob(&self, value: &str) -> bool {
-    //     hex::decode(value).is_ok()
-    // }
 }

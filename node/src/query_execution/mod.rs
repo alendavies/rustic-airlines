@@ -3,7 +3,6 @@ use crate::internode_protocol::query::InternodeQuery;
 use crate::internode_protocol::response::{
     InternodeResponse, InternodeResponseContent, InternodeResponseStatus,
 };
-use crate::table::Table;
 use crate::utils::connect_and_send_message;
 use crate::NodeError;
 use crate::{Node, INTERNODE_PORT};
@@ -20,15 +19,14 @@ pub mod insert;
 pub mod select;
 pub mod update;
 pub mod use_cql;
+use super::storage_engine::StorageEngine;
 use query_creator::errors::CQLError;
 use query_creator::Query;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::BufRead;
-use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+// Si `node` es el módulo raíz
 
 /// Struct for executing various database queries across nodes with support
 /// for distributed communication and replication.
@@ -38,54 +36,145 @@ pub struct QueryExecution {
     execution_finished_itself: bool,
     execution_replicate_itself: bool,
     how_many_nodes_failed: i32,
+    storage_engine: StorageEngine,
 }
 
 impl QueryExecution {
-    /// Constructs a new `QueryExecution` instance, initializing the node and
-    /// connection attributes required for handling and distributing queries.
+    /// Creates a new instance of `QueryExecution`.
     ///
-    /// # Arguments
-    /// * `node_that_execute` - A thread-safe reference to the `Node` responsible for executing the query.
-    /// * `connections` - A thread-safe map of active connections to other nodes.
+    /// # Purpose
+    /// This function initializes a `QueryExecution` object that manages query execution on a specific node
+    /// in a distributed database system. It sets up the required components such as the `StorageEngine`
+    /// and establishes the execution context.
+    ///
+    /// # Parameters
+    /// - `node_that_execute: Arc<Mutex<Node>>`
+    ///   - A shared, thread-safe reference to the node responsible for executing queries.
+    ///   - The node is locked during initialization to retrieve its IP address and other details.
+    /// - `connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>`
+    ///   - A shared, thread-safe map of active connections to other nodes in the cluster.
+    ///   - The key is a string representing the node address, and the value is a thread-safe `TcpStream`
+    ///     for communication with the corresponding node.
+    /// - `storage_path: PathBuf`
+    ///   - A file system path to the storage directory used by the `StorageEngine`.
+    ///   - This defines where local data for the node is stored.
     ///
     /// # Returns
-    /// * `QueryExecution` - The new instance configured for query execution.
+    /// - `Result<QueryExecution, NodeError>`
+    ///   - On success:
+    ///     - Returns an `Ok(QueryExecution)` instance configured with the provided parameters.
+    ///   - On failure:
+    ///     - Returns an `Err(NodeError)` if there is an issue accessing the node or initializing the storage engine.
+    ///
+    /// # Behavior
+    /// 1. **Node Access**:
+    ///    - Locks the `node_that_execute` mutex to safely access the node's details.
+    ///    - Retrieves the IP address of the node using `get_ip_string()`.
+    /// 2. **Storage Engine Initialization**:
+    ///    - Creates a new instance of `StorageEngine` using the provided `storage_path` and the node's IP address.
+    /// 3. **QueryExecution Initialization**:
+    ///    - Sets default values for execution-related flags:
+    ///      - `execution_finished_itself`: `false` (indicates whether the execution is complete).
+    ///      - `execution_replicate_itself`: `false` (indicates whether replication is complete).
+    ///      - `how_many_nodes_failed`: `0` (initializes the failure counter for nodes).
+    ///    - Assigns the `node_that_execute`, `connections`, and `storage_engine` to the `QueryExecution` object.
+    ///
+    /// # Errors
+    /// - Returns `NodeError` in the following cases:
+    ///   - Failure to lock the `node_that_execute` mutex.
+    ///   - Failure to initialize the `StorageEngine` (e.g., invalid `storage_path` or node IP issues).
+    ///
+    /// # Notes
+    /// - This function is designed to be thread-safe, utilizing `Arc` and `Mutex` for shared resources.
+    /// - Ensure that the `storage_path` is valid and accessible to avoid initialization errors.
+
     pub fn new(
         node_that_execute: Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-    ) -> QueryExecution {
-        QueryExecution {
+        storage_path: PathBuf,
+    ) -> Result<QueryExecution, NodeError> {
+        let ip = { node_that_execute.lock()?.get_ip_string() };
+
+        let storage_engine = StorageEngine::new(storage_path, ip);
+        Ok(QueryExecution {
             node_that_execute,
             connections,
             execution_finished_itself: false,
             execution_replicate_itself: false,
             how_many_nodes_failed: 0,
-        }
+            storage_engine: storage_engine,
+        })
     }
 
-    /// Executes a database query by determining the query type and applying the necessary operations
-    /// within a distributed setting. Handles various query types such as `SELECT`, `INSERT`,
-    /// `DELETE`, and others, ensuring node-specific execution as well as inter-node
-    /// communication and replication when required.
+    /// Executes a query against the database, with support for various query types
+    /// (e.g., SELECT, INSERT, UPDATE, DELETE, etc.) and internode communication.
     ///
-    /// # Arguments
-    /// * `query` - The `Query` object specifying the type and details of the query.
-    /// * `internode` - Boolean indicating if the query originates from another node.
-    /// * `replication` - Boolean indicating whether replication is required.
-    /// * `open_query_id` - ID used to track open queries for inter-node communication.
+    /// # Parameters
+    /// - `query: Query`
+    ///   - The query to be executed. This can be any of the following:
+    ///     - `Query::Select` for SELECT queries.
+    ///     - `Query::Insert` for INSERT queries.
+    ///     - `Query::Update` for UPDATE queries.
+    ///     - `Query::Delete` for DELETE queries.
+    ///     - `Query::CreateTable`, `Query::DropTable`, `Query::AlterTable` for table management.
+    ///     - `Query::CreateKeyspace`, `Query::DropKeyspace`, `Query::AlterKeyspace` for keyspace management.
+    ///     - `Query::Use` for switching keyspaces.
+    /// - `internode: bool`
+    ///   - If `true`, enables internode communication for the query, involving other nodes in the cluster.
+    /// - `replication: bool`
+    ///   - Specifies whether the query should trigger data replication across nodes.
+    /// - `open_query_id: i32`
+    ///   - A unique identifier for the query being executed. This is used to track the query across nodes.
+    /// - `client_id: i32`
+    ///   - The identifier of the client initiating the query. Useful for audit trails or debugging.
+    /// - `timestap: Option<i64>`
+    ///   - Optional timestamp for the query. If `None`, certain queries (e.g., INSERT, UPDATE, DELETE) will fail with a `NodeError::InternodeProtocolError`.
     ///
     /// # Returns
-    /// * `Result<Option<(i32, String)>, NodeError>` - Returns:
-    ///   - `Ok(Some((how_many_internode_query_has_finish, response)))`: On successful execution, with `how_many_internode_query_has_finish` representing the number of internode queries that have completed, and `response` containing any resulting message.
-    ///   - `Ok(None)`: If no additional response is required.
-    ///   - `Err(NodeError)`: If an error occurs during execution.
+    /// - `Result<Option<((i32, i32), InternodeResponse)>, NodeError>`
+    ///   - On success:
+    ///     - Returns `Ok(Some(((execution_status, node_failures), response)))` where:
+    ///       - `execution_status`: Indicates how many internode queries finished successfully:
+    ///         - `2` for both local and replicated execution completed.
+    ///         - `1` for either local or replicated execution completed.
+    ///         - `0` for neither completed.
+    ///       - `node_failures`: Number of nodes that failed during execution.
+    ///       - `response`: An `InternodeResponse` containing the query results or status.
+    ///     - For internode communication, it may return a simpler response with metadata.
+    ///   - On failure:
+    ///     - Returns `Err(NodeError)` containing details of the error.
     ///
-    /// # Errors
-    /// This function may return `NodeError` in cases such as:
-    /// - Connection issues between nodes.
-    /// - Invalid query structure or unsupported query types.
-
-    // Método para ejecutar la query según su tipo
+    /// # Query Execution Process
+    /// - **SELECT Queries**:
+    ///   - Executes `execute_select` to fetch rows from the database.
+    ///   - Processes the results into columns, select columns, and row values.
+    ///   - Constructs an `InternodeResponseContent` object with the query results.
+    /// - **INSERT Queries**:
+    ///   - Requires a valid timestamp (`timestap` parameter).
+    ///   - Validates the target table within the context of the query's keyspace.
+    ///   - Calls `execute_insert` to perform the operation.
+    /// - **UPDATE Queries**:
+    ///   - Similar to INSERT but updates rows in the database.
+    /// - **DELETE Queries**:
+    ///   - Removes rows based on the conditions specified in the query.
+    /// - **Table and Keyspace Management**:
+    ///   - Handles `CREATE`, `DROP`, and `ALTER` operations for tables and keyspaces.
+    ///   - Operations are forwarded to specific handlers like `execute_create_table`.
+    /// - **USE Queries**:
+    ///   - Switches the keyspace context for subsequent queries.
+    ///
+    /// # Internode Communication
+    /// - If `internode` is enabled, the function constructs an `InternodeResponse` object:
+    ///   - `Ok`: Indicates the query succeeded.
+    ///   - `Error`: Captures failures, logs the error, and updates the response status.
+    /// - Non-internode queries return execution status and failure counts directly.
+    ///
+    /// # Error Handling
+    /// - Returns a `NodeError` in case of failures, which could include:
+    ///   - `InternodeProtocolError`: Missing timestamp for queries requiring one.
+    ///   - `CQLError`: Specific errors during query execution, such as missing keyspace or table.
+    ///   - `Other`: Errors encountered during query execution.
+    ///
     pub fn execute(
         &mut self,
         query: Query,
@@ -93,12 +182,14 @@ impl QueryExecution {
         replication: bool,
         open_query_id: i32,
         client_id: i32,
+        timestap: Option<i64>,
     ) -> Result<Option<((i32, i32), InternodeResponse)>, NodeError> {
         let mut response: InternodeResponse = InternodeResponse {
             open_query_id: open_query_id as u32,
             status: InternodeResponseStatus::Ok,
             content: None,
         };
+
         let query_result = {
             match query.clone() {
                 Query::Select(select_query) => {
@@ -110,29 +201,42 @@ impl QueryExecution {
                         client_id,
                     ) {
                         Ok(select_querys) => {
-                            /* let columns: Vec<String> = select_querys
-                            .get(0)
-                            .map(|s| s.split(',').map(String::from).collect())
-                            .unwrap_or_default(); */
-
-                            let select_columns: Vec<String> = select_querys
+                            let columns: Vec<String> = select_querys
                                 .get(0)
                                 .map(|s| s.split(',').map(String::from).collect())
                                 .unwrap_or_default();
 
+                            let select_columns: Vec<String> = select_querys
+                                .get(1)
+                                .map(|s| s.split(',').map(String::from).collect())
+                                .unwrap_or_default();
+
                             let values: Vec<Vec<String>> = if select_querys.len() > 2 {
-                                select_querys[1..]
+                                let result: Vec<Vec<String>> = select_querys[2..]
                                     .iter()
-                                    .map(|s| s.split(',').map(String::from).collect())
-                                    .collect()
+                                    .map(|s| {
+                                        // Dividir en dos partes por ";"
+                                        if let Some((first_part, second_part)) = s.split_once(';') {
+                                            // Dividir la primera parte por "," y agregar la segunda parte
+                                            let mut combined: Vec<String> =
+                                                first_part.split(',').map(String::from).collect();
+                                            combined.push(second_part.to_string()); // Añadir la parte después de ";"
+                                            combined
+                                        } else {
+                                            // Si no hay ";", considerar todo como un único valor
+                                            vec![s.to_string()]
+                                        }
+                                    })
+                                    .collect();
+                                result
                             } else {
                                 Vec::new()
                             };
 
                             response.content = Some(InternodeResponseContent {
-                                columns: Vec::new(),
-                                select_columns,
-                                values,
+                                columns: columns,
+                                select_columns: select_columns,
+                                values: values,
                             });
                             Ok(())
                         }
@@ -143,6 +247,12 @@ impl QueryExecution {
                     }
                 }
                 Query::Insert(insert_query) => {
+                    let timestamp_n;
+                    if let Some(t) = timestap {
+                        timestamp_n = t;
+                    } else {
+                        return Err(NodeError::InternodeProtocolError);
+                    }
                     let table;
                     {
                         let table_name = insert_query.into_clause.table_name.clone();
@@ -161,45 +271,56 @@ impl QueryExecution {
                         replication,
                         open_query_id,
                         client_id,
+                        timestamp_n,
                     )
                 }
-                Query::Update(update_query) => self.execute_update(
-                    update_query,
-                    internode,
-                    replication,
-                    open_query_id,
-                    client_id,
-                ),
-                Query::Delete(delete_query) => self.execute_delete(
-                    delete_query,
-                    internode,
-                    replication,
-                    open_query_id,
-                    client_id,
-                ),
+                Query::Update(update_query) => {
+                    let timestamp_n;
+                    if let Some(t) = timestap {
+                        timestamp_n = t;
+                    } else {
+                        return Err(NodeError::InternodeProtocolError);
+                    }
+                    self.execute_update(
+                        update_query,
+                        internode,
+                        replication,
+                        open_query_id,
+                        client_id,
+                        timestamp_n,
+                    )
+                }
+                Query::Delete(delete_query) => {
+                    let timestamp_n;
+                    if let Some(t) = timestap {
+                        timestamp_n = t;
+                    } else {
+                        return Err(NodeError::InternodeProtocolError);
+                    }
+                    self.execute_delete(
+                        delete_query,
+                        internode,
+                        replication,
+                        open_query_id,
+                        client_id,
+                        timestamp_n,
+                    )
+                }
                 Query::CreateTable(create_table) => {
-                    self.execute_create_table(create_table, internode, open_query_id, client_id)
+                    self.execute_create_table(create_table, open_query_id)
                 }
-                Query::DropTable(drop_table) => {
-                    self.execute_drop_table(drop_table, internode, open_query_id, client_id)
-                }
+                Query::DropTable(drop_table) => self.execute_drop_table(drop_table, open_query_id),
                 Query::AlterTable(alter_table) => {
-                    self.execute_alter_table(alter_table, internode, open_query_id, client_id)
+                    self.execute_alter_table(alter_table, open_query_id)
                 }
-                Query::CreateKeyspace(create_keyspace) => self.execute_create_keyspace(
-                    create_keyspace,
-                    internode,
-                    open_query_id,
-                    client_id,
-                ),
-                Query::DropKeyspace(drop_keyspace) => {
-                    self.execute_drop_keyspace(drop_keyspace, internode, open_query_id, client_id)
+                Query::CreateKeyspace(create_keyspace) => {
+                    self.execute_create_keyspace(create_keyspace)
                 }
-                Query::AlterKeyspace(alter_keyspace) => {
-                    self.execute_alter_keyspace(alter_keyspace, internode, open_query_id, client_id)
-                }
-                Query::Use(use_cql) => {
-                    self.execute_use(use_cql, internode, open_query_id, client_id)
+                Query::DropKeyspace(drop_keyspace) => self.execute_drop_keyspace(drop_keyspace),
+                Query::AlterKeyspace(alter_keyspace) => self.execute_alter_keyspace(alter_keyspace),
+                Query::Use(_) => {
+                    return Err(NodeError::OtherError);
+                    //self.execute_use(use_cql, internode, open_query_id, client_id)
                 }
             }
         };
@@ -210,7 +331,7 @@ impl QueryExecution {
                     Ok(_) => response,
 
                     Err(_) => {
-                        println!(
+                        eprintln!(
                             "el error en este nodo es {:?} de la query {:?}",
                             query_result, query
                         );
@@ -249,13 +370,14 @@ impl QueryExecution {
     }
 
     // Función auxiliar para enviar un mensaje a todos los nodos en el partitioner
-    fn send_to_other_nodes(
+    fn _send_to_other_nodes(
         &self,
         local_node: MutexGuard<'_, Node>,
         serialized_message: &str,
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
+        timestap: i64,
     ) -> Result<i32, NodeError> {
         let current_ip = local_node.get_ip();
         let message = InternodeMessage::new(
@@ -266,7 +388,7 @@ impl QueryExecution {
                 client_id: client_id as u32,
                 replication: false,
                 keyspace_name: keyspace_name.to_string(),
-                timestamp: 0 as i64,
+                timestamp: timestap,
             }),
         );
 
@@ -297,6 +419,7 @@ impl QueryExecution {
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
+        timestap: i64,
     ) -> Result<i32, NodeError> {
         let message = InternodeMessage::new(
             self_ip,
@@ -306,7 +429,7 @@ impl QueryExecution {
                 client_id: client_id as u32,
                 replication: false,
                 keyspace_name: keyspace_name.to_string(),
-                timestamp: 0 as i64,
+                timestamp: timestap,
             }),
         );
 
@@ -333,6 +456,7 @@ impl QueryExecution {
         open_query_id: i32,
         client_id: i32,
         keyspace_name: &str,
+        timestap: i64,
     ) -> Result<(i32, bool), NodeError> {
         // Serializa el objeto que se quiere enviar
 
@@ -347,7 +471,7 @@ impl QueryExecution {
                 client_id: client_id as u32,
                 replication: true,
                 keyspace_name: keyspace_name.to_string(),
-                timestamp: 0 as i64,
+                timestamp: timestap,
             }),
         );
 
@@ -397,82 +521,5 @@ impl QueryExecution {
             }
         }
         Ok(())
-    }
-
-    /// Obtiene las rutas del archivo principal y del temporal.
-    /// Si `replication` es `true`, coloca los archivos dentro de una carpeta "replication" en el keyspace.
-    fn get_file_paths(
-        &self,
-        table_name: &str,
-        replication: bool,
-        keyspace_name: &str,
-    ) -> Result<(String, String), NodeError> {
-        let node = self
-            .node_that_execute
-            .lock()
-            .map_err(|_| NodeError::LockError)?;
-
-        let add_str = node.get_ip_string().replace(".", "_");
-        let base_folder = format!("keyspaces_{}/{}", add_str, keyspace_name);
-
-        // Agrega la carpeta "replication" si el parámetro es verdadero
-        let folder_name = if replication {
-            format!("{}/replication", base_folder)
-        } else {
-            base_folder
-        };
-
-        let file_path = format!("{}/{}.csv", folder_name, table_name);
-
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_| NodeError::OtherError)?
-            .as_nanos();
-        let temp_file_path = format!("{}.{}.temp", file_path, timestamp);
-
-        Ok((file_path, temp_file_path))
-    }
-
-    /// Crea un mapa de valores de columna para una fila dada.
-    fn create_column_value_map(
-        &self,
-        table: &Table,
-        columns: &[String],
-        only_partitioner_key: bool,
-    ) -> HashMap<String, String> {
-        let mut column_value_map = HashMap::new();
-        for (i, column) in table.get_columns().iter().enumerate() {
-            if let Some(value) = columns.get(i) {
-                if column.is_partition_key || column.is_clustering_column || !only_partitioner_key {
-                    column_value_map.insert(column.name.clone(), value.clone());
-                }
-            }
-        }
-
-        column_value_map
-    }
-
-    fn write_header<R: BufRead>(
-        &self,
-        reader: &mut R,
-        temp_file: &mut File,
-    ) -> Result<(), NodeError> {
-        if let Some(header_line) = reader.lines().next() {
-            writeln!(temp_file, "{}", header_line?).map_err(|e| NodeError::from(e))?;
-        }
-        Ok(())
-    }
-
-    // Funciones auxiliares adicionales (debes agregarlas también en tu implementación)
-    fn create_temp_file(&self, temp_file_path: &str) -> Result<File, NodeError> {
-        File::create(temp_file_path).map_err(NodeError::IoError)
-    }
-
-    fn replace_original_file(
-        &self,
-        temp_file_path: &str,
-        file_path: &str,
-    ) -> Result<(), NodeError> {
-        std::fs::rename(temp_file_path, file_path).map_err(NodeError::from)
     }
 }

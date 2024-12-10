@@ -1,14 +1,12 @@
 // Ordered imports
-use crate::table::Table;
+use super::QueryExecution;
 use crate::NodeError;
 use query_creator::clauses::select_cql::Select;
 use query_creator::errors::CQLError;
-use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader};
-
-use super::QueryExecution;
 
 impl QueryExecution {
+    /// Executes the retrieval of row/rows. This function is public only for internal use
+    /// within the library (defined as `pub(crate)`).
     pub(crate) fn execute_select(
         &mut self,
         mut select_query: Select,
@@ -87,6 +85,7 @@ impl QueryExecution {
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    0,
                 )?;
                 do_in_this_node = false;
             }
@@ -101,6 +100,7 @@ impl QueryExecution {
                     open_query_id,
                     client_id,
                     &client_keyspace.get_name(),
+                    0,
                 )?;
             }
 
@@ -121,131 +121,12 @@ impl QueryExecution {
         if replication {
             self.execution_replicate_itself = true;
         }
-
-        // Execute the SELECT query on this node if applicable
-        let result = self.execute_select_in_this_node(
+        let results = self.storage_engine.select(
             select_query,
             table,
             replication,
             &client_keyspace.get_name(),
         )?;
-        Ok(result)
-    }
-
-    /// Executes the SELECT operation locally on this node
-    fn execute_select_in_this_node(
-        &self,
-        select_query: Select,
-        table: Table,
-        replication: bool,
-        client_keyspace_name: &str,
-    ) -> Result<Vec<String>, NodeError> {
-        let (file_path, _) =
-            self.get_file_paths(&select_query.table_name, replication, client_keyspace_name)?;
-        let file = OpenOptions::new().read(true).open(&file_path)?;
-        let reader = BufReader::new(file);
-        let mut results = Vec::new();
-        results.push(select_query.columns.join(","));
-        // Iterate over each line in the file and apply the WHERE clause condition
-        for (i, line) in reader.lines().enumerate() {
-            if i == 0 {
-                continue;
-            }
-            let line = line?;
-            if self.line_matches_where_clause(&line, &table, &select_query)? {
-                let selected_columns = self.extract_selected_columns(&line, &table, &select_query);
-                results.push(selected_columns);
-            }
-        }
-        if let Some(limit) = select_query.limit {
-            if limit < results.len() {
-                results = results[..limit + 1].to_vec();
-            }
-        }
-
-        if let Some(order_by) = select_query.orderby_clause {
-            self.sort_results_single_column(&mut results, &order_by.columns[0], &order_by.order)?
-        }
         Ok(results)
-    }
-
-    /// Sorts the results based on a single specified column and its ordering
-    fn sort_results_single_column(
-        &self,
-        results: &mut Vec<String>,
-        order_by_column: &str,
-        order: &str, // Either "ASC" or "DESC"
-    ) -> Result<(), NodeError> {
-        if results.len() <= 1 {
-            // No sorting needed if only header or empty results
-            return Ok(());
-        }
-
-        // Split header from the rest of the rows
-        let header = results[0].clone();
-        let rows = &mut results[1..];
-
-        // Get the index of the column specified in order_by_column
-        let header_columns: Vec<&str> = header.split(',').collect();
-        let col_index = header_columns
-            .iter()
-            .position(|&col| col == order_by_column);
-
-        if let Some(col_index) = col_index {
-            // Define sort closure based on order
-            rows.sort_by(|a, b| {
-                let a_val = a.split(',').nth(col_index).unwrap_or("");
-                let b_val = b.split(',').nth(col_index).unwrap_or("");
-                let cmp = a_val.cmp(b_val);
-
-                match order {
-                    "ASC" => cmp,
-                    "DESC" => cmp.reverse(),
-                    _ => std::cmp::Ordering::Equal, // Ignore invalid order specifiers
-                }
-            });
-        }
-
-        // Restore header
-        results[0] = header;
-        Ok(())
-    }
-
-    /// Checks if the line matches the WHERE clause condition
-    fn line_matches_where_clause(
-        &self,
-        line: &str,
-        table: &Table,
-        select_query: &Select,
-    ) -> Result<bool, NodeError> {
-        // Convert the line into a map of column to value
-        let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
-        let column_value_map = self.create_column_value_map(table, &columns, true);
-
-        let columns_ = table.get_columns();
-        // Check the WHERE clause condition in the SELECT query
-        if let Some(where_clause) = &select_query.where_clause {
-            Ok(where_clause
-                .condition
-                .execute(&column_value_map, columns_)?)
-        } else {
-            Ok(true) // If no WHERE clause, consider the line as matching
-        }
-    }
-
-    /// Extracts the selected columns from a line according to the SELECT query
-    fn extract_selected_columns(&self, line: &str, table: &Table, select_query: &Select) -> String {
-        let columns: Vec<String> = line.split(',').map(|s| s.trim().to_string()).collect();
-        let column_value_map = self.create_column_value_map(table, &columns, false);
-
-        // Filter only the columns specified in the SELECT query
-        let selected_columns: Vec<String> = select_query
-            .columns
-            .iter()
-            .filter_map(|col| column_value_map.get(col).cloned())
-            .collect();
-
-        // Join the selected columns into a single comma-separated string
-        selected_columns.join(",")
     }
 }

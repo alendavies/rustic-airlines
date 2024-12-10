@@ -52,10 +52,10 @@ fn parse_table_name(tokens: &[String], i: &mut usize) -> Result<String, CQLError
     }
 }
 
-fn parse_where_orderby_limit<'a>(
-    tokens: &'a [String],
-    i: &mut usize,
-) -> Result<(Vec<&'a str>, Vec<&'a str>, Option<usize>), CQLError> {
+type Tokens<'a> = Vec<&'a str>;
+type ParsedResult<'a> = Result<(Tokens<'a>, Tokens<'a>, Option<usize>), CQLError>;
+
+fn parse_where_orderby_limit<'a>(tokens: &'a [String], i: &mut usize) -> ParsedResult<'a> {
     let mut where_tokens = Vec::new();
     let mut orderby_tokens = Vec::new();
     let mut limit = None;
@@ -89,16 +89,22 @@ fn parse_where_orderby_limit<'a>(
 }
 
 impl Select {
-    /// Creates and returns a new `Select` instance from a vector of `String` tokens.
+    /// Creates a new `Select` instance from a vector of tokens.
     ///
-    /// # Arguments
+    /// # Parameters
+    /// - `tokens: Vec<String>`:
+    ///   - A vector of string tokens representing the `SELECT` query.
     ///
-    /// * `tokens` - A vector of `String` tokens that represent the `SELECT` clause.
+    /// # Returns
+    /// - `Ok(Select)`:
+    ///   - If the tokens are valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the tokens are invalid or improperly formatted.
     ///
-    /// The tokens should be in the following order: `SELECT`, `columns`, `FROM`, `table_name`, `WHERE`, `condition`, `ORDER`, `BY`, `columns`, `order`.
-    ///
-    /// The `columns` should be comma-separated.
-    ///
+    /// # Notes
+    /// - The expected token order is:
+    ///   `"SELECT", "columns", "FROM", "table_name", "[WHERE condition]", "[ORDER BY columns order]", "[LIMIT number]"`.
+    /// - The `columns` should be comma-separated.
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
@@ -146,7 +152,14 @@ impl Select {
         })
     }
 
-    /// Serializa la consulta `Select` a un `String`.
+    /// Serializes the `Select` query into a CQL string representation.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - A string representation of the `SELECT` query in the following format:
+    ///     ```sql
+    ///     SELECT columns FROM [keyspace.]table_name [WHERE condition] [ORDER BY columns order] [LIMIT number];
+    ///    
     pub fn serialize(&self) -> String {
         let table_name_str = if !self.keyspace_used_name.is_empty() {
             format!("{}.{}", self.keyspace_used_name, self.table_name)
@@ -172,14 +185,36 @@ impl Select {
         result
     }
 
+    /// Deserializes a CQL string into a `Select` instance.
+    ///
+    /// # Parameters
+    /// - `query: &str`:
+    ///   - A string representing the `SELECT` query.
+    ///
+    /// # Returns
+    /// - `Ok(Select)`:
+    ///   - If the query is valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the query is invalid or improperly formatted.
     pub fn deserialize(query: &str) -> Result<Self, CQLError> {
         let tokens = QueryCreator::tokens_from_query(query);
         Self::new_from_tokens(tokens)
     }
 
+    /// Validates the `ORDER BY` clause in the `Select` query.
+    ///
+    /// # Parameters
+    /// - `clustering_columns: &[String]`:
+    ///   - A slice of strings representing the clustering columns of the table.
+    ///
+    /// # Returns
+    /// - `Ok(())`:
+    ///   - If the `ORDER BY` clause is valid.
+    /// - `Err(CQLError::InvalidCondition)`:
+    ///   - If the `ORDER BY` clause is invalid (e.g., it uses non-clustering columns).
     pub fn validate_order_by_cql_conditions(
         &mut self,
-        clustering_columns: &Vec<String>,
+        clustering_columns: &[String],
     ) -> Result<(), CQLError> {
         if let Some(mut order_by) = self.orderby_clause.clone() {
             if order_by.columns.len() != 1 {

@@ -9,6 +9,23 @@ pub struct AlterKeyspace {
 }
 
 impl AlterKeyspace {
+    /// Creates a new `AlterKeyspace` instance from a vector of query tokens.
+    ///
+    /// # Parameters
+    /// - `query: Vec<String>`:
+    ///   - A vector of strings representing the tokens of a CQL `ALTER KEYSPACE` query.
+    ///
+    /// # Returns
+    /// - `Ok(AlterKeyspace)`:
+    ///   - If the query is valid and can be successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the query is invalid or improperly formatted.
+    ///
+    /// # Validation
+    /// - The query must begin with `ALTER KEYSPACE`.
+    /// - The query must include `WITH REPLICATION = { ... }`.
+    /// - The replication class must be `SimpleStrategy`.
+    /// - The replication factor must be a valid unsigned integer.
     pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
         if query.len() < 10
             || query[0].to_uppercase() != "ALTER"
@@ -63,19 +80,44 @@ impl AlterKeyspace {
         })
     }
 
+    /// Retrieves the replication class of the keyspace.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - The replication class (e.g., `SimpleStrategy`).
     pub fn get_replication_class(&self) -> String {
         self.replication_class.clone()
     }
 
+    /// Retrieves the replication factor of the keyspace.
+    ///
+    /// # Returns
+    /// - `u32`:
+    ///   - The replication factor.
     pub fn get_replication_factor(&self) -> u32 {
         self.replication_factor
     }
 
+    /// Retrieves the name of the keyspace.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - The name of the keyspace.
     pub fn get_name(&self) -> String {
         self.name.clone()
     }
 
-    /// Serializa la estructura `AlterKeyspace` a una consulta CQL
+    /// Serializes the `AlterKeyspace` structure to a CQL query string.
+    ///
+    /// # Purpose
+    /// Converts the `AlterKeyspace` instance into its corresponding CQL `ALTER KEYSPACE` statement.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - A string representing the `ALTER KEYSPACE` CQL query in the following format:
+    ///     ```sql
+    ///     ALTER KEYSPACE <keyspace_name> WITH REPLICATION = {'class': '<replication_class>', 'replication_factor': <replication_factor>};
+
     pub fn serialize(&self) -> String {
         format!(
             "ALTER KEYSPACE {} WITH REPLICATION = {{'class': '{}', 'replication_factor': {}}};",
@@ -83,7 +125,17 @@ impl AlterKeyspace {
         )
     }
 
-    /// Deserializa una consulta CQL en formato `String` y convierte a la estructura `AlterKeyspace`
+    /// Deserializes a CQL query string into an `AlterKeyspace` structure.
+    ///
+    /// # Parameters
+    /// - `query: &str`:
+    ///   - A string representing a CQL `ALTER KEYSPACE` query.
+    ///
+    /// # Returns
+    /// - `Ok(AlterKeyspace)`:
+    ///   - If the query is valid and can be successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the query is invalid or improperly formatted.
     pub fn deserialize(query: &str) -> Result<Self, CQLError> {
         // Divide la consulta en tokens y convierte a `Vec<String>`
         let tokens: Vec<String> = QueryCreator::tokens_from_query(query);

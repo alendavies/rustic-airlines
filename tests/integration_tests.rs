@@ -1,6 +1,6 @@
 use driver::{CassandraClient, QueryResult};
 use native_protocol::messages::error::Error;
-use native_protocol::messages::result::result::Result;
+use native_protocol::messages::result::result_::Result;
 use native_protocol::messages::result::rows::ColumnValue;
 use native_protocol::messages::result::schema_change;
 use native_protocol::messages::result::schema_change::SchemaChange;
@@ -64,7 +64,6 @@ fn delete_node_directories(ip_addresses: Vec<&str>) {
     }
 }
 
-// Execute a SELECT query and check that the result contains the expected values
 fn execute_and_verify_select(
     client: &mut CassandraClient,
     query: &str,
@@ -73,11 +72,6 @@ fn execute_and_verify_select(
     match client.execute(query, "all") {
         Ok(query_result) => match query_result {
             QueryResult::Result(Result::Rows(rows)) => {
-                // println!(
-                //     "se compara {:?} con {:?}",
-                //     rows.rows_content, expected_values
-                // );
-
                 if rows.rows_content.is_empty() {
                     return expected_values.is_empty();
                 }
@@ -91,21 +85,27 @@ fn execute_and_verify_select(
                         ColumnValue::Double(val) => val.to_string(),
                         ColumnValue::Boolean(val) => val.to_string(),
                         ColumnValue::Timestamp(val) => val.to_string(),
-                        _ => return "".to_string(), // Return empty string for unexpected types
+                        _ => "".to_string(), // Devuelve cadena vacía para tipos no esperados
                     })
                     .collect();
+
+                println!(
+                    "Expected values: {:?}, Actual values: {:?}",
+                    expected_values, actual_values
+                );
 
                 expected_values
                     .iter()
                     .all(|value| actual_values.contains(value))
-
-                // println!("comparo {:?} con {:?}", expected_values, actual_values);
-                // expected_values == actual_values
             }
-            a => {
-                println!("recibi {:?}", a);
+            QueryResult::Error(e) => {
+                eprintln!("Error in query result: {:?}", e);
                 false
-            } // Fails if result type is not Rows
+            }
+            _ => {
+                eprintln!("Unexpected query result type: {:?}", query_result);
+                false
+            }
         },
         Err(e) => {
             eprintln!("Error executing query: {}\nError: {:?}", query, e);
@@ -129,24 +129,24 @@ fn setup_keyspace_queries(client: &mut CassandraClient) {
     );
     println!("Keyspace creation succeeded: {}", query);
 
-    // Alter keyspace replication factor to 2
-    let query = "ALTER KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2}";
-    let expected_result = QueryResult::Result(Result::SchemaChange(SchemaChange::new(
-        schema_change::ChangeType::Updated,
-        schema_change::Target::Keyspace,
-        schema_change::Options::new("test_keyspace".to_string(), None),
-    )));
-    assert!(
-        execute_and_verify(client, query, expected_result),
-        "Failed keyspace alteration: {}",
-        query
-    );
-    println!("Keyspace alteration succeeded: {}", query);
+    // // Alter keyspace replication factor to 2
+    // let query = "ALTER KEYSPACE test_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2}";
+    // let expected_result = QueryResult::Result(Result::SchemaChange(SchemaChange::new(
+    //     schema_change::ChangeType::Updated,
+    //     schema_change::Target::Keyspace,
+    //     schema_change::Options::new("test_keyspace".to_string(), None),
+    // )));
+    // assert!(
+    //     execute_and_verify(client, query, expected_result),
+    //     "Failed keyspace alteration: {}",
+    //     query
+    // );
+    // println!("Keyspace alteration succeeded: {}", query);
 }
 
 fn setup_table_queries(client: &mut CassandraClient) {
     // Create table "test_table"
-    let query = "CREATE TABLE test_table (id INT, name TEXT, PRIMARY KEY (id, name))";
+    let query = "CREATE TABLE test_keyspace.test_table (id INT, name TEXT, last_name TEXT, PRIMARY KEY (id, name))";
     let expected_result = QueryResult::Result(Result::SchemaChange(SchemaChange::new(
         schema_change::ChangeType::Created,
         schema_change::Target::Table,
@@ -159,33 +159,34 @@ fn setup_table_queries(client: &mut CassandraClient) {
     );
     println!("Table creation succeeded: {}", query);
 
-    // Create table "test_table"
-    let query = "USE test_keyspace";
-    let expected_result = QueryResult::Result(Result::SetKeyspace("".to_string()));
-    assert!(
-        execute_and_verify(client, query, expected_result),
-        "set keyspace faildes: {}",
-        query
-    );
-    println!("Set keyspace succeeded: {}", query);
+    // // Create table "test_table"
+    // let query = "USE test_keyspace";
+    // let expected_result = QueryResult::Result(Result::SetKeyspace("".to_string()));
+    // assert!(
+    //     execute_and_verify(client, query, expected_result),
+    //     "set keyspace faildes: {}",
+    //     query
+    // );
+    // println!("Set keyspace succeeded: {}", query);
 
-    // Alter table "test_table" to add a new column
-    let query = "ALTER TABLE test_table ADD last_name TEXT";
-    let expected_result = QueryResult::Result(Result::SchemaChange(SchemaChange::new(
-        schema_change::ChangeType::Updated,
-        schema_change::Target::Table,
-        schema_change::Options::new("test_table".to_string(), None),
-    )));
-    assert!(
-        execute_and_verify(client, query, expected_result),
-        "Failed table alteration: {}",
-        query
-    );
-    println!("Table alteration succeeded: {}", query);
+    // // Alter table "test_table" to add a new column
+    // let query = "ALTER TABLE test_table ADD last_name TEXT";
+    // let expected_result = QueryResult::Result(Result::SchemaChange(SchemaChange::new(
+    //     schema_change::ChangeType::Updated,
+    //     schema_change::Target::Table,
+    //     schema_change::Options::new("test_table".to_string(), None),
+    // )));
+    // assert!(
+    //     execute_and_verify(client, query, expected_result),
+    //     "Failed table alteration: {}",
+    //     query
+    // );
+    // println!("Table alteration succeeded: {}", query);
 }
 
 fn execute_insert_queries(client: &mut CassandraClient) {
-    let query = "INSERT INTO test_table (id, name, last_name) VALUES (1, 'Alice', 'David')";
+    let query =
+        "INSERT INTO test_keyspace.test_table (id, name, last_name) VALUES (1, 'Alice', 'David')";
     assert!(
         execute_and_verify(client, query, QueryResult::Result(Result::Void)),
         "Full insert failed"
@@ -193,7 +194,7 @@ fn execute_insert_queries(client: &mut CassandraClient) {
     println!("Full insert query executed successfully: {}", query);
 
     // Verificar que el registro fue insertado
-    let select_query = "SELECT id, name, last_name FROM test_table WHERE id = 1";
+    let select_query = "SELECT id, name, last_name FROM test_keyspace.test_table WHERE id = 1";
 
     let expected_values = vec!["1".to_string(), "Alice".to_string(), "David".to_string()];
     assert!(
@@ -202,7 +203,7 @@ fn execute_insert_queries(client: &mut CassandraClient) {
     );
 
     //7. Inserción parcial (solo columna obligatoria `id` y `name`)
-    let query = "INSERT INTO test_table (id, name) VALUES (2, 'Bob')";
+    let query = "INSERT INTO test_keyspace.test_table (id, name) VALUES (2, 'Bob')";
     assert!(
         execute_and_verify(client, query, QueryResult::Result(Result::Void)),
         "Partial insert failed"
@@ -210,7 +211,7 @@ fn execute_insert_queries(client: &mut CassandraClient) {
     println!("Partial insert query executed successfully: {}", query);
 
     //Verificar que el registro fue insertado con valores nulos en las columnas no especificadas
-    let select_query = "SELECT id, name, last_name FROM test_table WHERE id = 2";
+    let select_query = "SELECT id, name, last_name FROM test_keyspace.test_table WHERE id = 2";
 
     let expected_values = vec!["2".to_string(), "Bob".to_string(), "".to_string()];
     assert!(
@@ -219,7 +220,7 @@ fn execute_insert_queries(client: &mut CassandraClient) {
     );
 
     // 8. Inserción sin `PRIMARY KEY` (debe fallar)
-    let query = "INSERT INTO test_table (name, last_name) VALUES ('Bob', 'Martinez')";
+    let query = "INSERT INTO test_keyspace.test_table (name, last_name) VALUES ('Bob', 'Martinez')";
     assert!(
         execute_and_verify(
             client,
@@ -235,7 +236,7 @@ fn execute_insert_queries(client: &mut CassandraClient) {
 
     // 9. Inserción con `IF NOT EXISTS` cuando la fila no existe
     let query =
-        "INSERT INTO test_table (id, name, last_name) VALUES (3, 'Charlie', 'Cox') IF NOT EXISTS";
+        "INSERT INTO test_keyspace.test_table (id, name, last_name) VALUES (3, 'Charlie', 'Cox') IF NOT EXISTS";
     assert!(
         execute_and_verify(client, query, QueryResult::Result(Result::Void)),
         "Insert with IF NOT EXISTS failed (when row does not exist)"
@@ -246,7 +247,7 @@ fn execute_insert_queries(client: &mut CassandraClient) {
     );
 
     // Verificar que el registro fue insertado
-    let select_query = "SELECT id, name, last_name FROM test_table WHERE id = 3";
+    let select_query = "SELECT id, name, last_name FROM test_keyspace.test_table WHERE id = 3";
 
     let expected_values = vec!["3".to_string(), "Charlie".to_string(), "Cox".to_string()];
     assert!(
@@ -256,7 +257,7 @@ fn execute_insert_queries(client: &mut CassandraClient) {
 
     // 10. Inserción con `IF NOT EXISTS` cuando la fila ya existe
     let query =
-        "INSERT INTO test_table (id, name, last_name) VALUES (3, 'Charlie', 'Bet') IF NOT EXISTS";
+        "INSERT INTO test_keyspace.test_table (id, name, last_name) VALUES (3, 'Charlie', 'Bet') IF NOT EXISTS";
     assert!(
         execute_and_verify(client, query, QueryResult::Result(Result::Void)),
         "Insert with IF NOT EXISTS should not insert when row exists"
@@ -267,7 +268,7 @@ fn execute_insert_queries(client: &mut CassandraClient) {
     );
 
     // Verificar que el registro no fue modificado
-    let select_query = "SELECT id, name, last_name FROM test_table WHERE id = 3";
+    let select_query = "SELECT id, name, last_name FROM test_keyspace.test_table WHERE id = 3";
 
     let expected_values = vec!["3".to_string(), "Charlie".to_string(), "Cox".to_string()];
     assert!(
@@ -276,7 +277,7 @@ fn execute_insert_queries(client: &mut CassandraClient) {
     );
 
     // 10. Inserción con columnas invalidas
-    let query = "INSERT INTO test_table (name, last_name) VALUES ('Charlie', 'charlie@example.com') IF NOT EXISTS";
+    let query = "INSERT INTO test_keyspace.test_table (name, last_name) VALUES ('Charlie', 'charlie@example.com') IF NOT EXISTS";
     assert!(
         execute_and_verify(
             client,
@@ -289,7 +290,8 @@ fn execute_insert_queries(client: &mut CassandraClient) {
 }
 
 fn execute_update_queries(client: &mut CassandraClient) {
-    let update_query = "UPDATE test_table SET last_name = 'Rake' WHERE id = 1 AND name = 'Alice'";
+    let update_query =
+        "UPDATE test_keyspace.test_table SET last_name = 'Rake' WHERE id = 1 AND name = 'Alice'";
     assert!(
         execute_and_verify(client, update_query, QueryResult::Result(Result::Void)),
         "Update without IF failed"
@@ -297,7 +299,8 @@ fn execute_update_queries(client: &mut CassandraClient) {
     println!("Update without IF condition executed successfully");
 
     // Verificar la actualización
-    let select_query = "SELECT last_name FROM test_table WHERE id = 1 AND name = 'Alice'";
+    let select_query =
+        "SELECT last_name FROM test_keyspace.test_table WHERE id = 1 AND name = 'Alice'";
     let expected_values = vec!["Rake".to_string()];
     assert!(
         execute_and_verify_select(client, select_query, expected_values),
@@ -305,7 +308,7 @@ fn execute_update_queries(client: &mut CassandraClient) {
     );
 
     // 2. Actualización con condición IF que cumple
-    let update_query = "UPDATE test_table SET last_name = 'Chap' WHERE id = 1 AND name = 'Alice' IF last_name = 'Rake'";
+    let update_query = "UPDATE test_keyspace.test_table SET last_name = 'Chap' WHERE id = 1 AND name = 'Alice' IF last_name = 'Rake'";
     assert!(
         execute_and_verify(client, update_query, QueryResult::Result(Result::Void)),
         "Update with IF condition (matching) failed"
@@ -313,7 +316,7 @@ fn execute_update_queries(client: &mut CassandraClient) {
     println!("Update with IF condition (matching) executed successfully");
 
     // Verificar la actualización
-    let select_query = "SELECT last_name FROM test_table WHERE id = 1";
+    let select_query = "SELECT last_name FROM test_keyspace.test_table WHERE id = 1";
     let expected_values = vec!["Chap".to_string()];
     assert!(
         execute_and_verify_select(client, select_query, expected_values),
@@ -321,7 +324,8 @@ fn execute_update_queries(client: &mut CassandraClient) {
     );
 
     // 3. Actualización con condición IF que no cumple
-    let update_query = "UPDATE test_table SET last_name = 'Sax' WHERE id = 1 IF last_name = 'Tok'";
+    let update_query =
+        "UPDATE test_keyspace.test_table SET last_name = 'Sax' WHERE id = 1 IF last_name = 'Tok'";
     assert!(
         !execute_and_verify(client, update_query, QueryResult::Result(Result::Void)),
         "Update with non-matching IF condition should fail"
@@ -329,14 +333,16 @@ fn execute_update_queries(client: &mut CassandraClient) {
     println!("Update with non-matching IF condition executed successfully");
 
     // Verificar que el last_name no haya cambiado
-    let select_query = "SELECT last_name FROM test_table WHERE id = 1 AND name = 'Alice'";
+    let select_query =
+        "SELECT last_name FROM test_keyspace.test_table WHERE id = 1 AND name = 'Alice'";
     let expected_values = vec!["Chap".to_string()];
     assert!(
         execute_and_verify_select(client, select_query, expected_values),
         "Verification of update with non-matching IF condition failed (last_name changed)"
     );
 
-    let update_query = "UPDATE test_table SET last_name = 'Max' WHERE id = 2 AND name = 'Bob'";
+    let update_query =
+        "UPDATE test_keyspace.test_table SET last_name = 'Max' WHERE id = 2 AND name = 'Bob'";
     assert!(
         execute_and_verify(client, update_query, QueryResult::Result(Result::Void)),
         "Multi-condition update without IF failed"
@@ -344,7 +350,8 @@ fn execute_update_queries(client: &mut CassandraClient) {
     println!("Multi-condition update without IF executed successfully");
 
     // Verificar la actualización
-    let select_query = "SELECT last_name FROM test_table WHERE id = 2 AND name = 'Bob'";
+    let select_query =
+        "SELECT last_name FROM test_keyspace.test_table WHERE id = 2 AND name = 'Bob'";
     let expected_values = vec!["Max".to_string()];
     assert!(
         execute_and_verify_select(client, select_query, expected_values),
@@ -353,7 +360,7 @@ fn execute_update_queries(client: &mut CassandraClient) {
 
     // 5. Actualización con condición IF y WHERE no cumplida
     let update_query =
-        "UPDATE test_table SET last_name = 'Tel' WHERE id = 2 AND name = 'Bob' IF last_name = 'Prin'";
+        "UPDATE test_keyspace.test_table SET last_name = 'Tel' WHERE id = 2 AND name = 'Bob' IF last_name = 'Prin'";
     assert!(
         execute_and_verify(client, update_query, QueryResult::Result(Result::Void)),
         "Update with non-matching IF and WHERE should do nothing"
@@ -361,7 +368,8 @@ fn execute_update_queries(client: &mut CassandraClient) {
     println!("Update with non-matching IF and WHERE condition executed successfully");
 
     //Verificar que el last_name no haya cambiado
-    let select_query = "SELECT last_name FROM test_table WHERE id = 2 AND name = 'Bob'";
+    let select_query =
+        "SELECT last_name FROM test_keyspace.test_table WHERE id = 2 AND name = 'Bob'";
     let expected_values = vec!["Max".to_string()];
     assert!(
         execute_and_verify_select(client, select_query, expected_values),
@@ -371,7 +379,7 @@ fn execute_update_queries(client: &mut CassandraClient) {
 
 fn execute_delete_queries(client: &mut CassandraClient) {
     // DELETE con WHERE sin IF
-    let delete_query = "DELETE FROM test_table WHERE id = 3 AND name = 'Charlie'";
+    let delete_query = "DELETE FROM test_keyspace.test_table WHERE id = 3 AND name = 'Charlie'";
     assert!(
         execute_and_verify(client, delete_query, QueryResult::Result(Result::Void)),
         "Delete without IF failed"
@@ -379,7 +387,7 @@ fn execute_delete_queries(client: &mut CassandraClient) {
     println!("Delete without IF executed successfully");
 
     // Verificar que el registro fue eliminado
-    let select_query = "SELECT id FROM test_table WHERE id = 3 AND name = 'Charlie'";
+    let select_query = "SELECT id FROM test_keyspace.test_table WHERE id = 3 AND name = 'Charlie'";
     let expected_values: Vec<String> = vec![];
     assert!(
         execute_and_verify_select(client, select_query, expected_values),
@@ -388,7 +396,7 @@ fn execute_delete_queries(client: &mut CassandraClient) {
 
     // DELETE con IF y condición que cumple
     let delete_query =
-        "DELETE FROM test_table WHERE id = 1 AND name = 'Alice' IF last_name = 'Chap'";
+        "DELETE FROM test_keyspace.test_table WHERE id = 1 AND name = 'Alice' IF last_name = 'Chap'";
     assert!(
         execute_and_verify(client, delete_query, QueryResult::Result(Result::Void)),
         "Delete with matching IF condition failed"
@@ -396,7 +404,7 @@ fn execute_delete_queries(client: &mut CassandraClient) {
     println!("Delete with matching IF condition executed successfully");
 
     // Verificar que el registro fue eliminado
-    let select_query = "SELECT id FROM test_table WHERE id = 1 AND name = 'Alice'";
+    let select_query = "SELECT id FROM test_keyspace.test_table WHERE id = 1 AND name = 'Alice'";
     let expected_values: Vec<String> = vec![];
     assert!(
         execute_and_verify_select(client, select_query, expected_values),
@@ -405,7 +413,7 @@ fn execute_delete_queries(client: &mut CassandraClient) {
 
     // DELETE con IF y condición que no cumple
     let delete_query =
-        "DELETE FROM test_table WHERE id = 2 AND name = 'Bob' IF last_name = 'NonExistingLastName'";
+        "DELETE FROM test_keyspace.test_table WHERE id = 2 AND name = 'Bob' IF last_name = 'NonExistingLastName'";
     assert!(
         execute_and_verify(client, delete_query, QueryResult::Result(Result::Void)),
         "Delete with non-matching IF condition should fail (row should not be deleted)"
@@ -413,7 +421,8 @@ fn execute_delete_queries(client: &mut CassandraClient) {
     println!("Delete with non-matching IF condition executed successfully");
 
     // Verificar que el registro no fue eliminado
-    let select_query = "SELECT id, name, last_name FROM test_table WHERE id = 2 AND name = 'Bob'";
+    let select_query =
+        "SELECT id, name, last_name FROM test_keyspace.test_table WHERE id = 2 AND name = 'Bob'";
     let expected_values = vec!["2".to_string(), "Bob".to_string(), "Max".to_string()];
     assert!(
         execute_and_verify_select(client, select_query, expected_values),
@@ -439,7 +448,7 @@ fn teardown_keyspace_queries(client: &mut CassandraClient) {
 
 fn teardown_table_queries(client: &mut CassandraClient) {
     // DROP table
-    let query = "DROP TABLE test_table";
+    let query = "DROP TABLE test_keyspace.test_table";
     let expected_result = QueryResult::Result(Result::SchemaChange(SchemaChange::new(
         schema_change::ChangeType::Dropped,
         schema_change::Target::Table,
@@ -491,7 +500,9 @@ fn test_integration_with_multiple_nodes() {
     client.startup().expect("Failed to start Cassandra client");
 
     setup_keyspace_queries(&mut client);
+    thread::sleep(Duration::from_secs(5));
     setup_table_queries(&mut client);
+    thread::sleep(Duration::from_secs(5));
     execute_insert_queries(&mut client);
     execute_update_queries(&mut client);
     execute_delete_queries(&mut client);

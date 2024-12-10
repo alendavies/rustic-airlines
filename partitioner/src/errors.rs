@@ -21,10 +21,21 @@ pub enum PartitionerError {
 impl Display for PartitionerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PartitionerError::NodeAlreadyExists => write!(f, "[NodeAlreadyExists]: The node is already in the partitioner"),
-            PartitionerError::NodeNotFound => write!(f, "[NodeNotFound]: The specified node was not found"),
-            PartitionerError::HashError => write!(f, "[HashError]: There was an error computing the hash value"),
-            PartitionerError::EmptyPartitioner => write!(f, "[EmptyPartitioner]: The partitioner has no nodes available"),
+            PartitionerError::NodeAlreadyExists => write!(
+                f,
+                "[NodeAlreadyExists]: The node is already in the partitioner"
+            ),
+            PartitionerError::NodeNotFound => {
+                write!(f, "[NodeNotFound]: The specified node was not found")
+            }
+            PartitionerError::HashError => write!(
+                f,
+                "[HashError]: There was an error computing the hash value"
+            ),
+            PartitionerError::EmptyPartitioner => write!(
+                f,
+                "[EmptyPartitioner]: The partitioner has no nodes available"
+            ),
         }
     }
 }

@@ -1,21 +1,47 @@
 use crate::clauses::types::column::Column;
 use crate::clauses::types::datatype::DataType;
 use crate::errors::CQLError;
+use crate::QueryCreator;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
+use std::str::FromStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
+/// Represents a `CREATE TABLE` operation in CQL.
+///
+/// # Fields
+/// - `name: String`
+///   - The name of the table being created.
+/// - `keyspace_used_name: String`
+///   - The keyspace containing the table, if specified.
+/// - `if_not_exists_clause: bool`
+///   - Indicates whether the `IF NOT EXISTS` clause is included.
+/// - `columns: Vec<Column>`
+///   - A list of columns for the table, including their definitions.
+/// - `clustering_columns_in_order: Vec<String>`
+///   - The clustering columns of the table, in the specified order.
+///
+/// # Purpose
+/// This struct models the `CREATE TABLE` operation in CQL, providing methods for parsing,
+/// serialization, deserialization, and column manipulation.
 pub struct CreateTable {
-    name: String,
-    keyspace_used_name: String,
-    if_not_exists_clause: bool,
-    columns: Vec<Column>,
+    pub name: String,
+    pub keyspace_used_name: String,
+    pub if_not_exists_clause: bool,
+    pub columns: Vec<Column>,
+    pub clustering_columns_in_order: Vec<String>,
 }
 
 impl CreateTable {
-    // Métodos anteriores...
-
-    // Método para agregar una columna a la tabla
+    /// Adds a column to the table.
+    ///
+    /// # Parameters
+    /// - `column: Column`:
+    ///   - The column to add.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the column is successfully added.
+    /// - `Err(CQLError::InvalidColumn)` if a column with the same name already exists.
     pub fn add_column(&mut self, column: Column) -> Result<(), CQLError> {
         if self.columns.iter().any(|col| col.name == column.name) {
             return Err(CQLError::InvalidColumn);
@@ -23,8 +49,15 @@ impl CreateTable {
         self.columns.push(column);
         Ok(())
     }
-
-    // Método para eliminar una columna de la tabla
+    /// Removes a column from the table.
+    ///
+    /// # Parameters
+    /// - `column_name: &str`:
+    ///   - The name of the column to remove.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the column is successfully removed.
+    /// - `Err(CQLError::InvalidColumn)` if the column does not exist or is a partition/clustering key.
     pub fn remove_column(&mut self, column_name: &str) -> Result<(), CQLError> {
         let index = self.columns.iter().position(|col| col.name == column_name);
         if let Some(i) = index {
@@ -39,7 +72,19 @@ impl CreateTable {
         }
     }
 
-    // Método para modificar una columna existente
+    /// Modifies the data type and nullability of an existing column.
+    ///
+    /// # Parameters
+    /// - `column_name: &str`:
+    ///   - The name of the column to modify.
+    /// - `new_data_type: DataType`:
+    ///   - The new data type for the column.
+    /// - `allows_null: bool`:
+    ///   - Whether the column should allow null values.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the column is successfully modified.
+    /// - `Err(CQLError::InvalidColumn)` if the column does not exist.
     pub fn modify_column(
         &mut self,
         column_name: &str,
@@ -56,7 +101,17 @@ impl CreateTable {
         Err(CQLError::InvalidColumn)
     }
 
-    // Método para renombrar una columna existente
+    /// Renames an existing column.
+    ///
+    /// # Parameters
+    /// - `old_name: &str`:
+    ///   - The current name of the column.
+    /// - `new_name: &str`:
+    ///   - The new name for the column.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the column is successfully renamed.
+    /// - `Err(CQLError::InvalidColumn)` if the new name conflicts with an existing column.
     pub fn rename_column(&mut self, old_name: &str, new_name: &str) -> Result<(), CQLError> {
         if self.columns.iter().any(|col| col.name == new_name) {
             return Err(CQLError::InvalidColumn);
@@ -70,21 +125,55 @@ impl CreateTable {
         Err(CQLError::InvalidColumn)
     }
 
+    /// Retrieves the name of the table.
+    ///
+    /// # Returns
+    /// - `String` containing the table name.
     pub fn get_name(&self) -> String {
         self.name.clone()
     }
 
+    /// Retrieves the list of columns in the table.
+    ///
+    /// # Returns
+    /// - `Vec<Column>` containing all columns of the table.
     pub fn get_columns(&self) -> Vec<Column> {
         self.columns.clone()
     }
 
+    /// Checks if the `IF NOT EXISTS` clause is present.
+    ///
+    /// # Returns
+    /// - `bool` indicating whether the clause is included.
     pub fn get_if_not_exists_clause(&self) -> bool {
         self.if_not_exists_clause
     }
 
+    /// Retrieves the keyspace used by the table.
+    ///
+    /// # Returns
+    /// - `String` containing the keyspace name, or an empty string if not specified.
     pub fn get_used_keyspace(&self) -> String {
         self.keyspace_used_name.clone()
     }
+
+    /// Retrieves the clustering columns in the specified order.
+    ///
+    /// # Returns
+    /// - `Vec<String>` containing the clustering columns in order.
+    pub fn get_clustering_column_in_order(&self) -> Vec<String> {
+        self.clustering_columns_in_order.clone()
+    }
+
+    /// Constructs a `CreateTable` instance from a vector of tokens.
+    ///
+    /// # Parameters
+    /// - `tokens: Vec<String>`:
+    ///   - A vector of strings representing the tokens of a `CREATE TABLE` query.
+    ///
+    /// # Returns
+    /// - `Ok(CreateTable)` if the tokens are successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)` if the tokens are invalid.
     pub fn new_from_tokens(tokens: Vec<String>) -> Result<Self, CQLError> {
         if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
@@ -210,10 +299,11 @@ impl CreateTable {
             let order_parts: Vec<&str> = clustering_order_def.split(',').collect();
 
             for order_part in order_parts {
-                let parts: Vec<&str> = order_part.trim().split_whitespace().collect();
+                let parts: Vec<&str> = order_part.split_whitespace().collect();
                 if parts.len() == 2 {
                     let col_name = parts[0].trim().to_string();
                     let order = parts[1].trim().to_uppercase();
+
                     if order == "ASC" || order == "DESC" {
                         clustering_orders.insert(col_name, order);
                     }
@@ -229,7 +319,7 @@ impl CreateTable {
                 column.is_clustering_column = true;
                 column.clustering_order = clustering_orders
                     .get(&column.name)
-                    .map_or(String::from(""), |order| order.to_string());
+                    .map_or(String::from("ASC"), |order| order.to_string());
             }
         }
 
@@ -238,26 +328,31 @@ impl CreateTable {
             keyspace_used_name,
             if_not_exists_clause,
             columns,
+            clustering_columns_in_order: clustering_key_cols,
         })
     }
 
+    /// Serializes the `CreateTable` instance into a CQL query string.
+    ///
+    /// # Returns
+    /// - `String` representing the `CREATE TABLE` query
     pub fn serialize(&self) -> String {
         let mut columns_str: Vec<String> = Vec::new();
         let mut partition_key_cols: Vec<String> = Vec::new();
         let mut clustering_key_cols: Vec<String> = Vec::new();
         let mut clustering_orders: Vec<String> = Vec::new();
 
-        // Recorre las columnas y arma la cadena de definición de cada una
+        // Recorrer columnas y armar la definición de cada una
         for col in &self.columns {
             let mut col_def = format!("{} {}", col.name, col.data_type.to_string());
             if !col.allows_null {
                 col_def.push_str(" NOT NULL");
             }
 
-            // Identifica las columnas de la clave primaria y órdenes de clustering
+            // Identificar las columnas de clave primaria y órdenes de clustering
             if col.is_partition_key {
                 partition_key_cols.push(col.name.clone());
-                // Si hay una sola partition key sin clustering columns, se agrega PRIMARY KEY aquí
+                // Si hay una sola partition key sin clustering columns, agregar PRIMARY KEY aquí
                 if partition_key_cols.len() == 1 && clustering_key_cols.is_empty() {
                     col_def.push_str(" PRIMARY KEY");
                 }
@@ -271,18 +366,31 @@ impl CreateTable {
             columns_str.push(col_def);
         }
 
-        // Construye la definición de la clave primaria si hay clustering columns
-        let primary_key = if !partition_key_cols.is_empty() && !clustering_key_cols.is_empty() {
-            format!(
-                "PRIMARY KEY (({}), {})",
-                partition_key_cols.join(", "),
-                clustering_key_cols.join(", ")
-            )
-        } else {
-            String::new()
-        };
+        // Ordenar clustering_key_cols y clustering_orders según self.clustering_columns_in_order
+        let mut ordered_clustering_key_cols = Vec::new();
+        let mut ordered_clustering_orders = Vec::new();
+        for col_name in &self.clustering_columns_in_order {
+            if let Some(pos) = clustering_key_cols.iter().position(|c| c == col_name) {
+                ordered_clustering_key_cols.push(clustering_key_cols[pos].clone());
+                if let Some(order) = clustering_orders.iter().find(|o| o.starts_with(col_name)) {
+                    ordered_clustering_orders.push(order.clone());
+                }
+            }
+        }
 
-        // Añade la definición de la Primary Key al final de la tabla si aplica
+        // Construir la definición de la clave primaria si hay clustering columns
+        let primary_key =
+            if !partition_key_cols.is_empty() && !ordered_clustering_key_cols.is_empty() {
+                format!(
+                    "PRIMARY KEY (({}), {})",
+                    partition_key_cols.join(", "),
+                    ordered_clustering_key_cols.join(", ")
+                )
+            } else {
+                String::new()
+            };
+
+        // Añadir la definición de la Primary Key al final de la tabla si aplica
         if !primary_key.is_empty() {
             columns_str.push(primary_key);
         }
@@ -307,39 +415,26 @@ impl CreateTable {
         );
 
         // Añadir la cláusula WITH CLUSTERING ORDER BY si hay órdenes de clustering
-        if !clustering_orders.is_empty() {
+        if !ordered_clustering_orders.is_empty() {
             query.push_str(" WITH CLUSTERING ORDER BY (");
-            query.push_str(&clustering_orders.join(", "));
+            query.push_str(&ordered_clustering_orders.join(", "));
             query.push(')');
         }
 
         query
     }
 
-    // MÃ©todo para deserializar una cadena de texto a una instancia de `CreateTable`
+    /// Deserializes a CQL query string into a `CreateTable` instance.
+    ///
+    /// # Parameters
+    /// - `serialized: &str`:
+    ///   - A string representing a `CREATE TABLE` query.
+    ///
+    /// # Returns
+    /// - `Ok(CreateTable)` if the query is successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)` if the query is invalid.
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
-        let mut tokens: Vec<String> = Vec::new();
-        let mut current = String::new();
-        let mut in_parens = false;
-
-        for word in serialized.split_whitespace() {
-            if word.contains('(') {
-                in_parens = true;
-                current.push_str(word);
-            } else if word.contains(')') {
-                current.push(' ');
-                current.push_str(word);
-                tokens.push(current.clone());
-                current.clear();
-                in_parens = false;
-            } else if in_parens {
-                current.push(' ');
-                current.push_str(word);
-            } else {
-                tokens.push(word.to_string());
-            }
-        }
-
+        let tokens = QueryCreator::tokens_from_query(serialized);
         Self::new_from_tokens(tokens)
     }
 }
@@ -415,7 +510,7 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: true,
                     is_partition_key: false,
-                    clustering_order: String::new(),
+                    clustering_order: String::from("ASC"),
                 },
                 Column {
                     name: "country".to_string(),
@@ -427,6 +522,7 @@ mod tests {
                     clustering_order: String::new(),
                 },
             ],
+            clustering_columns_in_order: vec!["iata".to_string()],
         };
 
         assert_eq!(result.unwrap(), expected_table);
@@ -461,7 +557,7 @@ mod tests {
                     allows_null: true,
                     is_clustering_column: true,
                     is_partition_key: false,
-                    clustering_order: String::new(),
+                    clustering_order: String::from("ASC"),
                 },
                 Column {
                     name: "country".to_string(),
@@ -473,6 +569,7 @@ mod tests {
                     clustering_order: String::new(),
                 },
             ],
+            clustering_columns_in_order: vec!["iata".to_string()],
         };
 
         assert_eq!(result.unwrap(), expected_table);
@@ -538,8 +635,30 @@ mod tests {
                     clustering_order: "DESC".to_string(),
                 },
             ],
+            clustering_columns_in_order: vec!["iata".to_string(), "name".to_string()],
         };
 
         assert_eq!(result.unwrap(), expected_table);
+    }
+
+    #[test]
+    fn test_clustering_columns_in_order() {
+        // Verificar que clustering_columns_in_order se inicializa correctamente
+        let tokens = vec![
+            "CREATE".to_string(),
+            "TABLE".to_string(),
+            "airports".to_string(),
+            "iata TEXT, country TEXT, name TEXT, PRIMARY KEY (country, iata, name)".to_string(),
+        ];
+
+        let result = CreateTable::new_from_tokens(tokens);
+
+        assert!(result.is_ok());
+        let table = result.unwrap();
+
+        assert_eq!(
+            table.clustering_columns_in_order,
+            vec!["iata".to_string(), "name".to_string()]
+        );
     }
 }

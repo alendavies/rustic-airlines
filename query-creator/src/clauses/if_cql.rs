@@ -1,44 +1,33 @@
 use super::{condition::Condition, recursive_parser::parse_condition};
 use crate::{errors::CQLError, logical_operator::LogicalOperator, operator::Operator};
 
-/// Struct representing the `IF` CQL clause.
+/// Represents the `IF` clause in CQL queries.
 ///
-/// The `IF` clause is used to add a condition to a query, which must be met in order to execute the query.
+/// The `IF` clause is used to add conditions that must be met for a query to execute.
 ///
 /// # Fields
+/// - `condition: Condition`
+///   - The condition associated with the `IF` clause.
 ///
-/// * `condition` - The condition to be evaluated.
-///
+/// # Purpose
+/// This struct encapsulates the functionality for parsing, validating, and serializing the `IF` clause.
 #[derive(Debug, PartialEq, Clone)]
 pub struct If {
     pub condition: Condition,
 }
 
 impl If {
-    /// Creates and returns a new `If` instance from a vector of tokens.
+    /// Creates a new `If` instance from tokens.
     ///
-    /// # Arguments
+    /// # Parameters
+    /// - `tokens: Vec<&str>`:
+    ///   - A vector of string tokens representing the `IF` clause.
     ///
-    /// * `tokens` - A vector of tokens that can be used to build a `If` instance.
-    ///
-    /// The tokens should be in the following order: `IF`, `column`, `operator`, `value` in the case of a simple condition, and `IF`, `condition`, `AND`, `condition` for a complex condition.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let tokens = vec!["IF", "age", "=", "18"];
-    /// let if_from_tokens = If::new_from_tokens(tokens).unwrap();
-    /// let if_clause = If {
-    ///    condition: Condition::Simple {
-    ///         column: "age".to_string(),
-    ///         operator: Operator::Equal,
-    ///         value: "18".to_string(),
-    ///     },
-    /// };
-    ///
-    /// assert_eq!(if_from_tokens, if_clause);
-    /// ```
-    ///
+    /// # Returns
+    /// - `Ok(If)`:
+    ///   - If the tokens are valid and the condition is successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the tokens are invalid or improperly formatted.
     pub fn new_from_tokens(tokens: Vec<&str>) -> Result<Self, CQLError> {
         if tokens.len() < 4 {
             return Err(CQLError::InvalidSyntax);
@@ -49,36 +38,42 @@ impl If {
         Ok(Self { condition })
     }
 
+    /// Serializes the `If` instance into a string.
+    ///
+    /// # Returns
+    /// - `String`:
+    ///   - A string representation of the `IF` clause, suitable for use in a CQL query.
     pub fn serialize(&self) -> String {
         self.condition.serialize()
     }
 
-    /// Validates that none of the conditions in the `IF` clause are related to partition or clustering keys.
+    /// Validates that none of the conditions in the `IF` clause involve partition or clustering keys.
     ///
-    /// # Arguments
-    ///
-    /// * `partitioner_keys` - Vector with the names of the primary keys.
-    /// * `clustering_columns` - Vector with the names of the clustering columns.
+    /// # Parameters
+    /// - `partitioner_keys: &Vec<String>`:
+    ///   - A vector containing the names of the partition keys.
+    /// - `clustering_columns: &Vec<String>`:
+    ///   - A vector containing the names of the clustering columns.
     ///
     /// # Returns
-    ///
-    /// * `Ok(())` if the conditions meet the requirements.
-    /// * `Err(CQLError::InvalidCondition)` if any of the validations fail.
+    /// - `Ok(())`:
+    ///   - If the conditions meet the requirements.
+    /// - `Err(CQLError::InvalidCondition)`:
+    ///   - If any condition violates the validation rules.
     pub fn validate_cql_conditions(
-        &self,
+        self,
         partitioner_keys: &Vec<String>,
         clustering_columns: &Vec<String>,
     ) -> Result<(), CQLError> {
-        self.recursive_validate_no_partition_clustering(
+        Self::recursive_validate_no_partition_clustering(
             &self.condition,
             partitioner_keys,
             clustering_columns,
         )
     }
 
-    /// Recursive method to validate that conditions do not include partition or clustering keys.
+    // Recursive method to validate that conditions do not include partition or clustering keys.
     fn recursive_validate_no_partition_clustering(
-        &self,
         condition: &Condition,
         partitioner_keys: &Vec<String>,
         clustering_columns: &Vec<String>,
@@ -93,13 +88,13 @@ impl If {
             Condition::Complex { left, right, .. } => {
                 // Validate recursively for both left and right conditions
                 if let Some(left_condition) = left.as_ref() {
-                    self.recursive_validate_no_partition_clustering(
+                    Self::recursive_validate_no_partition_clustering(
                         left_condition,
                         partitioner_keys,
                         clustering_columns,
                     )?;
                 }
-                self.recursive_validate_no_partition_clustering(
+                Self::recursive_validate_no_partition_clustering(
                     right,
                     partitioner_keys,
                     clustering_columns,
@@ -109,7 +104,17 @@ impl If {
         Ok(())
     }
 
-    /// Returns the values of the primary keys in the conditions of the `If` clause.
+    /// Returns the values of the partitioner keys in the `IF` clause conditions.
+    ///
+    /// # Parameters
+    /// - `partitioner_keys: Vec<String>`:
+    ///   - A vector containing the names of the partition keys.
+    ///
+    /// # Returns
+    /// - `Ok(Vec<String>)`:
+    ///   - A vector of values for the partitioner keys.
+    /// - `Err(CQLError::InvalidColumn)`:
+    ///   - If no valid partitioner key conditions are found.
     pub fn get_value_partitioner_key_condition(
         &self,
         partitioner_keys: Vec<String>,
@@ -130,7 +135,7 @@ impl If {
             Condition::Complex { left, .. } => {
                 // Traverse the left condition
                 if let Some(left_condition) = left.as_ref() {
-                    self.collect_partitioner_key_values(
+                    Self::collect_partitioner_key_values(
                         left_condition,
                         &partitioner_keys,
                         &mut result,
@@ -146,9 +151,8 @@ impl If {
         }
     }
 
-    /// Helper method to traverse conditions and collect values of partitioner keys.
+    // Helper method to traverse conditions and collect values of partitioner keys.
     fn collect_partitioner_key_values(
-        &self,
         condition: &Condition,
         partitioner_keys: &[String],
         result: &mut Vec<String>,
@@ -172,13 +176,13 @@ impl If {
                 // Only process if it is a logical AND operator
                 if *operator == LogicalOperator::And {
                     if let Some(left_condition) = left.as_ref() {
-                        self.collect_partitioner_key_values(
+                        Self::collect_partitioner_key_values(
                             left_condition,
                             partitioner_keys,
                             result,
                         );
                     }
-                    self.collect_partitioner_key_values(right, partitioner_keys, result);
+                    Self::collect_partitioner_key_values(right, partitioner_keys, result);
                 }
             }
         }

@@ -1,5 +1,16 @@
 use crate::errors::CQLError;
 
+/// Represents a `DROP TABLE` operation in CQL.
+///
+/// # Fields
+/// - `table_name: String`
+///   - The name of the table being dropped.
+/// - `keyspace_used_name: String`
+///   - The keyspace containing the table, if specified.
+///
+/// # Purpose
+/// This struct models the `DROP TABLE` operation in CQL, providing methods for parsing,
+/// serialization, and deserialization.
 #[derive(Debug, Clone)]
 pub struct DropTable {
     table_name: String,
@@ -7,6 +18,21 @@ pub struct DropTable {
 }
 
 impl DropTable {
+    /// Creates a new `DropTable` instance from a vector of query tokens.
+    ///
+    /// # Parameters
+    /// - `query: Vec<String>`:
+    ///   - A vector of strings representing the tokens of a `DROP TABLE` query.
+    ///
+    /// # Returns
+    /// - `Ok(DropTable)`:
+    ///   - If the query is valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the query is invalid or improperly formatted.
+    ///
+    /// # Validation
+    /// - The query must contain exactly 3 tokens.
+    /// - The query must begin with `DROP TABLE`.
     pub fn new_from_tokens(query: Vec<String>) -> Result<Self, CQLError> {
         if query.len() != 3
             || query[0].to_uppercase() != "DROP"
@@ -24,16 +50,26 @@ impl DropTable {
         };
 
         Ok(Self {
-            table_name: table_name,
-            keyspace_used_name: keyspace_used_name,
+            table_name,
+            keyspace_used_name,
         })
     }
 
+    /// Retrieves the name of the table being dropped.
+    ///
+    /// # Returns
+    /// - `String` containing the table name.
     pub fn get_table_name(&self) -> String {
         self.table_name.clone()
     }
 
-    // Método para serializar la estructura `DropTable` a una cadena de texto
+    /// Serializes the `DropTable` instance into a CQL query string.
+    ///
+    /// # Returns
+    /// - `String` representing the `DROP TABLE` query in the following format:
+    ///     ```sql
+    ///     DROP TABLE [<keyspace_name>.]<table_name>;
+    ///    
     pub fn serialize(&self) -> String {
         let table_name_str = if !self.keyspace_used_name.is_empty() {
             format!("{}.{}", self.keyspace_used_name, self.table_name)
@@ -44,7 +80,17 @@ impl DropTable {
         format!("DROP TABLE {}", table_name_str)
     }
 
-    // Método para deserializar una cadena de texto a una instancia de `DropTable`
+    /// Deserializes a CQL query string into a `DropTable` instance.
+    ///
+    /// # Parameters
+    /// - `serialized: &str`:
+    ///   - A string representing a `DROP TABLE` query.
+    ///
+    /// # Returns
+    /// - `Ok(DropTable)`:
+    ///   - If the query is valid and successfully parsed.
+    /// - `Err(CQLError::InvalidSyntax)`:
+    ///   - If the query is invalid or improperly formatted.
     pub fn deserialize(serialized: &str) -> Result<Self, CQLError> {
         let tokens: Vec<String> = serialized
             .split_whitespace()
@@ -52,6 +98,11 @@ impl DropTable {
             .collect();
         Self::new_from_tokens(tokens)
     }
+
+    /// Retrieves the keyspace containing the table, if specified.
+    ///
+    /// # Returns
+    /// - `String` containing the keyspace name, or an empty string if not specified.
     pub fn get_used_keyspace(&self) -> String {
         self.keyspace_used_name.clone()
     }

@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use egui::{include_image, Image, Rect, Response, Vec2};
 use walkers::{extras::Style, Plugin, Projector};
 
-use crate::{db::Flight, state::SelectionState};
+use crate::{state::SelectionState, types::Flight};
 
 pub struct Flights<'a> {
     flights: &'a Vec<Flight>,
@@ -20,7 +20,7 @@ impl<'a> Flights<'a> {
 }
 
 impl Plugin for Flights<'_> {
-    fn run(self: Box<Self>, ui: &mut egui::Ui, response: &Response, projector: &Projector) {
+    fn run(self: Box<Self>, ui: &mut egui::Ui, _response: &Response, projector: &Projector) {
         for flight in self.flights {
             let mut style = Style::default();
             style.symbol_font.size = 24.;
@@ -34,7 +34,7 @@ impl Flight {
         &self,
         ui: &mut egui::Ui,
         projector: &Projector,
-        style: Style,
+        _style: Style,
         selection_state: &mut SelectionState,
     ) {
         let screen_position = projector.project(self.position);
@@ -62,7 +62,7 @@ impl Flight {
         ui.put(rect, image);
 
         if response.clicked() {
-            selection_state.toggle_flight_selection(&self);
+            selection_state.toggle_flight_selection(self);
         }
     }
 }

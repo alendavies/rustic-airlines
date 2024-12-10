@@ -127,6 +127,7 @@ impl Serializable for AuthChallenge {
 }
 
 mod tests {
+    #[allow(unused_imports)]
     use crate::{
         messages::auth::{AuthChallenge, AuthResponse, AuthSuccess, Authenticate},
         types::Bytes,

@@ -6,8 +6,6 @@ use crate::errors::NativeError;
 pub type Short = u16;
 /// A 4 bytes signed integer.
 pub type Int = i32;
-/// A 8 bytes signed integer.
-pub type Long = i64;
 
 pub trait FromCursorDeserializable {
     fn deserialize(cursor: &mut Cursor<&[u8]>) -> Result<Self, NativeError>
@@ -64,14 +62,6 @@ impl<T: OptionSerializable> OptionBytes for T {
 }
 
 pub trait CassandraString {
-    fn from_long_string_bytes(
-        cursor: &mut std::io::Cursor<&[u8]>,
-    ) -> std::result::Result<Self, NativeError>
-    where
-        Self: Sized;
-
-    fn to_long_string_bytes(&self) -> std::result::Result<Vec<u8>, NativeError>;
-
     fn from_string_bytes(
         cursor: &mut std::io::Cursor<&[u8]>,
     ) -> std::result::Result<Self, NativeError>
@@ -82,29 +72,6 @@ pub trait CassandraString {
 }
 
 impl CassandraString for String {
-    fn from_long_string_bytes(
-        cursor: &mut std::io::Cursor<&[u8]>,
-    ) -> std::result::Result<Self, NativeError> {
-        let mut len_bytes = [0u8; 4];
-        cursor
-            .read_exact(&mut len_bytes)
-            .map_err(|_| NativeError::CursorError)?;
-        let len = u32::from_be_bytes(len_bytes) as usize;
-
-        let mut string_bytes = vec![0u8; len];
-        cursor
-            .read_exact(&mut string_bytes)
-            .map_err(|_| NativeError::CursorError)?;
-        String::from_utf8(string_bytes).map_err(|_| NativeError::DeserializationError)
-    }
-
-    fn to_long_string_bytes(&self) -> std::result::Result<Vec<u8>, NativeError> {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&(self.len() as u32).to_be_bytes());
-        bytes.extend_from_slice(self.as_bytes());
-        Ok(bytes)
-    }
-
     fn from_string_bytes(
         cursor: &mut std::io::Cursor<&[u8]>,
     ) -> std::result::Result<Self, NativeError> {
@@ -247,19 +214,6 @@ mod tests {
     }
 
     #[test]
-    fn string_from_long_string_bytes() {
-        let input = [
-            0x00, 0x00, 0x00, 0x03, 'a' as u8, 'b' as u8, 'c' as u8, 'd' as u8,
-        ];
-
-        let mut cursor = std::io::Cursor::new(input.as_slice());
-
-        let string = String::from_long_string_bytes(&mut cursor).unwrap();
-
-        assert_eq!(string, "abc");
-    }
-
-    #[test]
     fn option_from_option_bytes() {
         #[derive(PartialEq, Debug)]
         enum Options {
@@ -302,7 +256,7 @@ mod tests {
     fn option_to_option_bytes() {
         #[derive(PartialEq, Debug)]
         enum Options {
-            Something,
+            _Something,
             SomethinElse(String),
         }
 
@@ -321,7 +275,7 @@ mod tests {
                 let mut bytes = Vec::new();
 
                 match self {
-                    Options::Something => {
+                    Options::_Something => {
                         bytes.extend_from_slice(&(0x0001 as u16).to_be_bytes());
                         Ok(bytes)
                     }
