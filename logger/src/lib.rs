@@ -1,164 +1,166 @@
 use chrono::Utc;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum LogLevel {
-    Info,
+    Info(Color),
     Warn,
     Error,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum Color {
+    Red,
+    Green,
+    Blue,
+    Yellow,
+    Cyan,
+    Magenta,
+    White,
+}
+
+impl Color {
+    fn to_ansi_code(self) -> &'static str {
+        match self {
+            Color::Red => "\x1b[31m",
+            Color::Green => "\x1b[32m",
+            Color::Blue => "\x1b[34m",
+            Color::Yellow => "\x1b[33m",
+            Color::Cyan => "\x1b[36m",
+            Color::Magenta => "\x1b[35m",
+            Color::White => "\x1b[37m",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Logger {
-    file: Option<std::fs::File>,
-    log_to_file: bool,
+    log_file: PathBuf,
 }
 
 impl Logger {
     /// Creates a new `Logger` instance.
     ///
     /// # Parameters
-    /// - `log_to_file`: Determines if the logger writes messages to a file (`true`) or to the console (`false`).
-    /// - `log_file`: Optional file path for the log file. If `None`, defaults to "default.log".
+    /// - `log_dir`: Path to the directory where the log file should be created.
+    /// - `ip`: The IP address to include in the log file name.
     ///
     /// # Returns
     /// A new `Logger` instance.
-    pub fn new(log_to_file: bool, log_file: Option<&str>) -> Self {
-        let file = if log_to_file {
-            Some(
-                OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(log_file.unwrap_or("default.log"))
-                    .unwrap(),
-            )
+    pub fn new(log_dir: &Path, ip: &str) -> Result<Self, LoggerError> {
+        // Asegurarse de que el directorio existe
+        if log_dir.is_dir() {
+            std::fs::create_dir_all(log_dir).map_err(LoggerError::from)?;
         } else {
-            None
-        };
-        Logger { file, log_to_file }
+            return Err(LoggerError::InvalidPath(
+                "Provided path is not a directory.".into(),
+            ));
+        }
+
+        // Crear el archivo node_{ip}.log dentro del directorio
+        let sanitized_ip = ip.replace(":", "_"); // Reemplaza ":" para evitar problemas en nombres de archivo
+        let log_file = log_dir.join(format!("node_{}.log", sanitized_ip));
+
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true) // Sobrescribe el archivo si ya existe
+            .open(&log_file)
+            .map_err(LoggerError::from)?;
+
+        Ok(Logger { log_file })
     }
 
     // Generic method for writing log messages
-    fn log(&mut self, level: LogLevel, message: &str) {
+    fn log(&self, level: LogLevel, message: &str, to_console: bool) -> Result<(), LoggerError> {
         let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let log_message = match level {
-            LogLevel::Info => format!("[INFO] [{}]: {}\n", timestamp, message),
+        let log_message = match &level {
+            LogLevel::Info(_) => format!("[INFO] [{}]: {}\n", timestamp, message),
             LogLevel::Warn => format!("[WARN] [{}]: {}\n", timestamp, message),
             LogLevel::Error => format!("[ERROR] [{}]: {}\n", timestamp, message),
         };
 
         // If logging to console, apply colors
-        if !self.log_to_file {
-            let colored_message = match level {
-                LogLevel::Info => format!("\x1b[96m{}\x1b[0m", log_message), // Turquoise
+        if to_console {
+            let colored_message = match &level {
+                LogLevel::Info(color) => format!("{}{}\x1b[0m", color.to_ansi_code(), log_message),
                 LogLevel::Warn => format!("\x1b[93m{}\x1b[0m", log_message), // Bright Yellow
                 LogLevel::Error => format!("\x1b[91m{}\x1b[0m", log_message), // Bright Red
             };
             println!("{}", colored_message);
-            io::stdout().flush().unwrap();
+            io::stdout().flush().map_err(LoggerError::from)?;
         }
 
-        // If logging to file
-        if let Some(file) = &mut self.file {
-            file.write_all(log_message.as_bytes()).unwrap();
-            file.flush().unwrap();
-        }
+        // Open the file, write the log message, and close the file
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.log_file)
+            .map_err(LoggerError::from)?;
+        file.write_all(log_message.as_bytes())
+            .map_err(LoggerError::from)?;
+        file.flush().map_err(LoggerError::from)?;
+
+        Ok(())
     }
 
     /// Logs an informational message.
     ///
     /// # Parameters
     /// - `message`: The informational message to log.
-    pub fn info(&mut self, message: &str) {
-        self.log(LogLevel::Info, message);
+    /// - `color`: The color to use for the console output.
+    /// - `to_console`: Whether to log the message to the console as well.
+    pub fn info(&self, message: &str, color: Color, to_console: bool) -> Result<(), LoggerError> {
+        self.log(LogLevel::Info(color), message, to_console)
     }
 
     /// Logs a warning message.
     ///
     /// # Parameters
     /// - `message`: The warning message to log.
-    pub fn warn(&mut self, message: &str) {
-        self.log(LogLevel::Warn, message);
+    /// - `to_console`: Whether to log the message to the console as well.
+    pub fn warn(&self, message: &str, to_console: bool) -> Result<(), LoggerError> {
+        self.log(LogLevel::Warn, message, to_console)
     }
 
     /// Logs an error message.
     ///
     /// # Parameters
     /// - `message`: The error message to log.
-    pub fn error(&mut self, message: &str) {
-        self.log(LogLevel::Error, message);
+    /// - `to_console`: Whether to log the message to the console as well.
+    pub fn error(&self, message: &str, to_console: bool) -> Result<(), LoggerError> {
+        self.log(LogLevel::Error, message, to_console)
     }
 }
 
-fn main() {
-    // Usage:
-
-    // Console logging:
-    let mut logger = Logger::new(false, None);
-
-    logger.info("This is an info log message.");
-    logger.warn("This is a warning log message.");
-    logger.error("This is an error log message.");
-
-    // File logging:
-    let mut file_logger = Logger::new(true, Some("app.log"));
-
-    file_logger.info("This is an info message in the file.");
-    file_logger.warn("This is a warning message in the file.");
-    file_logger.error("This is an error message in the file.");
+#[derive(Debug)]
+pub enum LoggerError {
+    IoError(std::io::Error),
+    InvalidPath(String), // Nueva variante para manejar rutas inválidas
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn test_console_logging() {
-        let mut logger = Logger::new(false, None);
-        logger.info("Test info message");
-        logger.warn("Test warning message");
-        logger.error("Test error message");
-        // This test only verifies that logging doesn't panic in console mode.
+impl std::fmt::Display for LoggerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoggerError::IoError(e) => write!(f, "I/O Error: {}", e),
+            LoggerError::InvalidPath(msg) => write!(f, "Invalid Path: {}", msg),
+        }
     }
+}
 
-    #[test]
-    fn test_file_logging() {
-        let log_file = "test.log";
-        let mut logger = Logger::new(true, Some(log_file));
-
-        logger.info("Test info message in file");
-        logger.warn("Test warning message in file");
-        logger.error("Test error message in file");
-
-        let contents = fs::read_to_string(log_file).unwrap();
-        assert!(contents.contains("[INFO]"));
-        assert!(contents.contains("Test info message in file"));
-        assert!(contents.contains("[WARN]"));
-        assert!(contents.contains("Test warning message in file"));
-        assert!(contents.contains("[ERROR]"));
-        assert!(contents.contains("Test error message in file"));
-
-        // Cleanup
-        fs::remove_file(log_file).unwrap();
+impl std::error::Error for LoggerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            LoggerError::IoError(e) => Some(e),
+            LoggerError::InvalidPath(_) => None, // Las rutas inválidas no tienen una fuente de error adicional
+        }
     }
+}
 
-    #[test]
-    fn test_file_append() {
-        let log_file = "append_test.log";
-        let mut logger = Logger::new(true, Some(log_file));
-
-        logger.info("First log message");
-
-        // Reopen logger to simulate appending to an existing file
-        let mut logger2 = Logger::new(true, Some(log_file));
-        logger2.info("Second log message");
-
-        let contents = fs::read_to_string(log_file).unwrap();
-        assert!(contents.contains("First log message"));
-        assert!(contents.contains("Second log message"));
-
-        // Cleanup
-        fs::remove_file(log_file).unwrap();
+impl From<std::io::Error> for LoggerError {
+    fn from(err: std::io::Error) -> Self {
+        LoggerError::IoError(err)
     }
 }

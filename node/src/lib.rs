@@ -29,6 +29,7 @@ use internode_protocol::response::{
 use internode_protocol::InternodeSerializable;
 use internode_protocol_handler::InternodeProtocolHandler;
 // use keyspace::Keyspace;
+use logger::{Color, Logger};
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -58,6 +59,7 @@ pub struct Node {
     last_client_id: i32,
     gossiper: Gossiper,
     storage_path: PathBuf,
+    logger: Logger,
     /// Represents the latest known schema of the cluster.
     schema: Schema,
 }
@@ -143,10 +145,11 @@ impl Node {
             open_query_handler: OpenQueryHandler::new(),
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
-            storage_path,
+            storage_path: storage_path.clone(),
             gossiper: Gossiper::new()
                 .with_endpoint_state(ip)
                 .with_seeds(seeds_nodes),
+            logger: Logger::new(&storage_path, &ip.to_string())?,
             schema: Schema::new(),
         })
     }
@@ -233,6 +236,7 @@ impl Node {
     ) -> Result<(), NodeError> {
         let _ = thread::spawn(move || {
             let initial_gossip = Instant::now();
+            let mut log;
             loop {
                 {
                     {
@@ -242,6 +246,7 @@ impl Node {
                         };
 
                         let ip = node_guard.ip;
+                        log = node_guard.get_logger();
                         if initial_gossip.elapsed().as_millis() > 1500 {
                             node_guard
                                 .gossiper
@@ -349,25 +354,39 @@ impl Node {
 
                         if state.application_state.status.is_dead() {
                             if is_in_partitioner {
-                                println!("se acaba de morir un nodo, redistribuyo");
                                 needs_to_redistribute = true;
                                 partitioner.remove_node(*ip).ok();
+                                let _ = log.info(
+                                    &format!(
+                                        "NODE {:?} IS DEAD .. New Ring: {:?}",
+                                        ip, partitioner
+                                    ),
+                                    Color::Red,
+                                    true,
+                                );
                             }
                         } else {
                             if !is_in_partitioner {
-                                println!("se acaba de unir un nodo, redistribuyo");
+                                //println!("se acaba de unir un nodo, redistribuyo");
                                 needs_to_redistribute = true;
                                 partitioner.add_node(*ip).ok();
+                                let _ = log.info(
+                                    &format!("NEW NODE {:?}! .. New Ring: {:?}", ip, partitioner),
+                                    Color::Red,
+                                    true,
+                                );
                             }
                         }
                     }
 
                     if needs_to_redistribute {
+                        let _ = log.info(&format!("REDISTRIBUTION..."), Color::Red, true);
                         let keyspaces: Vec<KeyspaceSchema> = keyspaces.values().cloned().collect();
 
                         storage_engine::StorageEngine::new(storage_path.clone(), self_ip.clone())
                             .redistribute_data(keyspaces, partitioner, connections.clone())
                             .ok();
+                        let _ = log.info(&format!("END REDISTRIBUTION..."), Color::Red, true);
                     }
                 }
 
@@ -479,6 +498,9 @@ impl Node {
         self.ip
     }
 
+    pub fn get_logger(&self) -> Logger {
+        self.logger.clone()
+    }
     fn get_ip_string(&self) -> String {
         self.ip.to_string()
     }
@@ -1123,6 +1145,7 @@ impl Node {
         let open_query_id;
         let self_ip: Ipv4Addr;
         let storage_path;
+        let logger;
         {
             let mut guard_node = node.lock()?;
             let keyspace;
@@ -1150,6 +1173,7 @@ impl Node {
             )?;
             self_ip = guard_node.get_ip();
             storage_path = guard_node.storage_path.clone();
+            logger = guard_node.get_logger();
         }
         let timestamp = Self::current_timestamp();
 
@@ -1221,8 +1245,8 @@ impl Node {
                     self_ip,
                     connections.clone(),
                     partitioner.clone(),
-                    storage_path.clone()
-
+                    storage_path.clone(),
+                    logger.clone(),
                 )?;
             }
             for _ in 0..failed_nodes {

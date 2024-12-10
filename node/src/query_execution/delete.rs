@@ -68,7 +68,7 @@ impl QueryExecution {
                 .join("");
             let node_to_delete = node.partitioner.get_ip(value_to_hash.clone())?;
             let self_ip = node.get_ip().clone();
-
+            let logger = node.get_logger();
             // Forward the DELETE operation if the responsible node is different and not an internode operation
             if !internode && node_to_delete != self_ip {
                 let serialized_delete = delete_query.serialize();
@@ -80,6 +80,7 @@ impl QueryExecution {
                     client_id,
                     &client_keyspace.get_name(),
                     timestamp,
+                    logger.clone(),
                 )?;
                 do_in_this_node = false;
             }
@@ -95,6 +96,7 @@ impl QueryExecution {
                     client_id,
                     &client_keyspace.get_name(),
                     timestamp,
+                    logger,
                 )?;
             }
 

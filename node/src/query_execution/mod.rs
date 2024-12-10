@@ -6,6 +6,7 @@ use crate::internode_protocol::response::{
 use crate::utils::connect_and_send_message;
 use crate::NodeError;
 use crate::{Node, INTERNODE_PORT};
+use logger::{Color, Logger};
 use query_creator::clauses::types::column::Column;
 
 pub mod alter_keyspace;
@@ -420,6 +421,7 @@ impl QueryExecution {
         client_id: i32,
         keyspace_name: &str,
         timestap: i64,
+        logger: Logger,
     ) -> Result<i32, NodeError> {
         let message = InternodeMessage::new(
             self_ip,
@@ -432,6 +434,15 @@ impl QueryExecution {
                 timestamp: timestap,
             }),
         );
+
+        logger.info(
+            &format!(
+                "Internode: I sent '{:?}' to {:?}",
+                serialized_message, target_ip
+            ),
+            Color::Green,
+            true,
+        )?;
 
         let result = connect_and_send_message(
             target_ip,
@@ -457,6 +468,7 @@ impl QueryExecution {
         client_id: i32,
         keyspace_name: &str,
         timestap: i64,
+        logger: Logger,
     ) -> Result<(i32, bool), NodeError> {
         // Serializa el objeto que se quiere enviar
 
@@ -491,6 +503,15 @@ impl QueryExecution {
         // Recorre los nodos del partitioner y envía el mensaje a cada nodo excepto el actual
         for ip in n_succesors {
             if ip != current_ip {
+                logger.info(
+                    &format!(
+                        "Internode: I sent as REPLICATION' {:?}' to {:?}",
+                        serialized_message, ip
+                    ),
+                    Color::Blue,
+                    true,
+                )?;
+
                 let result = connect_and_send_message(
                     ip,
                     INTERNODE_PORT,
