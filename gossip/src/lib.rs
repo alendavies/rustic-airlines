@@ -281,12 +281,12 @@ impl Gossiper {
 
         // reads gossip messages from rx, processes and answers them
         let reader_thread_handler = thread::spawn(move || {
-            let tx_event = self.tx_event.clone();
             for msg in &self.rx {
                 // handle gossip message
                 //dbg!(&msg);
 
                 //thread::sleep(Duration::from_millis(500)); // simulate gossip processing time
+                let tx_event = self.tx_event.clone();
 
                 match msg.message.payload {
                     Payload::Syn(syn) => {
@@ -311,7 +311,7 @@ impl Gossiper {
                         let new_states = self.endpoints_state.read().unwrap().0.clone();
 
                         if old_states != new_states {
-                            update_partitioner(&tx_event, old_states, new_states);
+                            update_partitioner(tx_event, old_states, new_states);
                         }
 
                         let ack2 = GossipMessage::new(Payload::Ack2(ack2));
@@ -341,7 +341,7 @@ impl Gossiper {
                         let new_states = self.endpoints_state.read().unwrap().0.clone();
 
                         if old_states != new_states {
-                            update_partitioner(&tx_event, old_states, new_states);
+                            update_partitioner(tx_event, old_states, new_states);
                         }
 
                         println!(
@@ -421,7 +421,7 @@ impl Gossiper {
 }
 
 fn update_partitioner(
-    tx: &Sender<Event>,
+    tx: Sender<Event>,
     old_states: HashMap<Ipv4Addr, EndpointState>,
     new_states: HashMap<Ipv4Addr, EndpointState>,
 ) {
