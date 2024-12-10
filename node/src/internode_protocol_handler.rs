@@ -116,11 +116,11 @@ impl InternodeProtocolHandler {
                 let open_query_id_str = if query.open_query_id == 0 {
                     "REDISTRIBUTION"
                 } else {
-                    &format!("{:?}", query.open_query_id)
+                    &format!("Query: {:?}", query.open_query_id)
                 };
                 log.info(
                     &format!(
-                        "INTERNODE ({:?}): I RECEIVED {:?} from {:?}",
+                        "INTERNODE ({}): I RECEIVED {:?} from {:?}",
                         open_query_id_str, query.query_string, message.from
                     ),
                     Color::Blue,
@@ -132,7 +132,7 @@ impl InternodeProtocolHandler {
             InternodeMessageContent::Response(response) => {
                 log.info(
                     &format!(
-                        "INTERNODE (Query: {:?}): I RECEIVED {:?} from {:?}",
+                        "INTERNODE (Query: {}): I RECEIVED {:?} from {:?}",
                         response.open_query_id, response.status, message.from
                     ),
                     Color::Blue,

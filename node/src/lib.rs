@@ -1033,7 +1033,7 @@ impl Node {
                             let query_consistency_level: &str = &query.get_consistency();
                             log.info(
                                 &format!(
-                                    "NATIVE: I RECEIVED {:?} whit CL: {:?} from client {:?}",
+                                    "NATIVE: I RECEIVED {} whit CL: {} from client {:?}",
                                     query_str.replace("\n", ""),
                                     query_consistency_level,
                                     stream_guard.peer_addr()?

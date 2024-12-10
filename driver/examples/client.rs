@@ -21,7 +21,7 @@ fn main() {
     client.startup().unwrap();
     let queries = vec![
     // Crear un keyspace
-    "CREATE KEYSPACE people_data WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3};".to_string(),
+    "CREATE KEYSPACE people_data WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 4};".to_string(),
 
     // Crear una tabla
     "CREATE TABLE  people_data.persons (

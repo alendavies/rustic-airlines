@@ -437,7 +437,7 @@ impl QueryExecution {
 
         logger.info(
             &format!(
-                "INTERNODE (Query: {:?}): I SENT '{:?}' to {:?}",
+                "INTERNODE (Query: {:?}): I SENT {:?} to {:?}",
                 open_query_id, serialized_message, target_ip
             ),
             Color::Green,
@@ -505,7 +505,7 @@ impl QueryExecution {
             if ip != current_ip {
                 logger.info(
                     &format!(
-                        "INTERNODE (Query: {:?}): I SENT as REPLICATION' {:?}' to {:?}",
+                        "INTERNODE (Query: {:?}): I SENT as REPLICATION {:?} to {:?}",
                         open_query_id, serialized_message, ip
                     ),
                     Color::Green,
