@@ -1,0 +1,45 @@
+[INFO] [2024-12-11 22:09:40]: INTERNODE (REDISTRIBUTION): I RECEIVED "INSERT INTO sky.flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR1011','100','35000','650','TUC','CNQ')" from 127.0.0.1
+[INFO] [2024-12-11 22:09:40]: NEW NODE 127.0.0.3 .. New Ring: 127.0.0.1 -> 127.0.0.3 -> 127.0.0.11
+[INFO] [2024-12-11 22:09:40]: NEW NODE 127.0.0.2 .. New Ring: 127.0.0.1 -> 127.0.0.2 -> 127.0.0.3 -> 127.0.0.11
+[INFO] [2024-12-11 22:09:40]: NEW NODE 127.0.0.4 .. New Ring: 127.0.0.1 -> 127.0.0.2 -> 127.0.0.3 -> 127.0.0.11 -> 127.0.0.4
+[INFO] [2024-12-11 22:09:40]: START REDISTRIBUTION...
+[INFO] [2024-12-11 22:09:40]: END REDISTRIBUTION...
+[INFO] [2024-12-11 22:09:41]: INTERNODE (REDISTRIBUTION): I RECEIVED "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR2324','scheduled','-31.321','-64.213','157.07318','1734041266','1734048466','COR','departure')" from 127.0.0.3
+[INFO] [2024-12-11 22:09:41]: INTERNODE (REDISTRIBUTION): I RECEIVED "INSERT INTO sky.flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR1313','100','35000','450','RES','PSS')" from 127.0.0.3
+[INFO] [2024-12-11 22:09:41]: INTERNODE (REDISTRIBUTION): I RECEIVED "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR2425','scheduled','-32.883','-68.845','339.53595','1733954866','1733962066','COR','arrival')" from 127.0.0.4
+[INFO] [2024-12-11 22:11:14]: INTERNODE (Query: 3): I RECEIVED "INSERT INTO bulk_insert.data (id, name, value) VALUES (6d9ae92d-abe8-41d1-a3a9-d9bf32a97f2f, name_0, 0)" from 127.0.0.3
+[INFO] [2024-12-11 22:11:14]: INTERNODE (Query: 3): I SENT OK to coordinator node: 127.0.0.3
+[INFO] [2024-12-11 22:11:15]: INTERNODE (Query: 4): I RECEIVED "INSERT INTO bulk_insert.data (id, name, value) VALUES (f6143af9-ed5a-4889-96f3-f4f5fed1b9bf, name_1, 1)" from 127.0.0.3
+[INFO] [2024-12-11 22:11:15]: INTERNODE (Query: 4): I SENT OK to coordinator node: 127.0.0.3
+[INFO] [2024-12-11 22:11:16]: INTERNODE (Query: 5): I RECEIVED "INSERT INTO bulk_insert.data (id, name, value) VALUES (cddf77aa-7a73-429b-a089-42eb9399a5df, name_2, 2)" from 127.0.0.3
+[INFO] [2024-12-11 22:11:16]: INTERNODE (Query: 5): I SENT OK to coordinator node: 127.0.0.3
+[INFO] [2024-12-11 22:11:17]: INTERNODE (Query: 6): I RECEIVED "INSERT INTO bulk_insert.data (id, name, value) VALUES (26f7459e-3cde-4a84-b8a3-62c8b8a25f2e, name_3, 3)" from 127.0.0.3
+[INFO] [2024-12-11 22:11:17]: INTERNODE (Query: 6): I SENT OK to coordinator node: 127.0.0.3
+[INFO] [2024-12-11 22:11:18]: INTERNODE (Query: 7): I RECEIVED "INSERT INTO bulk_insert.data (id, name, value) VALUES (e1ca43f4-5e80-451d-9b0c-aa531ca5c112, name_4, 4)" from 127.0.0.3
+[INFO] [2024-12-11 22:11:18]: INTERNODE (Query: 7): I SENT OK to coordinator node: 127.0.0.3
+[INFO] [2024-12-11 22:11:19]: INTERNODE (Query: 8): I RECEIVED "INSERT INTO bulk_insert.data (id, name, value) VALUES (6263236f-2dd4-41d4-a478-197ce591b879, name_5, 5)" from 127.0.0.3
+[INFO] [2024-12-11 22:11:19]: INTERNODE (Query: 8): I SENT OK to coordinator node: 127.0.0.3
+[INFO] [2024-12-11 22:11:20]: INTERNODE (Query: 9): I RECEIVED "INSERT INTO bulk_insert.data (id, name, value) VALUES (c590e513-87b6-4804-b146-a86f2d41302a, name_6, 6)" from 127.0.0.3
+[INFO] [2024-12-11 22:11:20]: INTERNODE (Query: 9): I SENT OK to coordinator node: 127.0.0.3
+[INFO] [2024-12-11 22:11:22]: NODE 127.0.0.1 IS DEAD .. New Ring: 127.0.0.2 -> 127.0.0.3 -> 127.0.0.11 -> 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: NODE 127.0.0.3 IS DEAD .. New Ring: 127.0.0.2 -> 127.0.0.11 -> 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: START REDISTRIBUTION...
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT """INSERT INTO bulk_insert.data (id, name, value) VALUES ('6d9ae92d-abe8-41d1-a3a9-d9bf32a97f2f','name_0','0')" to 127.0.0.2
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('6d9ae92d-abe8-41d1-a3a9-d9bf32a97f2f','name_0','0')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('f6143af9-ed5a-4889-96f3-f4f5fed1b9bf','name_1','1')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('f6143af9-ed5a-4889-96f3-f4f5fed1b9bf','name_1','1')" to 127.0.0.2
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('cddf77aa-7a73-429b-a089-42eb9399a5df','name_2','2')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('cddf77aa-7a73-429b-a089-42eb9399a5df','name_2','2')" to 127.0.0.2
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT """INSERT INTO bulk_insert.data (id, name, value) VALUES ('26f7459e-3cde-4a84-b8a3-62c8b8a25f2e','name_3','3')" to 127.0.0.2
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('26f7459e-3cde-4a84-b8a3-62c8b8a25f2e','name_3','3')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('e1ca43f4-5e80-451d-9b0c-aa531ca5c112','name_4','4')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('e1ca43f4-5e80-451d-9b0c-aa531ca5c112','name_4','4')" to 127.0.0.2
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT """INSERT INTO bulk_insert.data (id, name, value) VALUES ('6263236f-2dd4-41d4-a478-197ce591b879','name_5','5')" to 127.0.0.2
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('6263236f-2dd4-41d4-a478-197ce591b879','name_5','5')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('c590e513-87b6-4804-b146-a86f2d41302a','name_6','6')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO bulk_insert.data (id, name, value) VALUES ('c590e513-87b6-4804-b146-a86f2d41302a','name_6','6')" to 127.0.0.2
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR2425','scheduled','-32.883','-68.845','339.53595','1733954866','1733962066','COR','arrival')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('AR2324','scheduled','-31.321','-64.213','157.07318','1734041266','1734048466','COR','departure')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO sky.flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR1011','100','35000','650','TUC','CNQ')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: INTERNODE (REDISTRIBUTION): I SENT "AS REPLICATION ""INSERT INTO sky.flight_info (number, fuel, height, speed, origin, destination) VALUES ('AR1313','100','35000','450','RES','PSS')" to 127.0.0.4
+[INFO] [2024-12-11 22:11:22]: END REDISTRIBUTION...

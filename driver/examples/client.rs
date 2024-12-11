@@ -13,7 +13,7 @@ use std::{net::Ipv4Addr, str::FromStr, thread, time::Duration};
 /// Note: Ensure the server IP and port match your Cassandra setup before running this code.
 fn main() {
     // Reemplaza con la dirección IP y puerto correctos del servidor
-    let server_ip = "127.0.0.3";
+    let server_ip = "127.0.0.1";
     let ip = Ipv4Addr::from_str(&server_ip).unwrap();
 
     // Conectarse al servidor Cassandra

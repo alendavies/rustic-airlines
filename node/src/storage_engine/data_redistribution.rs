@@ -4,10 +4,7 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     net::{Ipv4Addr, TcpStream},
     sync::{Arc, Mutex},
-    thread,
 };
-
-use std::time::Duration;
 
 use gossip::structures::application_state::{KeyspaceSchema, TableSchema};
 use logger::{Color, Logger};
@@ -25,6 +22,31 @@ use crate::{
 use super::{errors::StorageEngineError, StorageEngine};
 
 impl StorageEngine {
+    /// Redistributes data across nodes for the specified keyspaces.
+    ///
+    /// This function processes the data files associated with the given keyspaces
+    /// and redistributes them across the cluster based on the partitioner. It ensures
+    /// that each node holds the appropriate data based on the partitioning logic,
+    /// and handles both normal and replication data files.
+    ///
+    /// # Arguments
+    ///
+    /// * `keyspaces` - A vector of keyspace schemas to process and redistribute.
+    /// * `partitioner` - The partitioner responsible for determining the ownership of data.
+    /// * `logger` - The logger instance for recording progress and errors.
+    /// * `connections` - A shared map of connections to other nodes in the cluster.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the redistribution completes successfully.
+    /// * `Err(StorageEngineError)` if any error occurs during redistribution.
+    ///
+    /// # Errors
+    ///
+    /// This function can return `StorageEngineError` for various reasons, such as:
+    /// * IO errors while reading or writing data files.
+    /// * Errors in parsing or serializing data.
+    /// * Issues with internode communication or connection handling.
     pub fn redistribute_data(
         &self,
         keyspaces: Vec<KeyspaceSchema>,
@@ -344,7 +366,7 @@ impl StorageEngine {
                     serialized_message.to_string(),
                     target_ip
                 ),
-                Color::Green,
+                Color::Cyan,
                 true,
             )
             .ok();

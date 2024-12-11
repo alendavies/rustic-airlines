@@ -13,16 +13,14 @@ use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::{thread, vec};
 
 // External libraries
 use chrono::Utc;
 use driver::server::{handle_client_request, Request};
 use errors::NodeError;
-use gossip::structures::application_state::{
-    ApplicationState, KeyspaceSchema, NodeStatus, Schema, TableSchema,
-};
+use gossip::structures::application_state::{KeyspaceSchema, NodeStatus, Schema, TableSchema};
 use gossip::Gossiper;
 use internode_protocol::message::{InternodeMessage, InternodeMessageContent};
 use internode_protocol::response::{
@@ -383,13 +381,27 @@ impl Node {
                     }
 
                     if needs_to_redistribute {
-                        let _ = log.info(&format!("START REDISTRIBUTION..."), Color::Cyan, true);
+                        let _ = log.info("START REDISTRIBUTION...", Color::Cyan, true);
+
+                        // Clonar las variables necesarias para el nuevo hilo
+                        let storage_path = storage_path.clone();
+                        let self_ip = self_ip.clone();
+                        let partitioner = partitioner.clone();
+                        let logger = logger.clone();
+                        let connections = connections.clone();
                         let keyspaces: Vec<KeyspaceSchema> = keyspaces.values().cloned().collect();
 
-                        storage_engine::StorageEngine::new(storage_path.clone(), self_ip.clone())
-                            .redistribute_data(keyspaces, partitioner, logger, connections.clone())
-                            .ok();
-                        let _ = log.info(&format!("END REDISTRIBUTION..."), Color::Cyan, true);
+                        // Lanzar la redistribución en un nuevo hilo
+                        std::thread::spawn(move || {
+                            let result = storage_engine::StorageEngine::new(storage_path, self_ip)
+                                .redistribute_data(keyspaces, &partitioner, logger, connections);
+
+                            if result.is_ok() {
+                                let _ = log.info("END REDISTRIBUTION...", Color::Cyan, true);
+                            } else {
+                                let _ = log.error("REDISTRIBUTION FAILED!", true);
+                            }
+                        });
                     }
                 }
 
@@ -869,16 +881,20 @@ impl Node {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
         let self_ip;
+        let log;
         {
             let node_guard = node.lock()?;
             self_ip = node_guard.get_ip();
+            log = node_guard.get_logger().clone();
         }
 
+        let log_gossip = log.clone();
         // Creates a thread to handle gossip
         let gossip_connections = Arc::clone(&connections);
         let node_gossip = Arc::clone(&node);
         Self::start_gossip(node_gossip, gossip_connections).unwrap_or_else(|err| {
-            eprintln!("Error in gossip: {:?}", err); // Or handle the error as needed
+            let message = format!("ERROR in GOSSIP: {:?}", err);
+            log_gossip.clone().error(&message, true).ok(); // Or handle the error as needed
         });
 
         //thread::sleep(Duration::from_secs(2));
@@ -887,23 +903,29 @@ impl Node {
         let client_connections = Arc::clone(&connections);
         let self_ip_client = self_ip;
 
+        let log_client = log.clone();
         let handle_client_thread = thread::spawn(move || {
             Self::handle_client_connections(
                 client_connections_node,
                 client_connections,
                 self_ip_client,
             )
-            .unwrap_or_else(|e| eprintln!("Error in client connections: {:?}", e));
+            .unwrap_or_else(|e| {
+                let message = format!("ERROR in CLIENT CONNECTIONS: {:?}", e);
+                log_client.clone().error(&message, true).ok();
+            });
         });
 
         // Creates a thread to handle node connections
         let node_connections_node = Arc::clone(&node);
         let node_connections = Arc::clone(&connections);
         let self_ip_node = self_ip.clone();
+        let log_internode = log.clone();
         let handle_node_thread = thread::spawn(move || {
             Self::handle_node_connections(node_connections_node, node_connections, self_ip_node)
                 .unwrap_or_else(|err| {
-                    eprintln!("Error in internode connections: {:?}", err); // Or handle the error as needed
+                    let message = format!("ERROR in INTERNODE CONNECTIONS: {:?}", err);
+                    log_internode.error(&message, true).ok(); // Or handle the error as needed
                 });
         });
 
@@ -1041,7 +1063,7 @@ impl Node {
                                     query_consistency_level,
                                     stream_guard.peer_addr()?
                                 ),
-                                Color::Blue,
+                                Color::Yellow,
                                 true,
                             )?;
                             let client_stream = stream_guard.try_clone()?;
@@ -1163,15 +1185,15 @@ impl Node {
             .handle_query(query_str.to_string())
             .map_err(NodeError::CQLError)?;
 
-        // if query.needs_keyspace() {
-        //     //println!("esta query: {:?} necesita un keyspace", query_str);
-        //     check_keyspace(node, &query, client_id, 3)?;
-        // }
+        if query.needs_keyspace() {
+            //println!("esta query: {:?} necesita un keyspace", query_str);
+            check_keyspace(node, &query, client_id, 6)?;
+        }
 
-        // if query.needs_table() {
-        //     //println!("esta query: {:?} necesita una tabla", query_str);
-        //     check_table(node, &query, client_id, 3)?;
-        // }
+        if query.needs_table() {
+            //println!("esta query: {:?} necesita una tabla", query_str);
+            check_table(node, &query, client_id, 6)?;
+        }
 
         let open_query_id;
         let self_ip: Ipv4Addr;

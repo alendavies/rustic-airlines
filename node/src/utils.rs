@@ -128,6 +128,31 @@ pub fn connect_and_send_message(
     Ok(())
 }
 
+/// Checks if a keyspace exists for the given query and client ID.
+///
+/// This function attempts to retrieve a keyspace associated with a query.
+/// If the query specifies a keyspace name, it retrieves it directly; otherwise,
+/// it uses the client ID to fetch the associated keyspace. The function retries
+/// a specified number of times before returning an error if the keyspace is not found.
+///
+/// # Arguments
+///
+/// * `node` - A shared reference to the node, protected by a mutex.
+/// * `query` - The query containing the keyspace or table information.
+/// * `client_id` - The ID of the client for keyspace lookup.
+/// * `max_retries` - Maximum number of retries to check for the keyspace.
+///
+/// # Returns
+///
+/// * `Ok(Some(KeyspaceSchema))` if the keyspace is found.
+/// * `Ok(None)` if the keyspace is not found (though it shouldn't occur with retries).
+/// * `Err(NodeError)` if the keyspace cannot be retrieved after retries.
+///
+/// # Errors
+///
+/// Returns an error of type `NodeError::CQLError` with `InvalidSyntax` if the keyspace is not found
+/// after the maximum number of retries.
+///
 pub fn check_keyspace(
     node: &Arc<Mutex<Node>>,
     query: &Query,
@@ -165,6 +190,31 @@ pub fn check_keyspace(
     Err(NodeError::CQLError(CQLError::InvalidSyntax))
 }
 
+/// Checks if a table exists in the keyspace for the given query and client ID.
+///
+/// This function attempts to retrieve a table associated with a query. It first ensures
+/// that a valid keyspace is available. If the keyspace exists, it then attempts to find
+/// the table specified in the query. The function retries a specified number of times
+/// before returning an error if the table is not found.
+///
+/// # Arguments
+///
+/// * `node` - A shared reference to the node, protected by a mutex.
+/// * `query` - The query containing the keyspace and table information.
+/// * `client_id` - The ID of the client for keyspace lookup.
+/// * `max_retries` - Maximum number of retries to check for the table.
+///
+/// # Returns
+///
+/// * `Ok(Some(TableSchema))` if the table is found.
+/// * `Ok(None)` if the table is not found (though it shouldn't occur with retries).
+/// * `Err(NodeError)` if the table cannot be retrieved after retries.
+///
+/// # Errors
+///
+/// Returns an error of type `NodeError::CQLError` with `InvalidSyntax` if the table is not found
+/// after the maximum number of retries, or if no keyspace is available.
+///
 pub fn check_table(
     node: &Arc<Mutex<Node>>,
     query: &Query,
@@ -179,7 +229,7 @@ pub fn check_table(
         }
 
         // Variables locales para almacenar resultados
-        let (keyspace, table): (Option<KeyspaceSchema>, Option<TableSchema>) = {
+        let (_, table): (Option<KeyspaceSchema>, Option<TableSchema>) = {
             // Bloquear el nodo temporalmente
             let guard_node = node.lock()?;
 

@@ -14,7 +14,7 @@ use std::{
     net::Ipv4Addr,
 };
 use structures::{
-    application_state::{ApplicationState, KeyspaceSchema, NodeStatus, Schema, TableSchema},
+    application_state::{KeyspaceSchema, NodeStatus, Schema, TableSchema},
     endpoint_state::EndpointState,
     heartbeat_state::HeartbeatState,
 };

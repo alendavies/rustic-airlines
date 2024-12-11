@@ -113,17 +113,17 @@ impl InternodeProtocolHandler {
         let log = { node.lock()?.get_logger() };
         match message.clone().content {
             InternodeMessageContent::Query(query) => {
-                let open_query_id_str = if query.open_query_id == 0 {
-                    "REDISTRIBUTION"
+                let (open_query_id_str, color) = if query.open_query_id == 0 {
+                    ("REDISTRIBUTION".to_string(), Color::Cyan)
                 } else {
-                    &format!("Query: {:?}", query.open_query_id)
+                    (format!("Query: {:?}", query.open_query_id), Color::Blue)
                 };
                 log.info(
                     &format!(
                         "INTERNODE ({}): I RECEIVED {:?} from {:?}",
                         open_query_id_str, query.query_string, message.from
                     ),
-                    Color::Blue,
+                    color,
                     true,
                 )?;
                 self.handle_query_command(node, query, connections, message.clone().from)?;
@@ -272,7 +272,7 @@ impl InternodeProtocolHandler {
                     "NATIVE: I sent FRAME RESPONSE to client {:?}",
                     connection.peer_addr()?
                 ),
-                Color::Green,
+                Color::Yellow,
                 true,
             )?;
 
