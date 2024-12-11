@@ -237,7 +237,7 @@ impl InternodeProtocolHandler {
                 };
             };
 
-            let mut connection = open_query.get_connection();
+            let connection = open_query.get_connection();
             let frame =
                 open_query
                     .get_query()
@@ -248,8 +248,7 @@ impl InternodeProtocolHandler {
                 open_query_id
             );
 
-            connection.write(&frame.to_bytes()?)?;
-            connection.flush()?;
+            connection.send(frame).map_err(|_| NodeError::OtherError)?;
             Ok(())
         } else {
             Ok(())
@@ -709,12 +708,13 @@ impl InternodeProtocolHandler {
     ) -> Result<(), NodeError> {
         if let Some(open_query) = query_handler.add_error_response_and_get_if_closed(open_query_id)
         {
-            let mut connection = open_query.get_connection();
+            let connection = open_query.get_connection();
 
             let error_frame = Frame::Error(error::Error::ServerError(".".to_string()));
 
-            connection.write(&error_frame.to_bytes()?)?;
-            connection.flush()?;
+            connection
+                .send(error_frame)
+                .map_err(|_| NodeError::OtherError)?;
             Ok(())
         } else {
             Ok(())

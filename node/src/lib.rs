@@ -12,7 +12,8 @@ use std::collections::HashMap;
 use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 use std::{thread, vec};
 
@@ -439,7 +440,7 @@ impl Node {
         &mut self,
         query: Query,
         consistency_level: &str,
-        connection: TcpStream,
+        tx_reply: Sender<Frame>,
         table: Option<TableSchema>,
         keyspace: Option<KeyspaceSchema>,
     ) -> Result<i32, NodeError> {
@@ -467,7 +468,7 @@ impl Node {
 
         Ok(self.open_query_handler.new_open_query(
             needed_responses as i32,
-            connection,
+            tx_reply,
             query,
             consistency_level,
             table,
@@ -935,13 +936,12 @@ impl Node {
             match stream {
                 Ok(stream) => {
                     let node_clone = Arc::clone(&node);
-                    let stream = Arc::new(Mutex::new(stream.try_clone()?)); // Cloning the stream
                     let connections_clone = Arc::clone(&connections);
 
                     thread::spawn(move || {
                         match Node::handle_incoming_client_messages(
                             node_clone,
-                            stream.clone(),
+                            stream,
                             connections_clone,
                         ) {
                             Ok(_) => {}
@@ -963,13 +963,10 @@ impl Node {
     // Receives packets from the client
     fn handle_incoming_client_messages(
         node: Arc<Mutex<Node>>,
-        stream: Arc<Mutex<TcpStream>>,
+        mut stream: TcpStream,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
         // Clone the stream under Mutex protection and create the reader
-        let mut stream_guard = stream.lock()?;
-
-        let mut reader = BufReader::new(stream_guard.try_clone().map_err(NodeError::IoError)?);
 
         let client_id = { node.lock()?.generate_client_id() };
 
@@ -982,8 +979,7 @@ impl Node {
             // Execute initial inserts if necessary
 
             // Try to read a line
-            // let bytes_read = reader.read_line(&mut buffer);
-            let bytes_read = reader.read(&mut buffer);
+            let bytes_read = stream.read(&mut buffer);
 
             match bytes_read {
                 Ok(0) => {
@@ -994,21 +990,22 @@ impl Node {
                     let query = handle_client_request(&buffer);
                     match query {
                         Request::Startup => {
-                            stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
-                            stream_guard.flush()?;
+                            stream.write(Frame::Ready.to_bytes()?.as_slice())?;
+                            stream.flush()?;
                         }
                         Request::Query(query) => {
                             // Handle the query
                             let query_str = query.get_query();
                             let query_consistency_level: &str = &query.get_consistency();
-                            let client_stream = stream_guard.try_clone()?;
+
+                            let (tx_reply, rx_reply) = mpsc::channel();
 
                             let result = Node::handle_query_execution(
                                 query_str,
                                 query_consistency_level,
                                 &node,
                                 connections.clone(),
-                                client_stream,
+                                tx_reply,
                                 client_id,
                             );
 
@@ -1020,8 +1017,12 @@ impl Node {
                                 if let Ok(value) = frame_bytes_result {
                                     frame_bytes = value;
                                 }
-                                stream_guard.write(&frame_bytes)?;
-                                stream_guard.flush()?;
+                                stream.write(&frame_bytes)?;
+                                stream.flush()?;
+                            } else {
+                                // await resolution of the query
+                                let reply = rx_reply.recv().map_err(|_| NodeError::OtherError)?;
+                                stream.write(&reply.to_bytes()?)?;
                             }
                         }
                     };
@@ -1113,7 +1114,7 @@ impl Node {
         consistency_level: &str,
         node: &Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-        client_connection: TcpStream,
+        tx_reply: Sender<Frame>,
         client_id: i32,
     ) -> Result<(), NodeError> {
         let query = QueryCreator::new()
@@ -1144,7 +1145,7 @@ impl Node {
             open_query_id = guard_node.add_open_query(
                 query.clone(),
                 consistency_level,
-                client_connection.try_clone()?,
+                tx_reply,
                 table,
                 keyspace,
             )?;
