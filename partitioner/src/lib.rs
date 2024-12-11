@@ -60,7 +60,6 @@ impl Partitioner {
             return Err(PartitionerError::NodeAlreadyExists);
         }
         self.nodes.insert(hash, ip);
-        println!("Partitioner: {:?}", self);
 
         Ok(())
     }
@@ -84,7 +83,6 @@ impl Partitioner {
             .nodes
             .remove(&hash)
             .ok_or(PartitionerError::NodeNotFound);
-        println!("Partitioner: {:?}", self);
         a
     }
 

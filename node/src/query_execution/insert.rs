@@ -96,7 +96,7 @@ impl QueryExecution {
         let node_to_insert = node.get_partitioner().get_ip(value_to_hash.clone())?;
         let self_ip = node.get_ip().clone();
         let keyspace_name = client_keyspace.get_name();
-
+        let logger = node.get_logger();
         // If not internode and the target IP differs, forward the insert
         if !internode {
             if node_to_insert != self_ip {
@@ -109,6 +109,7 @@ impl QueryExecution {
                     client_id,
                     &client_keyspace.get_name(),
                     timestap,
+                    logger.clone(),
                 )?;
                 do_in_this_node = false; // The actual insert will be done by another node
             } else {
@@ -125,6 +126,7 @@ impl QueryExecution {
                 client_id,
                 &client_keyspace.get_name(),
                 timestap,
+                logger,
             )?;
             if replication {
                 self.execution_replicate_itself = true; // This node will replicate the insert

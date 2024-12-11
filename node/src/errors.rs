@@ -6,9 +6,11 @@ use std::io;
 
 use super::storage_engine::errors::StorageEngineError;
 use gossip::structures::application_state::SchemaError;
+use logger::LoggerError;
 use native_protocol::errors::NativeError;
 use partitioner::errors::PartitionerError;
-use query_creator::errors::CQLError;
+use query_creator::errors::CQLError; // Importar LoggerError
+
 /// Enum representing the possible errors that can occur within the `Node` and during query execution (`QueryExecution`).
 #[derive(Debug)]
 pub enum NodeError {
@@ -38,6 +40,9 @@ pub enum NodeError {
     NativeError(NativeError),
     /// Error related to the storage engine.
     StorageEngineError(StorageEngineError),
+    /// Error related to the logger.
+    LoggerError(LoggerError),
+    /// Error related to the gossip protocol.
     GossipError,
     /// Error related to schema updating.
     SchemaError(SchemaError),
@@ -60,6 +65,7 @@ impl Display for NodeError {
             NodeError::InternodeProtocolError => write!(f, "Internode Protocol Error"),
             NodeError::NativeError(e) => write!(f, "Native Protocol Error: {}", e),
             NodeError::StorageEngineError(e) => write!(f, "Storage Engine Error: {}", e),
+            NodeError::LoggerError(e) => write!(f, "Logger Error: {}", e),
             NodeError::GossipError => write!(f, "Gossip Error"),
             NodeError::SchemaError(e) => write!(f, "Schema Error: {}", e),
         }
@@ -105,6 +111,13 @@ impl From<StorageEngineError> for NodeError {
     /// Conversion from `StorageEngineError` to `NodeError`.
     fn from(error: StorageEngineError) -> Self {
         NodeError::StorageEngineError(error)
+    }
+}
+
+impl From<LoggerError> for NodeError {
+    /// Conversion from `LoggerError` to `NodeError`.
+    fn from(error: LoggerError) -> Self {
+        NodeError::LoggerError(error)
     }
 }
 

@@ -31,6 +31,7 @@ use internode_protocol::response::{
 use internode_protocol::InternodeSerializable;
 use internode_protocol_handler::InternodeProtocolHandler;
 // use keyspace::Keyspace;
+use logger::{Color, Logger};
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -60,6 +61,7 @@ pub struct Node {
     last_client_id: i32,
     gossiper: Gossiper,
     storage_path: PathBuf,
+    logger: Logger,
     /// Represents the latest known schema of the cluster.
     schema: Schema,
 }
@@ -145,10 +147,11 @@ impl Node {
             open_query_handler: OpenQueryHandler::new(),
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
-            storage_path,
+            storage_path: storage_path.clone(),
             gossiper: Gossiper::new()
                 .with_endpoint_state(ip)
                 .with_seeds(seeds_nodes),
+            logger: Logger::new(&storage_path, &ip.to_string())?,
             schema: Schema::new(),
         })
     }
@@ -235,6 +238,7 @@ impl Node {
     ) -> Result<(), NodeError> {
         let _ = thread::spawn(move || {
             let initial_gossip = Instant::now();
+            let mut log;
             loop {
                 {
                     {
@@ -244,6 +248,7 @@ impl Node {
                         };
 
                         let ip = node_guard.ip;
+                        log = node_guard.get_logger();
                         if initial_gossip.elapsed().as_millis() > 3000 {
                             node_guard
                                 .gossiper
@@ -318,7 +323,7 @@ impl Node {
                 // After each gossip round, update the partitioner
                 {
                     // Bloqueo del mutex solo para extraer lo necesario
-                    let (storage_path, self_ip, keyspaces) = {
+                    let (storage_path, self_ip, keyspaces, logger) = {
                         let node_guard = match node.lock() {
                             Ok(guard) => guard,
                             Err(_) => return NodeError::LockError,
@@ -327,7 +332,8 @@ impl Node {
                         (
                             node_guard.storage_path.clone(), // Clonar el path de almacenamiento
                             node_guard.get_ip().to_string(), // Clonar el IP
-                            node_guard.schema.keyspaces.clone(), // Clonar los keyspaces desde el guard     // Referencia mutable al particionador
+                            node_guard.schema.keyspaces.clone(),
+                            node_guard.get_logger(), // Clonar los keyspaces desde el guard     // Referencia mutable al particionador
                         )
                     };
                     let mut node_guard = match node.lock() {
@@ -351,34 +357,39 @@ impl Node {
 
                         if state.application_state.status.is_dead() {
                             if is_in_partitioner {
-                                println!("se acaba de morir un nodo, redistribuyo");
                                 needs_to_redistribute = true;
                                 partitioner.remove_node(*ip).ok();
+                                let _ = log.info(
+                                    &format!(
+                                        "NODE {:?} IS DEAD .. New Ring: {:?}",
+                                        ip, partitioner
+                                    ),
+                                    Color::Red,
+                                    true,
+                                );
                             }
                         } else {
                             if !is_in_partitioner {
-                                println!("se acaba de unir un nodo, redistribuyo");
+                                //println!("se acaba de unir un nodo, redistribuyo");
                                 needs_to_redistribute = true;
                                 partitioner.add_node(*ip).ok();
+                                let _ = log.info(
+                                    &format!("NEW NODE {:?} .. New Ring: {:?}", ip, partitioner),
+                                    Color::Green,
+                                    true,
+                                );
                             }
                         }
                     }
 
                     if needs_to_redistribute {
+                        let _ = log.info(&format!("START REDISTRIBUTION..."), Color::Cyan, true);
                         let keyspaces: Vec<KeyspaceSchema> = keyspaces.values().cloned().collect();
-                        let storage_path = storage_path.clone();
-                        let self_ip = self_ip.clone();
-                        let partitioner = partitioner.clone();
-                        let connections = connections.clone();
 
-                        std::thread::spawn(move || {
-                            if let Err(e) =
-                                storage_engine::StorageEngine::new(storage_path, self_ip)
-                                    .redistribute_data(keyspaces, &partitioner, connections)
-                            {
-                                eprintln!("Error during data redistribution: {:?}", e);
-                            }
-                        });
+                        storage_engine::StorageEngine::new(storage_path.clone(), self_ip.clone())
+                            .redistribute_data(keyspaces, partitioner, logger, connections.clone())
+                            .ok();
+                        let _ = log.info(&format!("END REDISTRIBUTION..."), Color::Cyan, true);
                     }
                 }
 
@@ -490,6 +501,9 @@ impl Node {
         self.ip
     }
 
+    pub fn get_logger(&self) -> Logger {
+        self.logger.clone()
+    }
     fn get_ip_string(&self) -> String {
         self.ip.to_string()
     }
@@ -983,7 +997,14 @@ impl Node {
 
         let mut reader = BufReader::new(stream_guard.try_clone().map_err(NodeError::IoError)?);
 
-        let client_id = { node.lock()?.generate_client_id() };
+        let client_id;
+        let log;
+
+        {
+            let mut guard_node = node.lock()?;
+            client_id = guard_node.generate_client_id();
+            log = guard_node.get_logger();
+        };
 
         loop {
             // Clean the buffer
@@ -1013,6 +1034,16 @@ impl Node {
                             // Handle the query
                             let query_str = query.get_query();
                             let query_consistency_level: &str = &query.get_consistency();
+                            log.info(
+                                &format!(
+                                    "NATIVE: I RECEIVED {} whit CL: {} from client {:?}",
+                                    query_str.replace("\n", ""),
+                                    query_consistency_level,
+                                    stream_guard.peer_addr()?
+                                ),
+                                Color::Blue,
+                                true,
+                            )?;
                             let client_stream = stream_guard.try_clone()?;
 
                             let result = Node::handle_query_execution(
@@ -1145,6 +1176,7 @@ impl Node {
         let open_query_id;
         let self_ip: Ipv4Addr;
         let storage_path;
+        let logger;
         {
             let mut guard_node = node.lock()?;
             let keyspace;
@@ -1172,6 +1204,7 @@ impl Node {
             )?;
             self_ip = guard_node.get_ip();
             storage_path = guard_node.storage_path.clone();
+            logger = guard_node.get_logger();
         }
         let timestamp = Self::current_timestamp();
 
@@ -1243,8 +1276,8 @@ impl Node {
                     self_ip,
                     connections.clone(),
                     partitioner.clone(),
-                    storage_path.clone()
-
+                    storage_path.clone(),
+                    logger.clone(),
                 )?;
             }
             for _ in 0..failed_nodes {

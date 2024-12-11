@@ -13,8 +13,9 @@ members = [
     "graphical-interface",
     "node_launcher",
     "gossip",
-    "flight-sim"
-, "repl"]
+     "logger",
+    "flight-sim",
+    "repl"]
 
 [dev-dependencies]
 driver = { path = "driver" }  # Solo para los tests de integración

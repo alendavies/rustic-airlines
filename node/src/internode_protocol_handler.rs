@@ -9,6 +9,7 @@ use crate::{storage_engine, Node, NodeError, Query, QueryExecution, INTERNODE_PO
 use chrono::Utc;
 use gossip::messages::GossipMessage;
 use gossip::structures::application_state::TableSchema;
+use logger::{Color, Logger};
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use native_protocol::Serializable;
@@ -109,14 +110,35 @@ impl InternodeProtocolHandler {
         message: InternodeMessage,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
+        let log = { node.lock()?.get_logger() };
         match message.clone().content {
             InternodeMessageContent::Query(query) => {
-                println!("recibio una query: {:?}", query.query_string);
+                let open_query_id_str = if query.open_query_id == 0 {
+                    "REDISTRIBUTION"
+                } else {
+                    &format!("Query: {:?}", query.open_query_id)
+                };
+                log.info(
+                    &format!(
+                        "INTERNODE ({}): I RECEIVED {:?} from {:?}",
+                        open_query_id_str, query.query_string, message.from
+                    ),
+                    Color::Blue,
+                    true,
+                )?;
                 self.handle_query_command(node, query, connections, message.clone().from)?;
                 Ok(())
             }
             InternodeMessageContent::Response(response) => {
-                let _ = self.handle_response_command(node, &response, message.from, connections);
+                log.info(
+                    &format!(
+                        "INTERNODE (Query: {}): I RECEIVED {:?} from {:?}",
+                        response.open_query_id, response.status, message.from
+                    ),
+                    Color::Blue,
+                    true,
+                )?;
+                self.handle_response_command(node, &response, message.from, connections)?;
 
                 Ok(())
             }
@@ -206,6 +228,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         partitioner: Partitioner,
         storage_path: PathBuf,
+        logger: Logger,
     ) -> Result<(), NodeError> {
         if let Some(open_query) =
             query_handler.add_ok_response_and_get_if_closed(open_query_id, response.clone(), from)
@@ -244,10 +267,14 @@ impl InternodeProtocolHandler {
                     .get_query()
                     .create_client_response(columns, keyspace_name, rows)?;
 
-            println!(
-                "Returning response to client de la query: {:?}",
-                open_query_id
-            );
+            logger.info(
+                &format!(
+                    "NATIVE: I sent FRAME RESPONSE to client {:?}",
+                    connection.peer_addr()?
+                ),
+                Color::Green,
+                true,
+            )?;
 
             connection.write(&frame.to_bytes()?)?;
             connection.flush()?;
@@ -752,9 +779,11 @@ impl InternodeProtocolHandler {
         }
 
         let self_ip;
+        let logger;
         {
             let guard_node = node.lock()?;
             self_ip = guard_node.get_ip();
+            logger = guard_node.get_logger();
         };
         let query_split: Vec<&str> = query.query_string.split_whitespace().collect();
         let result: Result<Option<((i32, i32), InternodeResponse)>, NodeError> =
@@ -872,6 +901,15 @@ impl InternodeProtocolHandler {
             let (_, value): ((i32, i32), InternodeResponse) = responses.clone();
 
             if query.open_query_id != 0 {
+                logger.info(
+                    &format!(
+                        "INTERNODE (Query: {:?}): I SENT OK to coordinator node: {:?}",
+                        query.open_query_id, node_ip
+                    ),
+                    Color::Green,
+                    true,
+                )?;
+
                 connect_and_send_message(
                     node_ip,
                     INTERNODE_PORT,
@@ -898,11 +936,13 @@ impl InternodeProtocolHandler {
         let self_ip;
         let partitioner;
         let storage_path;
+        let logger;
         {
             let guard_node = node.lock()?;
             self_ip = guard_node.get_ip();
             partitioner = guard_node.get_partitioner();
             storage_path = guard_node.storage_path.clone();
+            logger = guard_node.get_logger();
         }
         let mut guard_node = node.lock()?;
 
@@ -928,6 +968,7 @@ impl InternodeProtocolHandler {
                     connections,
                     partitioner,
                     storage_path.clone(),
+                    logger,
                 )?;
             }
             InternodeResponseStatus::Error => {
@@ -986,7 +1027,7 @@ impl InternodeProtocolHandler {
                 );
 
                 if result.is_err() {
-                    println!("Node is dead: {:?}", gossip_message.from);
+                    //println!("Node is dead: {:?}", gossip_message.from);
                     guard_node.gossiper.kill(gossip_message.from).ok();
                 }
             }
@@ -1011,6 +1052,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         partitioner: Partitioner,
         storage_path: PathBuf,
+        logger: Logger,
     ) -> Result<(), NodeError> {
         // Obtener la consulta abierta
 
@@ -1042,6 +1084,7 @@ impl InternodeProtocolHandler {
             connections,
             partitioner,
             storage_path,
+            logger,
         )?;
 
         Ok(())
