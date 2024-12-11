@@ -1,8 +1,10 @@
 use std::{
     io::{Read, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
+    sync::Arc,
 };
 pub mod server;
+mod tls;
 
 use native_protocol::{
     self,
@@ -13,9 +15,11 @@ use native_protocol::{
     },
     Serializable,
 };
+use rustls::{ClientConnection, StreamOwned};
+use tls::configure_client;
 
 pub struct CassandraClient {
-    stream: TcpStream,
+    stream: StreamOwned<ClientConnection, TcpStream>,
 }
 
 const NATIVE_PORT: u16 = 0x4645;
@@ -32,13 +36,19 @@ pub enum QueryResult {
 impl CassandraClient {
     /// Creates a connection with the node at `ip`.
     pub fn connect(ip: Ipv4Addr) -> Result<Self, ClientError> {
-        let addr = SocketAddr::new(IpAddr::V4(ip), NATIVE_PORT);
-        let stream = TcpStream::connect(addr).map_err(|e| {
-            eprintln!("Error al conectar: {:?}", e);
-            ClientError
-        })?;
+        // Configurar TLS sin verificación de certificados
+        let config = configure_client();
+        let config = Arc::new(config);
 
-        Ok(Self { stream })
+        let server_name = rustls::pki_types::ServerName::try_from("databaseserver").unwrap();
+        let conn = ClientConnection::new(config, server_name).unwrap();
+
+        let addr = SocketAddr::new(IpAddr::V4(ip), NATIVE_PORT);
+        let sock = TcpStream::connect(addr).unwrap();
+
+        let tls = StreamOwned::new(conn, sock);
+
+        Ok(Self { stream: tls })
     }
 
     /// Execute a query.

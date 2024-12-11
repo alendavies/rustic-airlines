@@ -13,7 +13,7 @@ use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::time::Instant;
 use std::{thread, vec};
 
@@ -42,6 +42,9 @@ use query_creator::errors::CQLError;
 use query_creator::{GetTableName, GetUsedKeyspace, Query};
 use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use storage_engine::StorageEngine;
 use utils::connect_and_send_message;
 
@@ -930,14 +933,34 @@ impl Node {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         self_ip: std::net::Ipv4Addr,
     ) -> Result<(), NodeError> {
+        // Cargar configuración TLS
+        let certs = CertificateDer::pem_file_iter("../certs/cert.crt")
+            .unwrap()
+            .map(|cert| cert.unwrap())
+            .collect();
+        let private_key = PrivateKeyDer::from_pem_file("../certs/cert.key").unwrap();
+
+        let config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, private_key)
+            .unwrap();
+
         let socket = SocketAddrV4::new(self_ip, CLIENT_NODE_PORT); // Specific port for clients
         let listener = TcpListener::bind(socket)?;
+
         for stream in listener.incoming() {
             match stream {
-                Ok(stream) => {
-                    let node_clone = Arc::clone(&node);
+                Ok(mut stream) => {
+                    // Crear una conexión TLS para el stream TCP
+                    let mut conn = ServerConnection::new(Arc::new(config.clone()))
+                        .expect("No se pudo crear la conexión TLS");
+
+                    conn.complete_io(&mut stream).unwrap();
                     let connections_clone = Arc::clone(&connections);
 
+                    let stream = StreamOwned::new(conn, stream);
+
+                    let node_clone = Arc::clone(&node);
                     thread::spawn(move || {
                         match Node::handle_incoming_client_messages(
                             node_clone,
@@ -945,9 +968,7 @@ impl Node {
                             connections_clone,
                         ) {
                             Ok(_) => {}
-                            Err(e) => {
-                                eprintln!("Error handling query: [{:?}]", e);
-                            }
+                            Err(e) => {}
                         };
                     });
                 }
@@ -963,7 +984,7 @@ impl Node {
     // Receives packets from the client
     fn handle_incoming_client_messages(
         node: Arc<Mutex<Node>>,
-        mut stream: TcpStream,
+        mut stream: StreamOwned<ServerConnection, TcpStream>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
         // Clone the stream under Mutex protection and create the reader
@@ -972,7 +993,6 @@ impl Node {
 
         loop {
             // Clean the buffer
-            // let mut buffer = String::new();
 
             let mut buffer = [0; 2048];
 
