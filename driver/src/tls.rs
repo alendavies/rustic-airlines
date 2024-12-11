@@ -13,6 +13,13 @@ fn load_root_cert(path: &str) -> RootCertStore {
 pub fn configure_client() -> ClientConfig {
     let root_store = load_root_cert("../certs/cert.crt");
 
+    match rustls::crypto::aws_lc_rs::default_provider().install_default() {
+        Ok(_) => {}
+        Err(err) => {
+            eprintln!("Failed to install CryptoProvider: {:?}", err);
+        }
+    }
+
     let client_config = ClientConfig::builder()
         .with_root_certificates(root_store)
         .with_no_client_auth();

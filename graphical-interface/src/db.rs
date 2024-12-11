@@ -146,6 +146,7 @@ impl Provider for Db {
     /// Get the airports from a country from the database to show them in the graphical interface.
     fn get_airports_by_country(country: &str) -> std::result::Result<Vec<Airport>, DBError> {
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
+        driver.startup().unwrap();
 
         let query = "SELECT * FROM sky.airports WHERE country = 'ARG'".to_string();
 
@@ -179,9 +180,10 @@ impl Provider for Db {
 
                 if let (Some(lat), Some(lon)) = (row.get("lat"), row.get("lon")) {
                     if let (
-                            rows::ColumnValue::Double(latitud),
-                            rows::ColumnValue::Double(longitud),
-                        ) = (lat, lon) {
+                        rows::ColumnValue::Double(latitud),
+                        rows::ColumnValue::Double(longitud),
+                    ) = (lat, lon)
+                    {
                         airport.position = Position::from_lat_lon(*latitud, *longitud);
                     }
                 } else {
@@ -207,6 +209,7 @@ impl Provider for Db {
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
+        driver.startup().unwrap();
 
         let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
 
@@ -296,6 +299,7 @@ impl Provider for Db {
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
+        driver.startup().unwrap();
 
         let result = driver.execute(query.as_str(), "all").map_err(|_| DBError)?;
 
@@ -376,6 +380,7 @@ impl Provider for Db {
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
+        driver.startup().unwrap();
 
         let result = driver
             .execute(query.as_str(), "quorum")
@@ -459,6 +464,7 @@ impl Provider for Db {
         );
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
+        driver.startup().unwrap();
 
         let result = driver
             .execute(query.as_str(), "quorum")
@@ -530,9 +536,10 @@ impl Provider for Db {
 
                 if let (Some(lat), Some(lon)) = (row.get("lat"), row.get("lon")) {
                     if let (
-                            rows::ColumnValue::Double(latitud),
-                            rows::ColumnValue::Double(longitud),
-                        ) = (lat, lon) {
+                        rows::ColumnValue::Double(latitud),
+                        rows::ColumnValue::Double(longitud),
+                    ) = (lat, lon)
+                    {
                         flight.position = Position::from_lat_lon(*latitud, *longitud);
                     }
                 } else {
@@ -566,6 +573,7 @@ impl Provider for Db {
 
         let mut driver =
             CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).map_err(|_| DBError)?;
+        driver.startup().unwrap();
 
         let result_check = driver
             .execute(query_check.as_str(), "all")
@@ -641,6 +649,7 @@ impl Provider for Db {
         };
 
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
+        driver.startup().unwrap();
 
         let update_query_status_departure = format!(
             "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
