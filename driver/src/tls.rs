@@ -2,7 +2,10 @@ use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::CertificateDer;
 use rustls::{ClientConfig, RootCertStore};
 
-fn load_root_cert(path: &str) -> RootCertStore {
+use std::env;
+use std::path::Path;
+
+fn load_root_cert(path: &Path) -> RootCertStore {
     let cert = CertificateDer::from_pem_file(path).unwrap();
     let mut certs = RootCertStore::empty();
     certs.add(cert).unwrap();
@@ -11,7 +14,9 @@ fn load_root_cert(path: &str) -> RootCertStore {
 }
 
 pub fn configure_client() -> ClientConfig {
-    let root_store = load_root_cert("../certs/cert.crt");
+    let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+    let path = Path::new(&project_dir).parent().unwrap_or_else(|| Path::new(".")).join("certs").join("cert.crt");
+    let root_store = load_root_cert(&path);
 
     match rustls::crypto::aws_lc_rs::default_provider().install_default() {
         Ok(_) => {}

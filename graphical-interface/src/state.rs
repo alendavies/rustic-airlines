@@ -57,14 +57,14 @@ impl ViewState {
         Self { flights, airports }
     }
 
-    pub fn update_airports<P: Provider>(&mut self, _db: &P) {
-        if let Ok(new_airports) = P::get_airports() {
+    pub fn update_airports<P: Provider>(&mut self, db: &mut P) {
+        if let Ok(new_airports) = db.get_airports() {
             self.airports = new_airports;
         }
     }
 
-    pub fn update_flights<P: Provider>(&mut self, _db: &P, airport: &Airport) {
-        if let Ok(new_flights) = P::get_flights_by_airport(&airport.iata) {
+    pub fn update_flights<P: Provider>(&mut self, db: &mut P, airport: &Airport) {
+        if let Ok(new_flights) = db.get_flights_by_airport(&airport.iata) {
             self.flights = new_flights;
         }
     }

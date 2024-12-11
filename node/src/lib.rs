@@ -940,6 +940,13 @@ impl Node {
             .collect();
         let private_key = PrivateKeyDer::from_pem_file("../certs/cert.key").unwrap();
 
+        match rustls::crypto::aws_lc_rs::default_provider().install_default() {
+            Ok(_) => {}
+            Err(err) => {
+                eprintln!("Failed to install CryptoProvider: {:?}", err);
+            }
+        }
+
         let config = ServerConfig::builder()
             .with_no_client_auth()
             .with_single_cert(certs, private_key)
