@@ -1,5 +1,5 @@
 use crate::{
-    db::Provider,
+    db::{Db, Provider},
     types::{Airport, Flight, FlightInfo, FlightStatus},
 };
 use chrono::{NaiveDate, Utc};
@@ -44,10 +44,10 @@ impl WidgetAddFlight {
         }
     }
 
-    pub fn show<P: Provider>(
+    pub fn show(
         &mut self,
         ctx: &egui::Context,
-        _db: &P,
+        db: &mut Db,
         airports: &[Airport],
     ) -> bool {
         let mut is_open: bool = self.is_open;
@@ -192,7 +192,7 @@ impl WidgetAddFlight {
                         if !errors.is_empty() {
                             self.error_message = Some(errors.join("\n"));
                         } else {
-                            match P::add_flight(self.to_flight(airports)) {
+                            match db.add_flight(self.to_flight(airports)) {
                                 Ok(_) => {
                                     self.error_message = None;
                                     should_close = true;

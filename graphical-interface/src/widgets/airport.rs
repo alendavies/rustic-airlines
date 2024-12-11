@@ -1,4 +1,4 @@
-use crate::types::Airport;
+use crate::{db::Db, types::Airport};
 
 use super::{flights_table::FlightType, View, WidgetFlightsTable};
 
@@ -28,7 +28,7 @@ impl WidgetAirport {
 }
 
 impl WidgetAirport {
-    pub fn show(&mut self, ctx: &egui::Context) -> bool {
+    pub fn show(&mut self, ctx: &egui::Context, db: &mut Db) -> bool {
         let mut open = true; // Variable para manejar si la ventana sigue abierta
 
         egui::Window::new(format!("Aeropuerto {}", self.selected_airport.name))
@@ -78,10 +78,10 @@ impl WidgetAirport {
                 // Mostrar tabla centrada
                 match self.open_tab {
                     Tabs::Departures => ui.vertical_centered(|ui| {
-                        self.widget_departures.ui(ui);
+                        self.widget_departures.ui(ui, db);
                     }),
                     Tabs::Arrivals => ui.vertical_centered(|ui| {
-                        self.widget_arrivals.ui(ui);
+                        self.widget_arrivals.ui(ui, db);
                     }),
                 }
             });
