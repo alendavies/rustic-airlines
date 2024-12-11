@@ -324,8 +324,8 @@ impl StorageEngine {
 
         // Enviar el mensaje al nodo objetivo
 
-        let duration = Duration::from_millis(500);
-        thread::sleep(duration);
+        //let duration = Duration::from_millis(100);
+        //thread::sleep(duration);
         let result = connect_and_send_message(target_ip, INTERNODE_PORT, connections, message);
         // Manejar errores o resultados
         _ = result;

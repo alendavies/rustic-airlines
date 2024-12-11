@@ -732,12 +732,12 @@ impl InternodeProtocolHandler {
     ) -> Result<(), NodeError> {
         if query.needs_keyspace() {
             let q = QueryCreator::new().handle_query(query.query_string.clone())?;
-            check_keyspace(node, &q, query.client_id as i32, 3)?;
+            check_keyspace(node, &q, query.client_id as i32, 6)?;
         }
 
         if query.needs_table() {
             let q = QueryCreator::new().handle_query(query.query_string.clone())?;
-            check_table(node, &q, query.client_id as i32, 3)?;
+            check_table(node, &q, query.client_id as i32, 6)?;
         }
 
         if query.keyspace_name != "None" {

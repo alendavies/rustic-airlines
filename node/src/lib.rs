@@ -244,7 +244,7 @@ impl Node {
                         };
 
                         let ip = node_guard.ip;
-                        if initial_gossip.elapsed().as_millis() > 1500 {
+                        if initial_gossip.elapsed().as_millis() > 3000 {
                             node_guard
                                 .gossiper
                                 .change_status(ip, NodeStatus::Normal)
@@ -366,10 +366,19 @@ impl Node {
 
                     if needs_to_redistribute {
                         let keyspaces: Vec<KeyspaceSchema> = keyspaces.values().cloned().collect();
+                        let storage_path = storage_path.clone();
+                        let self_ip = self_ip.clone();
+                        let partitioner = partitioner.clone();
+                        let connections = connections.clone();
 
-                        storage_engine::StorageEngine::new(storage_path.clone(), self_ip.clone())
-                            .redistribute_data(keyspaces, partitioner, connections.clone())
-                            .ok();
+                        std::thread::spawn(move || {
+                            if let Err(e) =
+                                storage_engine::StorageEngine::new(storage_path, self_ip)
+                                    .redistribute_data(keyspaces, &partitioner, connections)
+                            {
+                                eprintln!("Error during data redistribution: {:?}", e);
+                            }
+                        });
                     }
                 }
 
@@ -858,21 +867,6 @@ impl Node {
             eprintln!("Error in gossip: {:?}", err); // Or handle the error as needed
         });
 
-        // thread::sleep(Duration::from_secs(1));
-        // let mut node_is_ready = false;
-        // while !node_is_ready {
-        //     thread::sleep(Duration::from_secs(1));
-        //     if node
-        //         .lock()?
-        //         .gossiper
-        //         .get_status(self_ip)
-        //         .map_err(|_| NodeError::GossipError)?
-        //         == NodeStatus::Normal
-        //     {
-        //         node_is_ready = true;
-        //     }
-        // }
-
         //thread::sleep(Duration::from_secs(2));
         // Creates a thread to handle client connections
         let client_connections_node = Arc::clone(&node);
@@ -1138,15 +1132,15 @@ impl Node {
             .handle_query(query_str.to_string())
             .map_err(NodeError::CQLError)?;
 
-        if query.needs_keyspace() {
-            //println!("esta query: {:?} necesita un keyspace", query_str);
-            check_keyspace(node, &query, client_id, 3)?;
-        }
+        // if query.needs_keyspace() {
+        //     //println!("esta query: {:?} necesita un keyspace", query_str);
+        //     check_keyspace(node, &query, client_id, 3)?;
+        // }
 
-        if query.needs_table() {
-            //println!("esta query: {:?} necesita una tabla", query_str);
-            check_table(node, &query, client_id, 3)?;
-        }
+        // if query.needs_table() {
+        //     //println!("esta query: {:?} necesita una tabla", query_str);
+        //     check_table(node, &query, client_id, 3)?;
+        // }
 
         let open_query_id;
         let self_ip: Ipv4Addr;

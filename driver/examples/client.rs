@@ -1,5 +1,5 @@
 use driver::CassandraClient;
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{net::Ipv4Addr, str::FromStr, thread, time::Duration};
 
 /// Example Rust program to interact with a Cassandra server.
 /// This program demonstrates:
@@ -77,10 +77,10 @@ fn main() {
     // Ejecutar cada consulta en un loop
     let mut contador = 0;
     let len = queries.len();
-    for (_, query) in queries.iter().enumerate() {
-        // if i == 2 {
-        //     thread::sleep(Duration::from_secs(2));
-        // }
+    for (i, query) in queries.iter().enumerate() {
+        if i == 2 {
+            thread::sleep(Duration::from_secs(2));
+        }
         match client.execute(&query, "all") {
             Ok(query_result) => {
                 match query_result {
