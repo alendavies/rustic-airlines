@@ -11,7 +11,6 @@ use gossip::messages::GossipMessage;
 use gossip::structures::application_state::TableSchema;
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
-use native_protocol::Serializable;
 use partitioner::Partitioner;
 use query_creator::clauses::keyspace::{
     alter_keyspace_cql::AlterKeyspace, create_keyspace_cql::CreateKeyspace,
@@ -27,7 +26,6 @@ use query_creator::clauses::{
 };
 use query_creator::CreateClientResponse;
 use std::collections::HashMap;
-use std::io::Write;
 use std::net::{Ipv4Addr, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

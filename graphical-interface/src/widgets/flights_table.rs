@@ -33,12 +33,12 @@ impl WidgetFlightsTable {
 
     fn fetch_flights(&mut self, db: &mut Db) {
         self.flights = Some(match self.flight_type {
-            FlightType::Arrival => {
-                db.get_arrival_flights(&self.airport, self.selected_date).unwrap()
-            }
-            FlightType::Departure => {
-                db.get_departure_flights(&self.airport, self.selected_date).unwrap()
-            }
+            FlightType::Arrival => db
+                .get_arrival_flights(&self.airport, self.selected_date)
+                .unwrap(),
+            FlightType::Departure => db
+                .get_departure_flights(&self.airport, self.selected_date)
+                .unwrap(),
         });
     }
 
@@ -185,10 +185,8 @@ impl View for WidgetFlightsTable {
                                                     let mut updated_flight = flight.clone();
                                                     updated_flight.status =
                                                         new_status.as_str().to_string();
-                                                    match db.update_state(
-                                                        updated_flight,
-                                                        direction,
-                                                    ) {
+                                                    match db.update_state(updated_flight, direction)
+                                                    {
                                                         Ok(_) => {
                                                             // Refresh flights and clear the edited state
                                                             self.fetch_flights(db);

@@ -11,7 +11,7 @@ use native_protocol::{
     frame::Frame,
     messages::{
         self,
-        auth::{AuthResponse, Authenticate},
+        auth::AuthResponse,
         query::{Consistency, Query, QueryParams},
     },
     types::Bytes,
