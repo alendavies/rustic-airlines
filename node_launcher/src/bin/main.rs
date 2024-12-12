@@ -103,6 +103,13 @@ fn main() -> Result<(), String> {
 /// - `Ok(Vec<Ipv4Addr>)` - A vector of seed IP addresses on success.
 /// - `Err(String)` - An error message if the file could not be read or if any IP is invalid.
 fn read_seed_ips(file_path: &str) -> Result<Vec<Ipv4Addr>, String> {
+    if let Ok(seed) = env::var("SEED") {
+        let seed =
+            Ipv4Addr::from_str(&seed).map_err(|_| "Invalid IP in environment variable 'SEED'")?;
+
+        return Ok(vec![seed]);
+    }
+
     // Attempt to open the file
     let file = File::open(file_path).map_err(|_| format!("Failed to open {}", file_path))?;
 

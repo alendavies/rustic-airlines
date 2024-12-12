@@ -1,6 +1,8 @@
 use std::{
+    env,
     io::{Read, Write},
-    net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+    str::FromStr,
 };
 pub mod server;
 
@@ -32,7 +34,12 @@ pub enum QueryResult {
 impl CassandraClient {
     /// Creates a connection with the node at `ip`.
     pub fn connect(ip: Ipv4Addr) -> Result<Self, ClientError> {
-        let addr = SocketAddr::new(IpAddr::V4(ip), NATIVE_PORT);
+        let addr = if let Ok(var) = env::var("NODE_ADDR") {
+            var.parse().map_err(|_| ClientError)?
+        } else {
+            SocketAddr::new(IpAddr::V4(ip), NATIVE_PORT)
+        };
+
         let stream = TcpStream::connect(addr).map_err(|e| {
             eprintln!("Error al conectar: {:?}", e);
             ClientError
