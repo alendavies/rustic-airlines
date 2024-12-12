@@ -1,4 +1,5 @@
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Ord, PartialOrd, Eq, Default)]
+/// The ordering of `HeartbeatState` is lexicographical based on the `generation` first and then `version`. `Ord` does this.
 /// Represents the heartbeat state of the endpoint in the cluster at a given point in time.
 ///
 /// ### Fields
@@ -7,17 +8,6 @@
 pub struct HeartbeatState {
     pub generation: u128,
     pub version: u32,
-}
-
-/// The ordering of `HeartbeatState` is lexicographical based on the `generation` first and then `version`.
-impl Ord for HeartbeatState {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        if self.generation == other.generation {
-            self.version.cmp(&other.version)
-        } else {
-            self.generation.cmp(&other.generation)
-        }
-    }
 }
 
 impl HeartbeatState {
