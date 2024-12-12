@@ -228,6 +228,7 @@ impl Query {
 
 impl Serializable for Query {
     // this is a [long string]
+    /// ```md
     /// 0         8        16        24        32
     /// +---------+---------+---------+---------+
     /// |        query length (4 bytes)         |
@@ -242,6 +243,7 @@ impl Serializable for Query {
     /// +                                       +
     /// |                 ...                   |
     /// +---------+---------+---------+---------+
+    /// ```
 
     /// Serialize the `Query` struct to a byte vector.
     /// The byte vector will contain the query in the format described above.
