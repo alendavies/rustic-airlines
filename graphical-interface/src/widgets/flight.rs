@@ -12,8 +12,8 @@ pub struct WidgetFlight {
 }
 
 impl WidgetFlight {
-    pub fn new(selected_flight: Flight) -> Self {
-        let flight_data = Db::get_flight_info(&selected_flight.number).unwrap();
+    pub fn new(selected_flight: Flight, db: &mut Db) -> Self {
+        let flight_data = db.get_flight_info(&selected_flight.number).unwrap();
         Self {
             selected_flight,
             flight_data,
