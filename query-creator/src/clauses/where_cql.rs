@@ -122,6 +122,7 @@ impl Where {
     }
 
     // Método recursivo para validar las condiciones de las claves primarias y de clustering.
+    #[allow(clippy::too_many_arguments)]
     fn recursive_validate_conditions(
         condition: &Condition,
         partitioner_keys: &Vec<String>,
@@ -367,6 +368,7 @@ impl Where {
         result
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn collect_clustering_column_values(
         &self,
         condition: &Condition,
