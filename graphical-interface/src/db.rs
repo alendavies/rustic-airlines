@@ -150,6 +150,7 @@ impl Db {
 
 impl Provider for Db {
     /// Get the airports from a country from the database to show them in the graphical interface.
+
     fn get_airports_by_country(&mut self, country: &str) -> std::result::Result<Vec<Airport>, DBError> {
 
         let query = "SELECT * FROM sky.airports WHERE country = 'ARG'".to_string();
@@ -212,6 +213,7 @@ impl Provider for Db {
         let query = format!(
             "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND direction = 'departure' AND departure_time > {from}"
         );
+
 
         let result = self.execute_query(query.as_str(), "all").map_err(|_| DBError)?;
 

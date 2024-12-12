@@ -31,6 +31,7 @@ use internode_protocol::InternodeSerializable;
 use internode_protocol_handler::InternodeProtocolHandler;
 // use keyspace::Keyspace;
 use native_protocol::frame::Frame;
+use native_protocol::messages::auth::{AuthSuccess, Authenticate};
 use native_protocol::messages::error;
 use native_protocol::Serializable;
 use open_query_handler::OpenQueryHandler;
@@ -998,6 +999,8 @@ impl Node {
 
         let client_id = { node.lock()?.generate_client_id() };
 
+        let mut is_authenticated = false;
+
         loop {
             // Clean the buffer
 
@@ -1014,13 +1017,35 @@ impl Node {
                     break;
                 }
                 Ok(_) => {
-                    let query = handle_client_request(&buffer);
-                    match query {
+                    let request = handle_client_request(&buffer).unwrap();
+
+                    match request {
                         Request::Startup => {
-                            stream.write(Frame::Ready.to_bytes()?.as_slice())?;
-                            stream.flush()?;
+
+                            let auth = Frame::Authenticate(Authenticate::default()).to_bytes()?;
+                            stream_guard.write(auth.as_slice())?;
+                            stream_guard.flush()?;
+                        }
+                        Request::AuthResponse(password) => {
+                            let response = if password == "admin" {
+                                is_authenticated = true;
+                                Frame::AuthSuccess(AuthSuccess::default()).to_bytes()?
+                            } else {
+                                Frame::Authenticate(Authenticate::default()).to_bytes()?
+                            };
+
+                            stream_guard.write(response.as_slice())?;
+                            stream_guard.flush()?;
+
                         }
                         Request::Query(query) => {
+                            if !is_authenticated {
+                                let auth =
+                                    Frame::Authenticate(Authenticate::default()).to_bytes()?;
+                                stream_guard.write(auth.as_slice())?;
+                                stream_guard.flush()?;
+                                continue;
+                            }
                             // Handle the query
                             let query_str = query.get_query();
                             let query_consistency_level: &str = &query.get_consistency();

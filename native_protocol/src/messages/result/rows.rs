@@ -451,7 +451,6 @@ impl ColumnValue {
             }
             ColumnType::Int => {
                 let mut int_bytes = [0u8; 4];
-                //dbg!("el cursor es {:?}", &cursor);
                 cursor
                     .read_exact(&mut int_bytes)
                     .map_err(|_| NativeError::CursorError)?;
