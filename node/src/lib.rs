@@ -13,7 +13,7 @@ use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
-use std::sync::{mpsc, Arc, Mutex, RwLock};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 use std::{thread, vec};
 
@@ -970,14 +970,7 @@ impl Node {
 
                     let node_clone = Arc::clone(&node);
                     thread::spawn(move || {
-                        match Node::handle_incoming_client_messages(
-                            node_clone,
-                            stream,
-                            connections_clone,
-                        ) {
-                            Ok(_) => {}
-                            Err(e) => {}
-                        };
+                        Node::handle_incoming_client_messages(node_clone, stream, connections_clone)
                     });
                 }
                 Err(e) => {
@@ -1021,10 +1014,9 @@ impl Node {
 
                     match request {
                         Request::Startup => {
-
                             let auth = Frame::Authenticate(Authenticate::default()).to_bytes()?;
-                            stream_guard.write(auth.as_slice())?;
-                            stream_guard.flush()?;
+                            stream.write(auth.as_slice())?;
+                            stream.flush()?;
                         }
                         Request::AuthResponse(password) => {
                             let response = if password == "admin" {
@@ -1034,16 +1026,15 @@ impl Node {
                                 Frame::Authenticate(Authenticate::default()).to_bytes()?
                             };
 
-                            stream_guard.write(response.as_slice())?;
-                            stream_guard.flush()?;
-
+                            stream.write(response.as_slice())?;
+                            stream.flush()?;
                         }
                         Request::Query(query) => {
                             if !is_authenticated {
                                 let auth =
                                     Frame::Authenticate(Authenticate::default()).to_bytes()?;
-                                stream_guard.write(auth.as_slice())?;
-                                stream_guard.flush()?;
+                                stream.write(auth.as_slice())?;
+                                stream.flush()?;
                                 continue;
                             }
                             // Handle the query

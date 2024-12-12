@@ -15,9 +15,17 @@ const IP: &str = "127.0.0.1";
 pub trait Provider {
     fn get_airports_by_country(&mut self, country: &str) -> Result<Vec<Airport>, DBError>;
 
-    fn get_departure_flights(&mut self, airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError>;
+    fn get_departure_flights(
+        &mut self,
+        airport: &str,
+        date: NaiveDate,
+    ) -> Result<Vec<Flight>, DBError>;
 
-    fn get_arrival_flights(&mut self, airport: &str, date: NaiveDate) -> Result<Vec<Flight>, DBError>;
+    fn get_arrival_flights(
+        &mut self,
+        airport: &str,
+        date: NaiveDate,
+    ) -> Result<Vec<Flight>, DBError>;
 
     fn get_flight_info(&mut self, number: &str) -> Result<FlightInfo, DBError>;
 
@@ -125,7 +133,7 @@ impl Provider for MockProvider {
 } */
 
 pub struct Db {
-    driver: CassandraClient
+    driver: CassandraClient,
 }
 
 impl Default for Db {
@@ -138,9 +146,7 @@ impl Db {
     pub fn new() -> Self {
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
         driver.startup().unwrap();
-        Self {
-            driver: driver,
-        }
+        Self { driver: driver }
     }
 
     fn execute_query(&mut self, query: &str, consistency: &str) -> Result<QueryResult, DBError> {
@@ -150,12 +156,15 @@ impl Db {
 
 impl Provider for Db {
     /// Get the airports from a country from the database to show them in the graphical interface.
-
-    fn get_airports_by_country(&mut self, country: &str) -> std::result::Result<Vec<Airport>, DBError> {
-
+    fn get_airports_by_country(
+        &mut self,
+        country: &str,
+    ) -> std::result::Result<Vec<Airport>, DBError> {
         let query = "SELECT * FROM sky.airports WHERE country = 'ARG'".to_string();
 
-        let result = self.execute_query(query.as_str(), "all").map_err(|_| DBError)?;
+        let result = self
+            .execute_query(query.as_str(), "all")
+            .map_err(|_| DBError)?;
 
         let mut airports: Vec<Airport> = Vec::new();
         if let QueryResult::Result(result_::Result::Rows(res)) = result {
@@ -214,8 +223,9 @@ impl Provider for Db {
             "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND direction = 'departure' AND departure_time > {from}"
         );
 
-
-        let result = self.execute_query(query.as_str(), "all").map_err(|_| DBError)?;
+        let result = self
+            .execute_query(query.as_str(), "all")
+            .map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
 
@@ -303,7 +313,9 @@ impl Provider for Db {
             "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND direction = 'arrival' AND arrival_time > {from} AND arrival_time < {to}"
         );
 
-        let result = self.execute_query(query.as_str(), "all").map_err(|_| DBError)?;
+        let result = self
+            .execute_query(query.as_str(), "all")
+            .map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
 
@@ -618,14 +630,11 @@ impl Provider for Db {
         );
 
         // Ejecución de las consultas en Cassandra
-        self
-            .execute_query(insert_departure_query.as_str(), "all")
+        self.execute_query(insert_departure_query.as_str(), "all")
             .map_err(|_| DBError)?;
-        self
-            .execute_query(insert_arrival_query.as_str(), "all")
+        self.execute_query(insert_arrival_query.as_str(), "all")
             .map_err(|_| DBError)?;
-        self
-            .execute_query(insert_flight_info_query.as_str(), "all")
+        self.execute_query(insert_flight_info_query.as_str(), "all")
             .map_err(|_| DBError)?;
 
         Ok(())
@@ -650,8 +659,7 @@ impl Provider for Db {
             flight.number
         );
 
-        self
-            .execute_query(&update_query_status_departure, "all")
+        self.execute_query(&update_query_status_departure, "all")
             .map_err(|_| DBError)?;
 
         let update_query_status_arrival = format!(
@@ -664,8 +672,7 @@ impl Provider for Db {
                 flight.number
             );
 
-        self
-            .execute_query(&update_query_status_arrival, "all")
+        self.execute_query(&update_query_status_arrival, "all")
             .map_err(|_| DBError)?;
 
         Ok(())
