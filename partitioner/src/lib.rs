@@ -79,19 +79,17 @@ impl Partitioner {
     pub fn remove_node(&mut self, ip: Ipv4Addr) -> Result<Ipv4Addr, PartitionerError> {
         let hash = Self::hash_value(ip.to_string())?;
 
-        let a = self
-            .nodes
+        self.nodes
             .remove(&hash)
-            .ok_or(PartitionerError::NodeNotFound);
-        a
+            .ok_or(PartitionerError::NodeNotFound)
     }
 
     pub fn node_already_in_partitioner(&mut self, ip: &Ipv4Addr) -> Result<bool, PartitionerError> {
         let hash = Self::hash_value(ip.to_string())?;
         if self.nodes.contains_key(&hash) {
-            return Ok(true);
+            Ok(true)
         } else {
-            return Ok(false);
+            Ok(false)
         }
     }
     /// Retrieves the IP address of the node responsible for a given value.

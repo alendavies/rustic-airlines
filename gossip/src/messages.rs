@@ -51,7 +51,7 @@ impl Digest {
         }
     }
 
-    pub fn default() -> Self {
+    pub fn get_default() -> Self {
         Digest {
             address: Ipv4Addr::new(0, 0, 0, 0),
             generation: 0,

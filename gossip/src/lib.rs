@@ -114,8 +114,7 @@ impl Gossiper {
             .get(&ip)
             .ok_or(GossipError::NoEndpointStateForIp)?
             .application_state
-            .status
-            .clone(); // Asumiendo que ApplicationState implementa Clone
+            .status;
 
         Ok(app_state)
     }
