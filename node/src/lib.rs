@@ -381,7 +381,7 @@ impl Node {
                     }
 
                     if needs_to_redistribute {
-                        let _ = log.info("START REDISTRIBUTION...", Color::Cyan, true);
+                        let _ = logger.info("START REDISTRIBUTION...", Color::Cyan, true);
 
                         // Clonar las variables necesarias para el nuevo hilo
                         let storage_path = storage_path.clone();
@@ -394,17 +394,28 @@ impl Node {
                         // Lanzar la redistribución en un nuevo hilo
                         std::thread::spawn(move || {
                             let result = storage_engine::StorageEngine::new(storage_path, self_ip)
-                                .redistribute_data(keyspaces, &partitioner, logger, connections);
+                                .redistribute_data(
+                                    keyspaces,
+                                    &partitioner,
+                                    logger.clone(),
+                                    connections,
+                                );
 
                             if result.is_ok() {
-                                let _ = log.info("END REDISTRIBUTION...", Color::Cyan, true);
+                                let _ =
+                                    logger
+                                        .clone()
+                                        .info("END REDISTRIBUTION...", Color::Cyan, true);
                             } else {
-                                let _ = log.error("REDISTRIBUTION FAILED!", true);
+                                let _ = logger.clone().error("REDISTRIBUTION FAILED!", true);
                             }
                         });
                     }
                 }
-
+                let gossip_logger = log.clone();
+                let _ = gossip_logger
+                    .clone()
+                    .info("GOSSIP: New Gossip Round", Color::White, true);
                 thread::sleep(std::time::Duration::from_millis(1000));
             }
         });

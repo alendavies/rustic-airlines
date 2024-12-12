@@ -89,7 +89,7 @@ impl Logger {
                 LogLevel::Warn => format!("\x1b[93m{}\x1b[0m", log_message), // Bright Yellow
                 LogLevel::Error => format!("\x1b[91m{}\x1b[0m", log_message), // Bright Red
             };
-            println!("{}", colored_message);
+            print!("{}", colored_message);
             io::stdout().flush().map_err(LoggerError::from)?;
         }
 
