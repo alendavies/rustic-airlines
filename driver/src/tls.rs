@@ -15,7 +15,11 @@ fn load_root_cert(path: &Path) -> RootCertStore {
 
 pub fn configure_client() -> ClientConfig {
     let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-    let path = Path::new(&project_dir).parent().unwrap_or_else(|| Path::new(".")).join("certs").join("cert.crt");
+    let path = Path::new(&project_dir)
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("certs")
+        .join("cert.crt");
     let root_store = load_root_cert(&path);
 
     match rustls::crypto::aws_lc_rs::default_provider().install_default() {
@@ -25,9 +29,7 @@ pub fn configure_client() -> ClientConfig {
         }
     }
 
-    let client_config = ClientConfig::builder()
+    ClientConfig::builder()
         .with_root_certificates(root_store)
-        .with_no_client_auth();
-
-    client_config
+        .with_no_client_auth()
 }
