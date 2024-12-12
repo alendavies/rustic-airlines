@@ -18,7 +18,7 @@ pub enum MessageError {
     CursorError,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Copy)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
 /// A `Digest` used to identify a node in the cluster.
 ///
 /// ### Fields
@@ -41,6 +41,22 @@ impl Ord for Digest {
     }
 }
 
+impl PartialOrd for Digest {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Default for Digest {
+    fn default() -> Self {
+        Self {
+            address: Ipv4Addr::new(0, 0, 0, 0),
+            generation: 0,
+            version: 0,
+        }
+    }
+}
+
 impl Digest {
     /// Create a new `Digest` message.
     pub fn new(address: Ipv4Addr, generation: u128, version: u32) -> Self {
@@ -48,14 +64,6 @@ impl Digest {
             address,
             generation,
             version,
-        }
-    }
-
-    pub fn default() -> Self {
-        Digest {
-            address: Ipv4Addr::new(0, 0, 0, 0),
-            generation: 0,
-            version: 0,
         }
     }
 
