@@ -4,7 +4,7 @@ pub mod errors;
 pub mod frame;
 pub mod header;
 pub mod messages;
-mod types;
+pub mod types;
 
 pub trait Serializable {
     fn to_bytes(&self) -> std::result::Result<Vec<u8>, NativeError>;

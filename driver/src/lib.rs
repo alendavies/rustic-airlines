@@ -9,8 +9,10 @@ use native_protocol::{
     frame::Frame,
     messages::{
         self,
+        auth::{AuthResponse, Authenticate},
         query::{Consistency, Query, QueryParams},
     },
+    types::Bytes,
     Serializable,
 };
 
@@ -66,11 +68,31 @@ impl CassandraClient {
         let mut result = [0u8; 2048];
         let _ = self.stream.read(&mut result).map_err(|_| ClientError)?;
 
-        let ready = Frame::from_bytes(&result).map_err(|_| ClientError)?;
+        let response = Frame::from_bytes(&result).map_err(|_| ClientError)?;
 
-        match ready {
-            Frame::Ready => Ok(()),
-            _ => Err(ClientError),
+        match response {
+            Frame::Authenticate(_) => {
+                let auth_response = Frame::AuthResponse(AuthResponse::new(Bytes::Vec(
+                    "admin".to_string().as_bytes().to_vec(),
+                )));
+
+                self.stream
+                    .write_all(&auth_response.to_bytes().map_err(|_| ClientError)?)
+                    .map_err(|_| ClientError)?;
+
+                let mut result = [0u8; 2048];
+
+                let _ = self.stream.read(&mut result).map_err(|_| ClientError)?;
+
+                let response = Frame::from_bytes(&result).map_err(|_| ClientError)?;
+
+                match response {
+                    Frame::AuthSuccess(_) => return Ok(()),
+                    _ => return Err(ClientError),
+                }
+            }
+            Frame::Ready => return Ok(()),
+            _ => return Err(ClientError),
         }
     }
 
@@ -89,7 +111,6 @@ impl CassandraClient {
 
         let mut result = [0u8; 850000];
         self.stream.read(&mut result).map_err(|_| ClientError)?;
-        // dbg!(&String::from_utf8(result.to_vec()).unwrap());
         let result = Frame::from_bytes(&result).map_err(|_| ClientError)?;
         Ok(result)
     }
