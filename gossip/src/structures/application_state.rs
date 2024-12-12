@@ -602,7 +602,7 @@ impl KeyspaceSchema {
         let table = self
             .tables
             .iter()
-            .find(|table| table.get_name() == table_name.to_string())
+            .find(|table| table.get_name() == *table_name)
             .cloned();
         if let Some(table) = table {
             return Ok(table);
