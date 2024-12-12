@@ -12,7 +12,7 @@ use crate::{
 /// ### Fields
 ///
 /// - `authenticator` - The name of the authentication mechanism to use.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct Authenticate {
     pub authenticator: String,
 }
@@ -43,9 +43,15 @@ impl Serializable for Authenticate {
 /// ### Fields
 ///
 /// - `token` - The authentication token. The details of what this token contains (and when it can be null/empty, if ever) depends on the actual authenticator used.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct AuthResponse {
     pub token: Bytes,
+}
+
+impl AuthResponse {
+    pub fn new(token: Bytes) -> Self {
+        Self { token }
+    }
 }
 
 impl Serializable for AuthResponse {
@@ -72,7 +78,7 @@ impl Serializable for AuthResponse {
 /// ### Fields
 ///
 /// - `token` - The authentication token. Holds final information from the server that the client may require to finish the authentication process. What that token contains and whether it can be null depends on the actual authenticator used.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct AuthSuccess {
     pub token: Bytes,
 }
