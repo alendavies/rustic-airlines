@@ -11,6 +11,7 @@ use crate::types::flight_status::FlightStatus;
 
 pub struct Client {
     cassandra_client: CassandraClient,
+    ip: Ipv4Addr
 }
 
 impl Client {
@@ -20,10 +21,20 @@ impl Client {
 
         cassandra_client.startup()?;
 
-        let mut client = Self { cassandra_client };
+        let mut client = Self { cassandra_client, ip };
         client.setup_keyspace_and_tables()?;
 
         Ok(client)
+    }
+
+    fn recreate_client(&mut self)-> Result<(), ClientError> {
+        let mut cassandra_client = CassandraClient::connect(self.ip)?;
+
+        cassandra_client.startup()?;
+
+        self.cassandra_client = cassandra_client;
+
+        Ok(())
     }
 
     /// Sets up the keyspace and required tables in Cassandra
@@ -32,11 +43,11 @@ impl Client {
             CREATE KEYSPACE sky
             WITH REPLICATION = {
                 'class': 'SimpleStrategy',
-                'replication_factor': 2
+                'replication_factor': 3
             };
         "#;
         self.cassandra_client
-            .execute(create_keyspace_query, "all")?;
+            .execute(create_keyspace_query, "quorum")?;
 
         let create_flights_table = r#"
             CREATE TABLE sky.flights (
@@ -52,7 +63,7 @@ impl Client {
                 PRIMARY KEY (airport, direction, departure_time, arrival_time, number)
             )
             "#;
-        self.cassandra_client.execute(create_flights_table, "all")?;
+        self.cassandra_client.execute(create_flights_table, "quorum")?;
 
         let create_flight_info_table = r#"
             CREATE TABLE sky.flight_info (
@@ -66,7 +77,7 @@ impl Client {
             )
         "#;
         self.cassandra_client
-            .execute(create_flight_info_table, "all")?;
+            .execute(create_flight_info_table, "quorum")?;
 
         let create_airports_table = r#"
             CREATE TABLE sky.airports (
@@ -79,7 +90,7 @@ impl Client {
             )
         "#;
         self.cassandra_client
-            .execute(create_airports_table, "all")?;
+            .execute(create_airports_table, "quorum")?;
 
         println!("Keyspace and tables created successfully.");
         Ok(())
@@ -91,7 +102,7 @@ impl Client {
             airport.iata_code, airport.country, airport.name, airport.latitude, airport.longitude
         );
 
-        if let Err(e) = self.cassandra_client.execute(&insert_airport_query, "all") {
+        if let Err(e) = self.cassandra_client.execute(&insert_airport_query, "quorum") {
             println!("No se pudo agregar el aeropuerto, el error es {:?}", e);
             return Ok(());
         }
@@ -140,20 +151,20 @@ impl Client {
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&insert_departure_query, "all")
+            .execute(&insert_departure_query, "quorum")
         {
             println!("No se pudo agregar el vuelo, el error es {:?}", e);
             return Ok(());
         }
 
-        if let Err(e) = self.cassandra_client.execute(&insert_arrival_query, "all") {
+        if let Err(e) = self.cassandra_client.execute(&insert_arrival_query, "quorum") {
             println!("No se pudo agregar el aeropuerto, el error es {:?}", e);
             return Ok(());
         }
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&insert_flight_info_query, "quorum")
+            .execute(&insert_flight_info_query, "one")
         {
             println!("No se pudo agregar el aeropuerto, el error es {:?}", e);
             return Ok(());
@@ -179,9 +190,10 @@ impl Client {
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&update_query_status_departure, "quorum")
+            .execute(&update_query_status_departure, "one")
         {
             println!("No se pudo actualizar el vuelo, el error es {:?}", e);
+            self.recreate_client()?;
             return Ok(());
         }
 
@@ -199,9 +211,9 @@ impl Client {
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&update_query_status_arrival, "quorum")
+            .execute(&update_query_status_arrival, "one")
         {
-            println!("No se pudo actualizar el vuelo, el error es {:?}", e);
+            println!("No se pudo actualizar el vuelo, el error es {:?} 1", e);
             return Ok(());
         }
 
@@ -212,9 +224,9 @@ impl Client {
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&update_query_flight_info, "quorum")
+            .execute(&update_query_flight_info, "one")
         {
-            println!("No se pudo actualizar el vuelo, el error es {:?}", e);
+            println!("No se pudo actualizar el vuelo, el error es {:?} 2", e);
             return Ok(());
         }
 
@@ -236,12 +248,13 @@ impl Client {
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&update_query_status_departure, "all")
+            .execute(&update_query_status_departure, "quorum")
         {
             println!(
-                "No se pudo actualizar el estado del vuelo, el error es {:?}",
+                "No se pudo actualizar el estado del vuelo, el error es {:?} 1",
                 e
             );
+            self.recreate_client()?;
             return Ok(());
         }
 
@@ -258,7 +271,7 @@ impl Client {
             );
         if let Err(e) = self
             .cassandra_client
-            .execute(&update_query_status_arrival, "all")
+            .execute(&update_query_status_arrival, "quorum")
         {
             println!(
                 "No se pudo actualizar el estado del vuelo, el error es {:?}",
@@ -286,7 +299,7 @@ impl Client {
                 "SELECT number, status, lat, lon, angle, departure_time, arrival_time, direction FROM sky.flights WHERE airport = '{airport_code}' AND direction = 'departure' AND arrival_time > {from}"
             );
 
-            let result = self.cassandra_client.execute(&query, "all")?;
+            let result = self.cassandra_client.execute(&query, "quorum")?;
 
             if let QueryResult::Result(result_::Result::Rows(res)) = result {
                 for row in res.rows_content {
@@ -402,7 +415,7 @@ impl Client {
             "SELECT fuel, height, speed, destination FROM sky.flight_info WHERE number = '{number}'"
         );
 
-        let result = self.cassandra_client.execute(&query, "quorum")?;
+        let result = self.cassandra_client.execute(&query, "one")?;
 
         if let QueryResult::Result(result_::Result::Rows(res)) = result {
             for row in res.rows_content {

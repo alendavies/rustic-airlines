@@ -37,7 +37,7 @@ impl Simulation {
     /// Start the simulation
     pub fn start(&self) {
         let flights = Arc::clone(&self.flights);
-        let airports = Arc::clone(&self.airports); // Clone the Arc pointer, not the data
+        let airports = Arc::clone(&self.airports);
         let db = Arc::clone(&self.db);
         let thread_pool = Arc::clone(&self.thread_pool);
         let timer = Arc::clone(&self.timer);
