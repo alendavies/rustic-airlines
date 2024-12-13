@@ -278,7 +278,7 @@ impl CursorSerializable for CreateTable {
 
         for column in &self.clustering_columns_in_order {
             clustering_columns_bytes.extend_from_slice(&(column.len() as u32).to_be_bytes());
-            clustering_columns_bytes.extend_from_slice(&column.as_bytes());
+            clustering_columns_bytes.extend_from_slice(column.as_bytes());
         }
 
         bytes.extend_from_slice(&clustering_columns_bytes);
@@ -602,12 +602,13 @@ impl KeyspaceSchema {
         let table = self
             .tables
             .iter()
-            .find(|table| table.get_name() == table_name.to_string())
+            .find(|table| table.get_name() == *table_name)
             .cloned();
+
         if let Some(table) = table {
-            return Ok(table);
+            Ok(table)
         } else {
-            return Err(SchemaError::InvalidTable(table_name.to_string()));
+            Err(SchemaError::InvalidTable(table_name.to_string()))
         }
     }
 

@@ -1423,7 +1423,14 @@ mod tests {
                         }],
                     }
                 )]),
-                timestamp: 0
+                // copy timestamp from insertion
+                timestamp: gossiper
+                    .endpoints_state
+                    .get(&ip)
+                    .unwrap()
+                    .application_state
+                    .schema
+                    .timestamp
             }
         );
 

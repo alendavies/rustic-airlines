@@ -29,9 +29,7 @@ pub fn configure_client() -> ClientConfig {
         }
     }
 
-    let client_config = ClientConfig::builder()
+    ClientConfig::builder()
         .with_root_certificates(root_store)
-        .with_no_client_auth();
-
-    client_config
+        .with_no_client_auth()
 }

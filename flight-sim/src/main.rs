@@ -103,11 +103,7 @@ fn start_flight_check_thread(sim_state: Arc<RwLock<SimState>>) {
         });
 
         match sim_state {
-            Ok(mut sim_state) => {
-                if let Err(_) = sim_state.check_for_new_flights() {
-                    ()
-                }
-            }
+            Ok(mut sim_state) => if sim_state.check_for_new_flights().is_err() {},
             Err(_) => eprintln!("Error acquiring write lock for SimState."),
         }
 
@@ -588,7 +584,7 @@ fn add_test_data(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> 
         let departure_str = departure_time.format("%d-%m-%Y %H:%M:%S").to_string();
         let arrival_str = arrival_time.format("%d-%m-%Y %H:%M:%S").to_string();
         let flight = Flight::new_from_console(
-            &sim_state.airports(),
+            sim_state.airports(),
             flight_number,
             origin,
             destination,

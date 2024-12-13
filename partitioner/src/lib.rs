@@ -90,10 +90,11 @@ impl Partitioner {
 
     pub fn node_already_in_partitioner(&mut self, ip: &Ipv4Addr) -> Result<bool, PartitionerError> {
         let hash = Self::hash_value(ip.to_string())?;
+
         if self.nodes.contains_key(&hash) {
-            return Ok(true);
+            Ok(true)
         } else {
-            return Ok(false);
+            Ok(false)
         }
     }
     /// Retrieves the IP address of the node responsible for a given value.
