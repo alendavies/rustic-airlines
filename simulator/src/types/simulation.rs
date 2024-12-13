@@ -238,13 +238,12 @@ impl Simulation {
                         }
                     }
                 }
+                println!("\nPress 'q' and Enter to exit list-flights mode");
             }
 
             if rx.try_recv().is_ok() {
                 break;
             }
-
-            println!("\nPress 'q' and Enter to exit list-flights mode");
 
             thread::sleep(Duration::from_millis(TICK_FREQUENCY_MILLIS));
         }
