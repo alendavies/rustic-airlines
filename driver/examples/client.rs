@@ -1,5 +1,5 @@
 use driver::CassandraClient;
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{net::Ipv4Addr, str::FromStr, thread, time::Duration};
 
 /// Example Rust program to interact with a Cassandra server.
 /// This program demonstrates:
@@ -80,7 +80,7 @@ fn main() {
     let mut contador = 0;
     let len = queries.len() + create.len();
 
-    for (i, query) in create.iter().enumerate() {
+    for (_, query) in create.iter().enumerate() {
         match client.execute(&query, "all") {
             Ok(query_result) => {
                 match query_result {
@@ -102,31 +102,28 @@ fn main() {
     }
 
     thread::sleep(Duration::from_secs(2));
-
-    for (_i, query) in queries.iter().enumerate() {
-        let len = queries.len();
-        for (_, query) in queries.iter().enumerate() {
-            // if i == 2 {
-            //     thread::sleep(Duration::from_secs(2));
-            // }
-            match client.execute(&query, "all") {
-                Ok(query_result) => {
-                    match query_result {
-                        driver::QueryResult::Result(result) => {
-                            contador += 1;
-                            println!(
-                                "Consulta ejecutada exitosamente: {} y el resultado fue {:?}",
-                                query, result
-                            );
-                        }
-                        driver::QueryResult::Error(error) => {
-                            println!("La query: {:?} fallo con el error {:?}", query, error);
-                        }
+    let len = queries.len();
+    for (_, query) in queries.iter().enumerate() {
+        // if i == 2 {
+        //     thread::sleep(Duration::from_secs(2));
+        // }
+        match client.execute(&query, "all") {
+            Ok(query_result) => {
+                match query_result {
+                    driver::QueryResult::Result(result) => {
+                        contador += 1;
+                        println!(
+                            "Consulta ejecutada exitosamente: {} y el resultado fue {:?}",
+                            query, result
+                        );
                     }
-                    println!("exitosas {:?}/{:?}", contador, len)
+                    driver::QueryResult::Error(error) => {
+                        println!("La query: {:?} fallo con el error {:?}", query, error);
+                    }
                 }
-                Err(e) => eprintln!("Error al ejecutar la consulta: {}\nError: {:?}", query, e),
+                println!("exitosas {:?}/{:?}", contador, len)
             }
+            Err(e) => eprintln!("Error al ejecutar la consulta: {}\nError: {:?}", query, e),
         }
     }
 }

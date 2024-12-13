@@ -11,11 +11,11 @@ mod utils;
 use std::collections::HashMap;
 use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
-use std::{thread, vec};
+use std::{env, thread, vec};
 
 // External libraries
 use chrono::Utc;
@@ -994,11 +994,18 @@ impl Node {
         self_ip: std::net::Ipv4Addr,
     ) -> Result<(), NodeError> {
         // Cargar configuración TLS
-        let certs = CertificateDer::pem_file_iter("certs/cert.crt")
+        let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+        let path_certs = Path::new(&project_dir)
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("certs");
+
+        // Cargar configuración TLS
+        let certs = CertificateDer::pem_file_iter(path_certs.join("cert.crt"))
             .unwrap()
             .map(|cert| cert.unwrap())
             .collect();
-        let private_key = PrivateKeyDer::from_pem_file("certs/cert.key").unwrap();
+        let private_key = PrivateKeyDer::from_pem_file(path_certs.join("cert.key")).unwrap();
 
         match rustls::crypto::aws_lc_rs::default_provider().install_default() {
             Ok(_) => {}
@@ -1108,10 +1115,9 @@ impl Node {
                             let query_consistency_level: &str = &query.get_consistency();
                             log.info(
                                 &format!(
-                                    "NATIVE: I RECEIVED {} whit CL: {} from client {:?}",
+                                    "NATIVE: I RECEIVED {} whit CL: {} from CLIENT",
                                     query_str.replace("\n", ""),
                                     query_consistency_level,
-                                    stream_guard.peer_addr()?
                                 ),
                                 Color::Yellow,
                                 true,

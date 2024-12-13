@@ -266,10 +266,7 @@ impl InternodeProtocolHandler {
                     .create_client_response(columns, keyspace_name, rows)?;
 
             logger.info(
-                &format!(
-                    "NATIVE: I sent FRAME RESPONSE to client {:?}",
-                    connection.peer_addr()?
-                ),
+                &format!("NATIVE: I sent FRAME RESPONSE to client",),
                 Color::Yellow,
                 true,
             )?;

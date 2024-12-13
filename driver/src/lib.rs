@@ -2,7 +2,7 @@ use std::{
     env,
     io::{Read, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
-    time::Duration,
+    sync::Arc,
 };
 pub mod server;
 mod tls;
@@ -53,7 +53,10 @@ impl CassandraClient {
         };
 
         let sock = TcpStream::connect(addr).unwrap();
-
+        sock.set_read_timeout(Some(std::time::Duration::from_secs(3)))
+            .map_err(|_| ClientError)?;
+        sock.set_write_timeout(Some(std::time::Duration::from_secs(3)))
+            .map_err(|_| ClientError)?;
         let tls = StreamOwned::new(conn, sock);
 
         Ok(Self { stream: tls })
@@ -124,11 +127,6 @@ impl CassandraClient {
         // Escribir la consulta en el stream
         self.stream
             .write_all(query.to_bytes().map_err(|_| ClientError)?.as_slice())
-            .map_err(|_| ClientError)?;
-
-        // Configurar timeout para lectura
-        self.stream
-            .set_read_timeout(Some(Duration::from_secs(3)))
             .map_err(|_| ClientError)?;
 
         let mut result = [0u8; 850000];
