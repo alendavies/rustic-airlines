@@ -29,3 +29,17 @@ Para compilar y ejecutar el programa existen las siguientes opciones:
 -   Para ejecutar la interfaz gráfica, en base a los datos previamente cargados al cluster, ejecutar `cargo run` en `graphical-interface`.
 
 ## Como testear
+
+## Correr con Docker
+
+Correr el clúster de nodos definido en `compose.yml` con: `sudo docker compose up --build`.
+
+El driver intenta utilizar la variable de entorno `NODE_ADDR` para conectarse con el cluster. Por ejemplo, corriendo `export NODE_ADDR="127.0.0.1:10000" && cargo run` en `graphical-interface`, la interfaz gŕafica se conecta al cluster por el puerto 10000 mapeado a un nodo del cluster seún lo definido en `compose.yml`.
+
+- `cd graphical-interface && export NODE_ADDR="127.0.0.1:10001" && cargo run`
+
+- `cd flight-sim && export NODE_ADDR="127.0.0.1:10002" && cargo run`
+
+La IP nodo semilla utilizado por un nodo también puede configurarse seteando la variable de entorno `SEED`.
+
+Se pueden agregar y quitar nodos configurando correctamente las direcciones IP en `compose.yml`.

@@ -1,4 +1,4 @@
-// Local modules first
+// Local modules firstsrc/lib
 mod errors;
 mod internode_protocol;
 mod internode_protocol_handler;
@@ -12,7 +12,8 @@ use std::collections::HashMap;
 use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 use std::{thread, vec};
 
@@ -31,6 +32,7 @@ use internode_protocol_handler::InternodeProtocolHandler;
 // use keyspace::Keyspace;
 use logger::{Color, Logger};
 use native_protocol::frame::Frame;
+use native_protocol::messages::auth::{AuthSuccess, Authenticate};
 use native_protocol::messages::error;
 use native_protocol::Serializable;
 use open_query_handler::OpenQueryHandler;
@@ -42,6 +44,9 @@ use query_creator::errors::CQLError;
 use query_creator::{GetTableName, GetUsedKeyspace, NeedsKeyspace, NeedsTable, Query};
 use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use storage_engine::StorageEngine;
 use utils::{check_keyspace, check_table, connect_and_send_message};
 
@@ -484,7 +489,7 @@ impl Node {
         &mut self,
         query: Query,
         consistency_level: &str,
-        connection: TcpStream,
+        tx_reply: Sender<Frame>,
         table: Option<TableSchema>,
         keyspace: Option<KeyspaceSchema>,
     ) -> Result<i32, NodeError> {
@@ -512,7 +517,7 @@ impl Node {
 
         Ok(self.open_query_handler.new_open_query(
             needed_responses as i32,
-            connection,
+            tx_reply,
             query,
             consistency_level,
             table,
@@ -988,26 +993,43 @@ impl Node {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         self_ip: std::net::Ipv4Addr,
     ) -> Result<(), NodeError> {
+        // Cargar configuración TLS
+        let certs = CertificateDer::pem_file_iter("certs/cert.crt")
+            .unwrap()
+            .map(|cert| cert.unwrap())
+            .collect();
+        let private_key = PrivateKeyDer::from_pem_file("certs/cert.key").unwrap();
+
+        match rustls::crypto::aws_lc_rs::default_provider().install_default() {
+            Ok(_) => {}
+            Err(err) => {
+                eprintln!("Failed to install CryptoProvider: {:?}", err);
+            }
+        }
+
+        let config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, private_key)
+            .unwrap();
+
         let socket = SocketAddrV4::new(self_ip, CLIENT_NODE_PORT); // Specific port for clients
         let listener = TcpListener::bind(socket)?;
+
         for stream in listener.incoming() {
             match stream {
-                Ok(stream) => {
-                    let node_clone = Arc::clone(&node);
-                    let stream = Arc::new(Mutex::new(stream.try_clone()?)); // Cloning the stream
+                Ok(mut stream) => {
+                    // Crear una conexión TLS para el stream TCP
+                    let mut conn = ServerConnection::new(Arc::new(config.clone()))
+                        .expect("No se pudo crear la conexión TLS");
+
+                    conn.complete_io(&mut stream).unwrap();
                     let connections_clone = Arc::clone(&connections);
 
+                    let stream = StreamOwned::new(conn, stream);
+
+                    let node_clone = Arc::clone(&node);
                     thread::spawn(move || {
-                        match Node::handle_incoming_client_messages(
-                            node_clone,
-                            stream.clone(),
-                            connections_clone,
-                        ) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                eprintln!("Error handling query: [{:?}]", e);
-                            }
-                        };
+                        Node::handle_incoming_client_messages(node_clone, stream, connections_clone)
                     });
                 }
                 Err(e) => {
@@ -1022,13 +1044,10 @@ impl Node {
     // Receives packets from the client
     fn handle_incoming_client_messages(
         node: Arc<Mutex<Node>>,
-        stream: Arc<Mutex<TcpStream>>,
+        mut stream: StreamOwned<ServerConnection, TcpStream>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
         // Clone the stream under Mutex protection and create the reader
-        let mut stream_guard = stream.lock()?;
-
-        let mut reader = BufReader::new(stream_guard.try_clone().map_err(NodeError::IoError)?);
 
         let client_id;
         let log;
@@ -1039,17 +1058,17 @@ impl Node {
             log = guard_node.get_logger();
         };
 
+        let mut is_authenticated = false;
+
         loop {
             // Clean the buffer
-            // let mut buffer = String::new();
 
             let mut buffer = [0; 2048];
 
             // Execute initial inserts if necessary
 
             // Try to read a line
-            // let bytes_read = reader.read_line(&mut buffer);
-            let bytes_read = reader.read(&mut buffer);
+            let bytes_read = stream.read(&mut buffer);
 
             match bytes_read {
                 Ok(0) => {
@@ -1057,13 +1076,33 @@ impl Node {
                     break;
                 }
                 Ok(_) => {
-                    let query = handle_client_request(&buffer);
-                    match query {
+                    let request = handle_client_request(&buffer).unwrap();
+
+                    match request {
                         Request::Startup => {
-                            stream_guard.write(Frame::Ready.to_bytes()?.as_slice())?;
-                            stream_guard.flush()?;
+                            let auth = Frame::Authenticate(Authenticate::default()).to_bytes()?;
+                            stream.write(auth.as_slice())?;
+                            stream.flush()?;
+                        }
+                        Request::AuthResponse(password) => {
+                            let response = if password == "admin" {
+                                is_authenticated = true;
+                                Frame::AuthSuccess(AuthSuccess::default()).to_bytes()?
+                            } else {
+                                Frame::Authenticate(Authenticate::default()).to_bytes()?
+                            };
+
+                            stream.write(response.as_slice())?;
+                            stream.flush()?;
                         }
                         Request::Query(query) => {
+                            if !is_authenticated {
+                                let auth =
+                                    Frame::Authenticate(Authenticate::default()).to_bytes()?;
+                                stream.write(auth.as_slice())?;
+                                stream.flush()?;
+                                continue;
+                            }
                             // Handle the query
                             let query_str = query.get_query();
                             let query_consistency_level: &str = &query.get_consistency();
@@ -1077,14 +1116,15 @@ impl Node {
                                 Color::Yellow,
                                 true,
                             )?;
-                            let client_stream = stream_guard.try_clone()?;
+
+                            let (tx_reply, rx_reply) = mpsc::channel();
 
                             let result = Node::handle_query_execution(
                                 query_str,
                                 query_consistency_level,
                                 &node,
                                 connections.clone(),
-                                client_stream,
+                                tx_reply,
                                 client_id,
                             );
 
@@ -1096,8 +1136,12 @@ impl Node {
                                 if let Ok(value) = frame_bytes_result {
                                     frame_bytes = value;
                                 }
-                                stream_guard.write(&frame_bytes)?;
-                                stream_guard.flush()?;
+                                stream.write(&frame_bytes)?;
+                                stream.flush()?;
+                            } else {
+                                // await resolution of the query
+                                let reply = rx_reply.recv().map_err(|_| NodeError::OtherError)?;
+                                stream.write(&reply.to_bytes()?)?;
                             }
                         }
                     };
@@ -1189,7 +1233,7 @@ impl Node {
         consistency_level: &str,
         node: &Arc<Mutex<Node>>,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
-        client_connection: TcpStream,
+        tx_reply: Sender<Frame>,
         client_id: i32,
     ) -> Result<(), NodeError> {
         let query = QueryCreator::new()
@@ -1231,7 +1275,7 @@ impl Node {
             open_query_id = guard_node.add_open_query(
                 query.clone(),
                 consistency_level,
-                client_connection.try_clone()?,
+                tx_reply,
                 table,
                 keyspace,
             )?;

@@ -604,6 +604,7 @@ impl KeyspaceSchema {
             .iter()
             .find(|table| table.get_name() == *table_name)
             .cloned();
+
         if let Some(table) = table {
             Ok(table)
         } else {

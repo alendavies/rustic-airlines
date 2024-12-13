@@ -19,8 +19,8 @@ fn main() {
     // Conectarse al servidor Cassandra
     let mut client = CassandraClient::connect(ip).unwrap();
     client.startup().unwrap();
-    let queries = vec![
-    // Crear un keyspace
+
+    let create = vec![ // Crear un keyspace
     "CREATE KEYSPACE people_data WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 4};".to_string(),
 
     // Crear una tabla
@@ -32,7 +32,9 @@ fn main() {
         email TEXT,
         phone TEXT,
         PRIMARY KEY (partition_key, clustering_key, name)
-    );".to_string(),
+    );".to_string(),];
+
+    let queries = vec![
 
     // Insertar datos para SEXO = 'Masculino' con clustering_key 'Argentina'
     "INSERT INTO people_data.persons (partition_key, clustering_key, name, age, email, phone) VALUES ('Masculino', 'Argentina', 'a', 30, 'juan.perez@example.com', '+5491123456789');".to_string(),
@@ -76,11 +78,9 @@ fn main() {
 
     // Ejecutar cada consulta en un loop
     let mut contador = 0;
-    let len = queries.len();
-    for (_, query) in queries.iter().enumerate() {
-        // if i == 2 {
-        //     thread::sleep(Duration::from_secs(2));
-        // }
+    let len = queries.len() + create.len();
+
+    for (i, query) in create.iter().enumerate() {
         match client.execute(&query, "all") {
             Ok(query_result) => {
                 match query_result {
@@ -98,6 +98,35 @@ fn main() {
                 println!("exitosas {:?}/{:?}", contador, len)
             }
             Err(e) => eprintln!("Error al ejecutar la consulta: {}\nError: {:?}", query, e),
+        }
+    }
+
+    thread::sleep(Duration::from_secs(2));
+
+    for (_i, query) in queries.iter().enumerate() {
+        let len = queries.len();
+        for (_, query) in queries.iter().enumerate() {
+            // if i == 2 {
+            //     thread::sleep(Duration::from_secs(2));
+            // }
+            match client.execute(&query, "all") {
+                Ok(query_result) => {
+                    match query_result {
+                        driver::QueryResult::Result(result) => {
+                            contador += 1;
+                            println!(
+                                "Consulta ejecutada exitosamente: {} y el resultado fue {:?}",
+                                query, result
+                            );
+                        }
+                        driver::QueryResult::Error(error) => {
+                            println!("La query: {:?} fallo con el error {:?}", query, error);
+                        }
+                    }
+                    println!("exitosas {:?}/{:?}", contador, len)
+                }
+                Err(e) => eprintln!("Error al ejecutar la consulta: {}\nError: {:?}", query, e),
+            }
         }
     }
 }

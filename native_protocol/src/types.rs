@@ -108,6 +108,12 @@ pub enum Bytes {
     Vec(Vec<u8>),
 }
 
+impl Default for Bytes {
+    fn default() -> Self {
+        Bytes::None
+    }
+}
+
 impl Bytes {
     pub fn to_bytes(&self) -> std::result::Result<Vec<u8>, NativeError> {
         let mut bytes = Vec::new();

@@ -13,6 +13,6 @@ pub fn run() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Flight Tracker",
         Default::default(),
-        Box::new(|cc| Ok(Box::new(MyApp::new(cc.egui_ctx.clone(), Db)))),
+        Box::new(|cc| Ok(Box::new(MyApp::new(cc.egui_ctx.clone(), Db::new())))),
     )
 }

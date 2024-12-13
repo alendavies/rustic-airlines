@@ -117,6 +117,7 @@ pub enum Result {
 }
 
 impl Serializable for Result {
+    /// ```md
     /// 0        8        16       24       32
     /// +---------+---------+---------+---------+
     /// |            Kind (4 bytes)             |
@@ -125,6 +126,7 @@ impl Serializable for Result {
     /// +                                       +
     /// |                ...                    |
     /// +---------+---------+---------+---------+
+    /// ```
     fn to_bytes(&self) -> std::result::Result<Vec<u8>, NativeError> {
         let mut bytes = Vec::new();
 

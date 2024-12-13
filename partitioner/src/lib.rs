@@ -86,6 +86,7 @@ impl Partitioner {
 
     pub fn node_already_in_partitioner(&mut self, ip: &Ipv4Addr) -> Result<bool, PartitionerError> {
         let hash = Self::hash_value(ip.to_string())?;
+
         if self.nodes.contains_key(&hash) {
             Ok(true)
         } else {

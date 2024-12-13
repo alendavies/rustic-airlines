@@ -1,10 +1,12 @@
 use crate::errors::NodeError;
 use crate::internode_protocol::response::InternodeResponse;
 use gossip::structures::application_state::{KeyspaceSchema, TableSchema};
+use native_protocol::frame::Frame;
 use query_creator::Query;
 use std::collections::HashMap;
 use std::fmt;
-use std::net::{Ipv4Addr, TcpStream};
+use std::net::Ipv4Addr;
+use std::sync::mpsc::Sender;
 
 #[derive(Debug, PartialEq)]
 
@@ -195,7 +197,7 @@ pub struct OpenQuery {
     ok_responses: i32,
     error_responses: i32,
     acumulated_ok_responses: Vec<(Ipv4Addr, InternodeResponse)>,
-    connection: TcpStream,
+    tx_reply: Sender<Frame>,
     query: Query,
     consistency_level: ConsistencyLevel,
     table: Option<TableSchema>,
@@ -204,7 +206,7 @@ pub struct OpenQuery {
 impl OpenQuery {
     fn new(
         needed_responses: i32,
-        connection: TcpStream,
+        tx_reply: Sender<Frame>,
         query: Query,
         consistencty: &str,
         table: Option<TableSchema>,
@@ -214,7 +216,7 @@ impl OpenQuery {
             ok_responses: 0,
             error_responses: 0,
             acumulated_ok_responses: vec![],
-            connection,
+            tx_reply,
             query,
             consistency_level: ConsistencyLevel::from_str(consistencty),
             table,
@@ -277,8 +279,8 @@ impl OpenQuery {
     ///
     /// # Notes
     /// - This method returns a reference, so the caller must not drop or close the connection.
-    pub fn get_connection(&self) -> &TcpStream {
-        &self.connection
+    pub fn get_connection(&self) -> Sender<Frame> {
+        self.tx_reply.clone()
     }
 
     /// Returns a clone of the query associated with the `OpenQuery`.
@@ -473,7 +475,7 @@ impl OpenQueryHandler {
     pub fn new_open_query(
         &mut self,
         needed_responses: i32,
-        connection: TcpStream,
+        tx_reply: Sender<Frame>,
         query: Query,
         consistency_level: &str,
         table: Option<TableSchema>,
@@ -481,13 +483,7 @@ impl OpenQueryHandler {
     ) -> i32 {
         let new_id = self.next_id;
         self.next_id += 1;
-        let query = OpenQuery::new(
-            needed_responses,
-            connection,
-            query,
-            consistency_level,
-            table,
-        );
+        let query = OpenQuery::new(needed_responses, tx_reply, query, consistency_level, table);
         self.queries.insert(new_id, query);
         self.keyspaces_queries.insert(new_id, keyspace);
         new_id

@@ -1,5 +1,5 @@
 use crate::{
-    db::Provider,
+    db::{Db, Provider},
     types::{Airport, Flight, FlightInfo, FlightStatus},
 };
 use chrono::{NaiveDate, Utc};
@@ -44,12 +44,7 @@ impl WidgetAddFlight {
         }
     }
 
-    pub fn show<P: Provider>(
-        &mut self,
-        ctx: &egui::Context,
-        _db: &P,
-        airports: &[Airport],
-    ) -> bool {
+    pub fn show(&mut self, ctx: &egui::Context, db: &mut Db, airports: &[Airport]) -> bool {
         let mut is_open: bool = self.is_open;
         let mut should_close: bool = false;
 
@@ -192,7 +187,7 @@ impl WidgetAddFlight {
                         if !errors.is_empty() {
                             self.error_message = Some(errors.join("\n"));
                         } else {
-                            match P::add_flight(self.to_flight(airports)) {
+                            match db.add_flight(self.to_flight(airports)) {
                                 Ok(_) => {
                                     self.error_message = None;
                                     should_close = true;
@@ -229,15 +224,15 @@ impl WidgetAddFlight {
             destination: self.destination.clone(),
         };
 
-        let departure_time =
-            self
-                .departure_date
-                .and_hms_opt(self.departure_hour, self.departure_minute, 0).unwrap_or_default();
+        let departure_time = self
+            .departure_date
+            .and_hms_opt(self.departure_hour, self.departure_minute, 0)
+            .unwrap_or_default();
 
-        let arrival_time =
-            self
-                .arrival_date
-                .and_hms_opt(self.arrival_hour, self.arrival_minute, 0).unwrap_or_default();
+        let arrival_time = self
+            .arrival_date
+            .and_hms_opt(self.arrival_hour, self.arrival_minute, 0)
+            .unwrap_or_default();
 
         Flight {
             number: self.flight_number.clone(),

@@ -31,14 +31,14 @@ impl WidgetFlightsTable {
         }
     }
 
-    fn fetch_flights(&mut self) {
+    fn fetch_flights(&mut self, db: &mut Db) {
         self.flights = Some(match self.flight_type {
-            FlightType::Arrival => {
-                Db::get_arrival_flights(&self.airport, self.selected_date).unwrap()
-            }
-            FlightType::Departure => {
-                Db::get_departure_flights(&self.airport, self.selected_date).unwrap()
-            }
+            FlightType::Arrival => db
+                .get_arrival_flights(&self.airport, self.selected_date)
+                .unwrap(),
+            FlightType::Departure => db
+                .get_departure_flights(&self.airport, self.selected_date)
+                .unwrap(),
         });
     }
 
@@ -59,9 +59,9 @@ impl WidgetFlightsTable {
 }
 
 impl View for WidgetFlightsTable {
-    fn ui(&mut self, ui: &mut egui::Ui) {
+    fn ui(&mut self, ui: &mut egui::Ui, db: &mut Db) {
         if self.flights.is_none() {
-            self.fetch_flights();
+            self.fetch_flights(db);
         }
 
         ui.vertical_centered(|ui| {
@@ -76,7 +76,7 @@ impl View for WidgetFlightsTable {
                     ui.add(egui_extras::DatePickerButton::new(&mut self.selected_date));
 
                 if date_response.changed() {
-                    self.fetch_flights();
+                    self.fetch_flights(db);
                 }
             });
 
@@ -185,13 +185,11 @@ impl View for WidgetFlightsTable {
                                                     let mut updated_flight = flight.clone();
                                                     updated_flight.status =
                                                         new_status.as_str().to_string();
-                                                    match Db::update_state(
-                                                        updated_flight,
-                                                        direction,
-                                                    ) {
+                                                    match db.update_state(updated_flight, direction)
+                                                    {
                                                         Ok(_) => {
                                                             // Refresh flights and clear the edited state
-                                                            self.fetch_flights();
+                                                            self.fetch_flights(db);
                                                             self.edited_flight_states
                                                                 .remove(&flight.number);
                                                         }
