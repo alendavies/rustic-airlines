@@ -9,7 +9,6 @@ use crate::types::airport::Airport;
 use crate::types::flight::Flight;
 use crate::types::flight_status::FlightStatus;
 
-type FlightData = (Vec<Flight>, Vec<(String, FlightStatus)>);
 pub struct Client {
     cassandra_client: CassandraClient,
 }
@@ -182,7 +181,7 @@ impl Client {
             .cassandra_client
             .execute(&update_query_status_departure, "quorum")
         {
-            println!("No se pudo actualizas el vuelo, el error es {:?}", e);
+            println!("No se pudo actualizar el vuelo, el error es {:?}", e);
             return Ok(());
         }
 
@@ -303,7 +302,7 @@ impl Client {
     fn build_flight_from_row(
         &mut self,
         row: &BTreeMap<String, ColumnValue>,
-        selected_airport: &Airport
+        selected_airport: &Airport,
     ) -> Result<Flight, ClientError> {
         let mut flight = Flight {
             flight_number: "XXXX".to_string(),

@@ -1,14 +1,16 @@
-use threadpool::ThreadPool;
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{mpsc, Arc, Mutex, RwLock, RwLockReadGuard};
-use std::{io, thread};
 use std::time::Duration;
+use std::{io, thread};
+use chrono::NaiveDateTime;
+use threadpool::ThreadPool;
 
 use super::airport::Airport;
 use super::client::Client;
 use super::flight::Flight;
 
+use super::flight_status::FlightStatus;
 use super::sim_error::SimError;
 use super::timer::Timer;
 use super::TICK_FREQUENCY_MILLIS;
@@ -40,19 +42,23 @@ impl Simulation {
         let db = Arc::clone(&self.db);
         let thread_pool = Arc::clone(&self.thread_pool);
         let timer = Arc::clone(&self.timer);
-    
+
         let _ = timer.start(move |current_time, tick_count| {
             {
                 if let Ok(flights_lock) = flights.try_read() {
                     for flight_arc in flights_lock.values() {
                         let flight = Arc::clone(flight_arc);
                         let db = Arc::clone(&db);
-    
+
+                        if !should_update(&flight) {
+                            continue;
+                        }
+
                         thread_pool.execute(move || {
                             if let Ok(mut flight_lock) = flight.try_write() {
-                                // Update flight state
-                                let updated_state = flight_lock.check_states_and_update_flight(current_time);
-    
+                                let updated_state =
+                                    flight_lock.check_states_and_update_flight(current_time);
+
                                 // Update the database
                                 if let Ok(mut db_lock) = db.lock() {
                                     let result = if updated_state {
@@ -60,7 +66,7 @@ impl Simulation {
                                     } else {
                                         db_lock.update_flight(&*flight_lock)
                                     };
-    
+
                                     if let Err(e) = result {
                                         eprintln!("Database update error: {:?}", e);
                                     }
@@ -76,37 +82,50 @@ impl Simulation {
                     eprintln!("Failed to read flights. Skipping this cycle.");
                 }
             }
-    
+
             // Synchronize with the database every 5 ticks
             if tick_count % 5 == 0 {
-                let mut flights_from_db= Vec::new();
+                let mut flights_from_db = Vec::new();
                 {
                     if let Ok(mut db_lock) = db.lock() {
-                        if let Ok(airport_list) = airports.read(){
-                            flights_from_db = match db_lock.fetch_flights(current_time, &airport_list) {
-                                Ok(flights) => flights,
-                                Err(e) => {
-                                    eprintln!("Failed to fetch flights from DB: {:?}", e);
-                                    return;
-                                }
-                            };
-                        }
-                        else {
+                        if let Ok(airport_list) = airports.read() {
+                            flights_from_db =
+                                match db_lock.fetch_flights(current_time, &airport_list) {
+                                    Ok(flights) => flights,
+                                    Err(e) => {
+                                        eprintln!("Failed to fetch flights from DB: {:?}", e);
+                                        return;
+                                    }
+                                };
+                        } else {
                             eprintln!("Failed to lock airports for read. Skipping database sync.");
-                        }   
+                        }
                     } else {
                         eprintln!("Failed to lock DB for fetching flights. Skipping.");
                         return;
                     }
                 }
-    
-                if let Ok(mut flights_lock) = flights.write() {
+
+                if let Ok(mut flights_lock) = flights.try_write() {
                     for mut flight in flights_from_db {
                         match flights_lock.get(&flight.flight_number) {
                             Some(existing_flight) => {
                                 if let Ok(mut flight_lock) = existing_flight.write() {
                                     if flight_lock.status != flight.status {
                                         flight_lock.status = flight.status;
+                                        flight_lock.check_states_and_update_flight(current_time);
+                                        if let Ok(mut db_lock) = db.lock() {
+                                            let result =
+                                                db_lock.update_flight_status(&*flight_lock);
+                                            if let Err(e) = result {
+                                                eprintln!("Database update error: {:?}", e);
+                                            }
+                                        } else {
+                                            eprintln!(
+                                                "Failed to lock DB for fetching flights. Skipping."
+                                            );
+                                            return;
+                                        }
                                     }
                                 } else {
                                     eprintln!(
@@ -117,7 +136,9 @@ impl Simulation {
                             }
                             None => {
                                 if let Ok(mut db_lock) = db.lock() {
-                                    if let Err(e) = db_lock.fetch_flight_info(&mut flight, &airports.read().unwrap()) {
+                                    if let Err(e) = db_lock
+                                        .fetch_flight_info(&mut flight, &airports.read().unwrap())
+                                    {
                                         eprintln!(
                                             "Failed to fetch additional flight info for {:?}: {:?}",
                                             flight.flight_number, e
@@ -138,38 +159,42 @@ impl Simulation {
             }
         });
     }
-    
 
-    /// Agrega un aeropuerto al simulador
+    /// Adds an airport to the simulation.
     pub fn add_airport(&self, airport: Airport) -> Result<(), SimError> {
         {
             let mut db = self.db.lock().map_err(|_| SimError::ClientError)?;
-            db.insert_airport(&airport).map_err(|_| SimError::ClientError)?;
+            db.insert_airport(&airport)
+                .map_err(|_| SimError::ClientError)?;
         }
-    
-        let mut airports_lock = self.airports.write().map_err(|_| SimError::Other("Failed to lock airports".to_string()))?;
+
+        let mut airports_lock = self
+            .airports
+            .write()
+            .map_err(|_| SimError::Other("Failed to lock airports".to_string()))?;
         airports_lock.insert(airport.iata_code.clone(), airport);
-    
+
         Ok(())
     }
 
-    /// Agrega un vuelo al simulador
+    /// Adds a flight to the simulation.
     pub fn add_flight(&self, flight: Flight) -> Result<(), SimError> {
         {
             let mut db = self.db.lock().map_err(|_| SimError::ClientError)?;
-            db.insert_flight(&flight).map_err(|_| SimError::ClientError)?;
+            db.insert_flight(&flight)
+                .map_err(|_| SimError::ClientError)?;
         }
-    
-        let mut flights_lock = self.flights.write().map_err(|_| SimError::Other("Failed to lock flights".to_string()))?;
-        flights_lock.insert(
-            flight.flight_number.clone(),
-            Arc::new(RwLock::new(flight)),
-        );
-    
+
+        let mut flights_lock = self
+            .flights
+            .write()
+            .map_err(|_| SimError::Other("Failed to lock flights".to_string()))?;
+        flights_lock.insert(flight.flight_number.clone(), Arc::new(RwLock::new(flight)));
+
         Ok(())
     }
 
-    /// Mostrar los vuelos de forma continua
+    /// Displays the flights in real time
     pub fn display_flights(&self) {
         let (tx, rx) = mpsc::channel();
 
@@ -188,10 +213,14 @@ impl Simulation {
         });
 
         loop {
-            print!("\x1B[2J\x1B[1;1H");
+
             io::stdout().flush().ok();
 
             if let Ok(flights_lock) = self.flights.try_read() {
+                print!("\x1B[2J\x1B[1;1H");
+                if let Ok(time) = self.timer.current_time.try_lock(){
+                    println!("Current time: {}", time.format("%d-%m-%Y %H:%M:%S"));
+                }
                 if flights_lock.is_empty() {
                     println!("No flights available.");
                 } else {
@@ -219,6 +248,8 @@ impl Simulation {
                 break;
             }
 
+            println!("\nPress 'q' and Enter to exit list-flights mode");
+
             thread::sleep(Duration::from_millis(TICK_FREQUENCY_MILLIS));
         }
     }
@@ -226,13 +257,11 @@ impl Simulation {
     /// List the airports in the simulation
     pub fn list_airports(&self) {
         if let Ok(airports_lock) = self.airports.read() {
+            
             if airports_lock.is_empty() {
                 println!("No airports available.");
             } else {
-                println!(
-                    "\n{:<10} {:<30}",
-                    "IATA Code", "Airport Name"
-                );
+                println!("\n{:<10} {:<30}", "IATA Code", "Airport Name");
                 for airport in airports_lock.values() {
                     println!("{:<10} {:<30}", airport.iata_code, airport.name);
                 }
@@ -246,7 +275,7 @@ impl Simulation {
         self.timer.set_tick_advance(minutes)
     }
 
-    /// Stop the timer
+    /// Stop the timer and the threadpool.
     pub fn stop(&self) {
         self.timer.stop();
         self.thread_pool.join();
@@ -258,5 +287,15 @@ impl Simulation {
             .read()
             .map_err(|_| SimError::AirportNotFound(format!("Could not read airports")))
     }
+}
 
+fn should_update(flight: &Arc<RwLock<Flight>>) -> bool {
+    if let Ok(flight_lock) = flight.try_read() {
+        if flight_lock.status != FlightStatus::Canceled
+            && flight_lock.status != FlightStatus::Finished
+        {
+            return true;
+        }
+    }
+    false
 }

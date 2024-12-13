@@ -4,14 +4,13 @@ use std::fmt;
 pub enum SimError {
     InvalidInput,
     InvalidFlight(String), // For invalid flight details (e.g., wrong date format)
-    InvalidAirport(String),
-    AirportNotFound(String), // If airport can't be found
+    AirportNotFound(String),   // If airport can't be found
     InvalidDateFormat(String), // When the date format is incorrect
-    TimerLockError(String), // Para errores de bloqueo del Timer
-    TimerStartError(String), // Para errores al iniciar el Timer
-    InvalidDuration(String), // Cuando se pasa una duración inválida
-    Other(String),         // Generic error case with a custom message
-    ClientError,           // If something went wrong with the client
+    TimerLockError(String),    // Para errores de bloqueo del Timer
+    TimerStartError(String),   // Para errores al iniciar el Timer
+    InvalidDuration(String),   // Cuando se pasa una duración inválida
+    Other(String),             // Generic error case with a custom message
+    ClientError,               // If something went wrong with the client
 }
 
 // Implement the Display trait for user-friendly error messages
@@ -22,7 +21,6 @@ impl fmt::Display for SimError {
                 write!(f, "Invalid input. Please check your input and try again.")
             }
             SimError::InvalidFlight(ref flight) => write!(f, "Invalid flight details: {}", flight),
-            SimError::InvalidAirport(ref flight) => write!(f, "Invalid airport details: {}", flight),
             SimError::AirportNotFound(ref iata_code) => {
                 write!(f, "Airport not found: {}", iata_code)
             }
@@ -35,12 +33,5 @@ impl fmt::Display for SimError {
             SimError::Other(ref message) => write!(f, "Error: {}", message),
             SimError::ClientError => write!(f, "Something went wrong with the client"),
         }
-    }
-}
-
-impl SimError {
-    // Helper method to create an error with a custom message
-    pub fn new(message: &str) -> Self {
-        SimError::Other(message.to_string())
     }
 }

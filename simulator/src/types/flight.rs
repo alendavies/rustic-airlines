@@ -24,6 +24,8 @@ pub struct Flight {
 const EARTH_RADIUS_KM: f64 = 6371.0;
 
 impl Flight {
+
+    /// Creates a new flight from the information given from the console interface.
     pub fn new_from_console(
         airports: RwLockReadGuard<HashMap<String, Airport>>,
         flight_number: &str,
@@ -99,14 +101,15 @@ impl Flight {
         (bearing - 90.0 + 360.0) % 360.0
     }
 
-    fn calculate_position(&mut self, current_time: NaiveDateTime){
+    fn calculate_position(&mut self, current_time: NaiveDateTime) {
         let elapsed_hours = current_time
             .signed_duration_since(self.departure_time)
             .num_seconds() as f64
             / 3600.0;
 
         // Calculate traveled distance and update position
-        self.distance_traveled = (self.average_speed as f64 * elapsed_hours).min(self.total_distance);
+        self.distance_traveled =
+            (self.average_speed as f64 * elapsed_hours).min(self.total_distance);
         let progress_ratio = self.distance_traveled / self.total_distance;
         self.latitude = self.origin.latitude
             + progress_ratio * (self.destination.latitude - self.origin.latitude);
@@ -128,11 +131,10 @@ impl Flight {
     }
 
     /// Update the position of the flight and its fuel level based on the current time
-    pub fn check_states_and_update_flight(&mut self, current_time: NaiveDateTime) -> bool{
-        
+    pub fn check_states_and_update_flight(&mut self, current_time: NaiveDateTime) -> bool {
         let mut new_status: bool = false;
 
-        match self.status{
+        match self.status {
             FlightStatus::Scheduled => {
                 if current_time >= self.departure_time {
                     if self.altitude == 0 {
@@ -149,15 +151,17 @@ impl Flight {
                     new_status = true;
                 }
                 if self.distance_traveled >= self.total_distance {
-                    self.land(); 
+                    self.land();
+                    self.status = FlightStatus::Finished;
                     new_status = true;
-                 }
+                }
             }
             FlightStatus::Delayed => {
                 self.calculate_position(current_time);
                 if self.distance_traveled >= self.total_distance {
-                   self.land(); 
-                   new_status = true;
+                    self.land();
+                    self.status = FlightStatus::Finished;
+                    new_status = true;
                 }
             }
             FlightStatus::Canceled => {
@@ -183,11 +187,8 @@ impl Flight {
     fn land(&mut self) {
         self.fuel_level = 0.0;
         self.altitude = 0;
-        self.status = FlightStatus::Finished;
     }
 }
-
-
 
 fn parse_datetime(datetime_str: &str) -> Result<NaiveDateTime, SimError> {
     let format = "%d-%m-%Y %H:%M:%S"; // The expected format for the date input

@@ -3,11 +3,11 @@ mod types;
 use crate::types::airport::Airport;
 use crate::types::flight::Flight;
 use chrono::{NaiveDateTime, Utc};
-use threadpool::ThreadPool;
 use std::{
     io::{self, Write},
     sync::{Arc, Mutex},
 };
+use threadpool::ThreadPool;
 use types::{client::Client, sim_error::SimError, simulation::Simulation, timer::Timer};
 
 fn clean_scr() {
@@ -82,17 +82,15 @@ fn set_time_rate(sim: &mut Simulation) -> Result<(), SimError> {
 fn main() -> Result<(), SimError> {
     let ip = "127.0.0.1".parse().expect("Invalid IP format");
 
-    let db_client = Arc::new(Mutex::new(Client::new(ip).map_err(|_| SimError::ClientError)?)); // Reemplaza `Client::new()` con la inicialización real
-
+    let db_client = Arc::new(Mutex::new(
+        Client::new(ip).map_err(|_| SimError::ClientError)?,
+    )); 
     let now: NaiveDateTime = Utc::now().naive_local();
 
-    // Crear un timer (dummy para este ejemplo, implementa tu propio timer)
-    let timer = Timer::new(now, 1); // Reemplaza `Timer::new()` con tu implementación
+    let timer = Timer::new(now, 1);
 
-    // Crear un threadpool con un tamaño razonable (ej: número de hilos disponibles en el sistema)
     let thread_pool = Arc::new(ThreadPool::new(4));
 
-    // Crear la simulación
     let mut sim = Simulation::new(db_client, timer, thread_pool);
 
     sim.start();
@@ -124,6 +122,10 @@ fn main() -> Result<(), SimError> {
 
             "list-flights" => {
                 sim.display_flights();
+            }
+
+            "list-airports" => {
+                sim.list_airports();
             }
 
             "time-rate" => {
@@ -563,3 +565,219 @@ fn add_test_data(sim: &mut Simulation) -> Result<(), SimError> {
     println!("Test data added successfully!");
     Ok(())
 }
+
+
+/*
+fn add_test_data(sim: &mut Simulation) -> Result<(), SimError> {
+    use rand::Rng; // Asegúrate de usar `rand::Rng` para generación de números aleatorios.
+
+    // List of airports in Latin America with 20 airports per country
+    let airports = vec![
+        // Argentina
+        ("AEP", "ARG", "Aeroparque Jorge Newbery", -34.553, -58.413),
+        (
+            "EZE",
+            "ARG",
+            "Aeropuerto Internacional Ministro Pistarini",
+            -34.822,
+            -58.535,
+        ),
+        (
+            "COR",
+            "ARG",
+            "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella",
+            -31.321,
+            -64.213,
+        ),
+        (
+            "ROS",
+            "ARG",
+            "Aeropuerto Internacional Rosario",
+            -32.948,
+            -60.787,
+        ),
+        (
+            "MDZ",
+            "ARG",
+            "Aeropuerto Internacional El Plumerillo",
+            -32.883,
+            -68.845,
+        ),
+        (
+            "BRC",
+            "ARG",
+            "Aeropuerto Internacional Teniente Luis Candelaria",
+            -41.151,
+            -71.158,
+        ),
+        (
+            "USH",
+            "ARG",
+            "Aeropuerto Internacional Malvinas Argentinas",
+            -54.843,
+            -68.295,
+        ),
+        (
+            "FTE",
+            "ARG",
+            "Aeropuerto Internacional Comandante Armando Tola",
+            -50.280,
+            -72.053,
+        ),
+        (
+            "REL",
+            "ARG",
+            "Aeropuerto Internacional Almirante Marcos A. Zar",
+            -43.211,
+            -65.270,
+        ),
+        (
+            "CRD",
+            "ARG",
+            "Aeropuerto Internacional General Enrique Mosconi",
+            -45.785,
+            -67.465,
+        ),
+        (
+            "NQN",
+            "ARG",
+            "Aeropuerto Presidente Perón",
+            -38.949,
+            -68.156,
+        ),
+        (
+            "SLA",
+            "ARG",
+            "Aeropuerto Internacional Martín Miguel de Güemes",
+            -24.854,
+            -65.486,
+        ),
+        (
+            "JUJ",
+            "ARG",
+            "Aeropuerto Internacional Gobernador Horacio Guzmán",
+            -24.392,
+            -65.097,
+        ),
+        (
+            "TUC",
+            "ARG",
+            "Aeropuerto Internacional Teniente Benjamín Matienzo",
+            -26.842,
+            -65.104,
+        ),
+        (
+            "CNQ",
+            "ARG",
+            "Aeropuerto Internacional Doctor Fernando Piragine Niveyro",
+            -27.445,
+            -58.762,
+        ),
+        (
+            "RES",
+            "ARG",
+            "Aeropuerto Internacional Resistencia",
+            -27.450,
+            -59.056,
+        ),
+        (
+            "PSS",
+            "ARG",
+            "Aeropuerto Internacional Libertador General José de San Martín",
+            -27.385,
+            -55.970,
+        ),
+        (
+            "RGL",
+            "ARG",
+            "Aeropuerto Internacional Piloto Civil Norberto Fernández",
+            -51.609,
+            -69.312,
+        ),
+        (
+            "CTC",
+            "ARG",
+            "Aeropuerto Coronel Felipe Varela",
+            -28.448,
+            -65.780,
+        ),
+        (
+            "VDM",
+            "ARG",
+            "Aeropuerto Gobernador Castello",
+            -40.868,
+            -63.000,
+        ),
+    ];
+
+    // Agregar aeropuertos
+    for (iata_code, country, name, latitude, longitude) in &airports {
+        let airport = Airport::new(
+            iata_code.to_string(),
+            country.to_string(),
+            name.to_string(),
+            *latitude,
+            *longitude,
+        );
+        sim.add_airport(airport)?;
+    }
+
+    // Generar datos de vuelos
+    let today = Utc::now().naive_utc();
+    // let yesterday = today - chrono::Duration::days(1);
+    // let tomorrow = today + chrono::Duration::days(1);
+
+    let mut rng = rand::thread_rng(); // Crear un generador de números aleatorios
+    let mut flight_data = Vec::new();
+
+    for (origin, _, _, _, _) in &airports {
+        let flight_count = rng.gen_range(5..=10); // Generar entre 5 y 10 vuelos por aeropuerto
+        for _ in 0..flight_count {
+            let destination_index = rng.gen_range(0..airports.len());
+            let destination = airports[destination_index].0;
+
+            // Evitar vuelos con el mismo origen y destino
+            if origin != &destination {
+                let departure_time = today;
+
+                let duration_hours = rng.gen_range(1..=6); // Duración de vuelo entre 1 y 6 horas
+                let arrival_time = departure_time + chrono::Duration::hours(duration_hours as i64);
+
+                let flight_number = format!("{}{:04}", origin, rng.gen_range(1000..9999));
+                let avg_speed = rng.gen_range(400..=600); // Velocidad promedio entre 400 y 600 km/h
+
+                flight_data.push((
+                    flight_number,
+                    origin.to_string(),
+                    destination.to_string(),
+                    departure_time,
+                    arrival_time,
+                    avg_speed,
+                ));
+            }
+        }
+    }
+
+    // Agregar vuelos al estado de simulación
+    for (flight_number, origin, destination, departure_time, arrival_time, avg_speed) in flight_data
+    {
+        let departure_str = departure_time.format("%d-%m-%Y %H:%M:%S").to_string();
+        let arrival_str = arrival_time.format("%d-%m-%Y %H:%M:%S").to_string();
+
+        let flight = Flight::new_from_console(
+            sim.get_airports()?,
+            &flight_number,
+            &origin,
+            &destination,
+            &departure_str,
+            &arrival_str,
+            avg_speed,
+        )
+        .map_err(|_| SimError::Other("Error al crear el vuelo".to_string()))?;
+
+        sim.add_flight(flight)?;
+    }
+
+    println!("Test data added successfully!");
+    Ok(())
+}*/
