@@ -1,4 +1,3 @@
-use chrono::NaiveDateTime;
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{mpsc, Arc, Mutex, RwLock, RwLockReadGuard};
@@ -62,9 +61,9 @@ impl Simulation {
                                 // Update the database
                                 if let Ok(mut db_lock) = db.lock() {
                                     let result = if updated_state {
-                                        db_lock.update_flight_status(&*flight_lock)
+                                        db_lock.update_flight_status(&flight_lock)
                                     } else {
-                                        db_lock.update_flight(&*flight_lock)
+                                        db_lock.update_flight(&flight_lock)
                                     };
 
                                     if let Err(e) = result {
@@ -116,7 +115,7 @@ impl Simulation {
                                         flight_lock.check_states_and_update_flight(current_time);
                                         if let Ok(mut db_lock) = db.lock() {
                                             let result =
-                                                db_lock.update_flight_status(&*flight_lock);
+                                                db_lock.update_flight_status(&flight_lock);
                                             if let Err(e) = result {
                                                 eprintln!("Database update error: {:?}", e);
                                             }
@@ -202,7 +201,7 @@ impl Simulation {
             let mut buffer = String::new();
             loop {
                 buffer.clear();
-                if let Ok(_) = io::stdin().read_line(&mut buffer) {
+                if io::stdin().read_line(&mut buffer).is_ok() {
                     if !buffer.trim().is_empty() {
                         tx.send(()).ok();
                         break;
@@ -283,7 +282,7 @@ impl Simulation {
     pub fn get_airports(&self) -> Result<RwLockReadGuard<HashMap<String, Airport>>, SimError> {
         self.airports
             .read()
-            .map_err(|_| SimError::AirportNotFound(format!("Could not read airports")))
+            .map_err(|_| SimError::AirportNotFound("Could not read airports".to_string()))
     }
 }
 
