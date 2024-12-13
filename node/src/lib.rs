@@ -1,4 +1,4 @@
-// Local modules first
+// Local modules firstsrc/lib
 mod errors;
 mod internode_protocol;
 mod internode_protocol_handler;
@@ -935,11 +935,11 @@ impl Node {
         self_ip: std::net::Ipv4Addr,
     ) -> Result<(), NodeError> {
         // Cargar configuración TLS
-        let certs = CertificateDer::pem_file_iter("../certs/cert.crt")
+        let certs = CertificateDer::pem_file_iter("certs/cert.crt")
             .unwrap()
             .map(|cert| cert.unwrap())
             .collect();
-        let private_key = PrivateKeyDer::from_pem_file("../certs/cert.key").unwrap();
+        let private_key = PrivateKeyDer::from_pem_file("certs/cert.key").unwrap();
 
         match rustls::crypto::aws_lc_rs::default_provider().install_default() {
             Ok(_) => {}

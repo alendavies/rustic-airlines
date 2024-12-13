@@ -1,6 +1,8 @@
 use std::{
+    env,
     io::{Read, Write},
-    net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+    str::FromStr,
     sync::Arc,
 };
 pub mod server;
@@ -45,7 +47,12 @@ impl CassandraClient {
         let server_name = rustls::pki_types::ServerName::try_from("databaseserver").unwrap();
         let conn = ClientConnection::new(config, server_name).unwrap();
 
-        let addr = SocketAddr::new(IpAddr::V4(ip), NATIVE_PORT);
+        let addr = if let Ok(var) = env::var("NODE_ADDR") {
+            var.parse().map_err(|_| ClientError)?
+        } else {
+            SocketAddr::new(IpAddr::V4(ip), NATIVE_PORT)
+        };
+
         let sock = TcpStream::connect(addr).unwrap();
 
         let tls = StreamOwned::new(conn, sock);

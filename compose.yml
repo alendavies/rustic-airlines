@@ -1,0 +1,51 @@
+services:
+  seed:
+    build: .
+    volumes:
+      - ./:/app
+    environment:
+      - SEED=192.168.0.100
+    command: cargo run -p node_launcher 192.168.0.100
+    networks:
+      my-network:
+        ipv4_address: 192.168.0.100
+    ports:
+      - "10000:17989"
+
+  node1:
+    build: .
+    volumes:
+      - ./:/app
+    environment:
+      - SEED=192.168.0.100
+    command: cargo run -p node_launcher 192.168.0.101
+    depends_on:
+      - seed
+    networks:
+      my-network:
+        ipv4_address: 192.168.0.101
+    ports:
+      - "10001:17989"
+
+  node2:
+    build: .
+    volumes:
+      - ./:/app
+    environment:
+      - SEED=192.168.0.100
+    command: cargo run -p node_launcher 192.168.0.102
+    depends_on:
+     - seed
+     - node1
+    networks:
+      my-network:
+        ipv4_address: 192.168.0.102
+    ports:
+      - "10002:17989"
+
+networks:
+  my-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.0.0/24
