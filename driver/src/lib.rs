@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
+    net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream}, time::Duration,
 };
 pub mod server;
 
@@ -82,14 +82,22 @@ impl CassandraClient {
         let params = QueryParams::new(consistency, vec![]);
         let query = Query::new(cql_query.to_string(), params);
         let query = Frame::Query(query);
-
+    
+        // Escribir la consulta en el stream
         self.stream
             .write_all(query.to_bytes().map_err(|_| ClientError)?.as_slice())
             .map_err(|_| ClientError)?;
-
+    
+        // Configurar timeout para lectura
+        self.stream
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .map_err(|_| ClientError)?;
+    
         let mut result = [0u8; 850000];
+        
         self.stream.read(&mut result).map_err(|_| ClientError)?;
-        // dbg!(&String::from_utf8(result.to_vec()).unwrap());
+    
+        // Decodificar la respuesta
         let result = Frame::from_bytes(&result).map_err(|_| ClientError)?;
         Ok(result)
     }
