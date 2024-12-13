@@ -201,11 +201,9 @@ impl Simulation {
             let mut buffer = String::new();
             loop {
                 buffer.clear();
-                if io::stdin().read_line(&mut buffer).is_ok() {
-                    if !buffer.trim().is_empty() {
-                        tx.send(()).ok();
-                        break;
-                    }
+                if io::stdin().read_line(&mut buffer).is_ok() && !buffer.trim().is_empty() {
+                    tx.send(()).ok();
+                    break;
                 }
                 thread::sleep(Duration::from_millis(100));
             }
