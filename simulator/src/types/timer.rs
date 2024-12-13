@@ -13,9 +13,9 @@ use crate::types::TICK_FREQUENCY_MILLIS;
 use super::sim_error::SimError;
 
 pub struct Timer {
-    pub current_time: Mutex<NaiveDateTime>, 
-    pub tick_advance: RwLock<Duration>,     
-    pub running: AtomicBool,                // Flag to indicate if the timer is running
+    pub current_time: Mutex<NaiveDateTime>,
+    pub tick_advance: RwLock<Duration>,
+    pub running: AtomicBool, // Flag to indicate if the timer is running
 }
 
 impl Timer {
@@ -31,7 +31,9 @@ impl Timer {
     /// Changes the value of time advanced per tick
     pub fn set_tick_advance(&self, new_tick_advance_minutes: i64) -> Result<(), SimError> {
         if new_tick_advance_minutes <= 0 || new_tick_advance_minutes > 10000 {
-            return Err(SimError::InvalidDuration(new_tick_advance_minutes.to_string()));
+            return Err(SimError::InvalidDuration(
+                new_tick_advance_minutes.to_string(),
+            ));
         }
 
         let mut tick_advance_lock = self.tick_advance.write().map_err(|_| {

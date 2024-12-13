@@ -84,7 +84,7 @@ fn main() -> Result<(), SimError> {
 
     let db_client = Arc::new(Mutex::new(
         Client::new(ip).map_err(|_| SimError::ClientError)?,
-    )); 
+    ));
     let now: NaiveDateTime = Utc::now().naive_local();
 
     let timer = Timer::new(now, 1);
@@ -565,7 +565,6 @@ fn add_test_data(sim: &mut Simulation) -> Result<(), SimError> {
     println!("Test data added successfully!");
     Ok(())
 }
-
 
 /*
 fn add_test_data(sim: &mut Simulation) -> Result<(), SimError> {

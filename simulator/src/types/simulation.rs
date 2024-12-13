@@ -1,9 +1,9 @@
+use chrono::NaiveDateTime;
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{mpsc, Arc, Mutex, RwLock, RwLockReadGuard};
 use std::time::Duration;
 use std::{io, thread};
-use chrono::NaiveDateTime;
 use threadpool::ThreadPool;
 
 use super::airport::Airport;
@@ -213,12 +213,11 @@ impl Simulation {
         });
 
         loop {
-
             io::stdout().flush().ok();
 
             if let Ok(flights_lock) = self.flights.try_read() {
                 print!("\x1B[2J\x1B[1;1H");
-                if let Ok(time) = self.timer.current_time.try_lock(){
+                if let Ok(time) = self.timer.current_time.try_lock() {
                     println!("Current time: {}", time.format("%d-%m-%Y %H:%M:%S"));
                 }
                 if flights_lock.is_empty() {
@@ -257,7 +256,6 @@ impl Simulation {
     /// List the airports in the simulation
     pub fn list_airports(&self) {
         if let Ok(airports_lock) = self.airports.read() {
-            
             if airports_lock.is_empty() {
                 println!("No airports available.");
             } else {

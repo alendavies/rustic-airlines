@@ -4,13 +4,13 @@ use std::fmt;
 pub enum SimError {
     InvalidInput,
     InvalidFlight(String), // For invalid flight details (e.g., wrong date format)
-    AirportNotFound(String),   // If airport can't be found
+    AirportNotFound(String), // If airport can't be found
     InvalidDateFormat(String), // When the date format is incorrect
-    TimerLockError(String),    // Para errores de bloqueo del Timer
-    TimerStartError(String),   // Para errores al iniciar el Timer
-    InvalidDuration(String),   // Cuando se pasa una duración inválida
-    Other(String),             // Generic error case with a custom message
-    ClientError,               // If something went wrong with the client
+    TimerLockError(String), // Para errores de bloqueo del Timer
+    TimerStartError(String), // Para errores al iniciar el Timer
+    InvalidDuration(String), // Cuando se pasa una duración inválida
+    Other(String),         // Generic error case with a custom message
+    ClientError,           // If something went wrong with the client
 }
 
 // Implement the Display trait for user-friendly error messages

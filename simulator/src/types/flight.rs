@@ -24,7 +24,6 @@ pub struct Flight {
 const EARTH_RADIUS_KM: f64 = 6371.0;
 
 impl Flight {
-
     /// Creates a new flight from the information given from the console interface.
     pub fn new_from_console(
         airports: RwLockReadGuard<HashMap<String, Airport>>,
