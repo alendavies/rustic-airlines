@@ -18,12 +18,11 @@ use native_protocol::{
     types::Bytes,
     Serializable,
 };
-use rustls::{ClientConfig, ClientConnection, StreamOwned};
+use rustls::{ClientConnection, StreamOwned};
 use tls::configure_client;
 
 pub struct CassandraClient {
     stream: StreamOwned<ClientConnection, TcpStream>,
-    config: Arc<ClientConfig>
 }
 
 const NATIVE_PORT: u16 = 0x4645;
@@ -39,19 +38,13 @@ pub enum QueryResult {
 
 impl CassandraClient {
     /// Creates a connection with the node at `ip`.
-    pub fn connect(ip: Ipv4Addr, previous_config: Option<Arc<ClientConfig>>) -> Result<Self, ClientError> {
-
-        let config;
-        if let Some(prev_config) = previous_config{
-            config = prev_config;
-        }
-        else{
-            let new_config = configure_client();
-            config = Arc::new(new_config);
-        }
+    pub fn connect(ip: Ipv4Addr) -> Result<Self, ClientError> {
+        // Configurar TLS sin verificación de certificados
+        let config = configure_client();
+        let config = Arc::new(config);
 
         let server_name = rustls::pki_types::ServerName::try_from("databaseserver").unwrap();
-        let conn = ClientConnection::new(Arc::clone(&config), server_name).unwrap();
+        let conn = ClientConnection::new(config, server_name).unwrap();
 
         let addr = if let Ok(var) = env::var("NODE_ADDR") {
             var.parse().map_err(|_| ClientError)?
@@ -66,7 +59,7 @@ impl CassandraClient {
             .map_err(|_| ClientError)?;
         let tls = StreamOwned::new(conn, sock);
 
-        Ok(Self { stream: tls , config: config})
+        Ok(Self { stream: tls })
     }
 
     /// Execute a query.
@@ -120,10 +113,6 @@ impl CassandraClient {
             Frame::Ready => return Ok(()),
             _ => return Err(ClientError),
         }
-    }
-
-    pub fn config(&self) -> Arc<ClientConfig> {
-        Arc::clone(&self.config)
     }
 
     fn send_query(

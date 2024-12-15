@@ -4,7 +4,6 @@ use chrono::NaiveDateTime;
 
 use super::{airport::Airport, flight_status::FlightStatus, sim_error::SimError};
 
-#[derive(Debug, Clone)]
 pub struct Flight {
     pub flight_number: String,
     pub status: FlightStatus,

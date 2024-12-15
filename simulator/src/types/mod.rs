@@ -1,4 +1,4 @@
-const TICK_FREQUENCY_MILLIS: u64 = 2000;
+const TICK_FREQUENCY_MILLIS: u64 = 1000;
 
 pub mod airport;
 

@@ -186,10 +186,10 @@ impl StorageEngine {
         }
 
         std::mem::drop(temp_index);
-        /*// Si no se encontró ninguna fila que coincida, agregar una nueva
+        // Si no se encontró ninguna fila que coincida, agregar una nueva
         if !found_match {
             self.add_new_row_in_update(&table, &update_query, keyspace, is_replication, timestamp)?;
-        }*/
+        }
 
         Ok(())
     }
