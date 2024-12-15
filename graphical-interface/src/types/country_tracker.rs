@@ -4,12 +4,18 @@ use walkers::Position;
 
 use super::MapBounds;
 
+/// Tracks countries and determines their visibility within the current map view.
+///
+/// This struct maintains a set of predefined country centers and updates the
+/// visible countries based on the current map bounds.
 pub struct CountryTracker {
     country_centers: HashMap<String, Position>,
     visible_countries: Vec<String>,
 }
 
 impl CountryTracker {
+    /// Creates a new `CountryTracker` instance with predefined country centers
+    /// for South America.
     pub fn new() -> Self {
         let country_centers = get_south_american_centers();
 

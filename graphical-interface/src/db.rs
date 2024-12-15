@@ -1,6 +1,6 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use driver::{self, CassandraClient, QueryResult};
 use native_protocol::messages::result::{result_, rows};
 use walkers::Position;
@@ -12,6 +12,9 @@ pub struct DBError;
 
 const IP: &str = "127.0.0.1";
 
+/// A trait that defines the required methods for a provider to manage flight
+/// and airport data. This trait is implemented by any structure that interacts
+/// with the underlying database to fetch and manipulate flight and airport information.
 pub trait Provider {
     fn get_airports_by_country(&mut self, country: &str) -> Result<Vec<Airport>, DBError>;
 
@@ -132,6 +135,10 @@ impl Provider for MockProvider {
     }
 } */
 
+/// A structure representing the database connection for managing flight and airport data.
+///
+/// The `Db` struct is responsible for connecting to a Cassandra database and
+/// executing queries required by the graphical interface of the flight simulator.
 pub struct Db {
     driver: CassandraClient,
 }
@@ -143,6 +150,7 @@ impl Default for Db {
 }
 
 impl Db {
+    /// Creates a new instance of the `Db` struct, establishing a connection to the database.
     pub fn new() -> Self {
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
         driver.startup().unwrap();
@@ -216,8 +224,8 @@ impl Provider for Db {
         airport: &str,
         date: NaiveDate,
     ) -> std::result::Result<Vec<Flight>, DBError> {
-        let from = NaiveDateTime::new(date, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-        let from = from.and_utc().timestamp();
+        let from = NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| DBError)?;
+        let from = NaiveDateTime::new(date, from).and_utc().timestamp();
 
         let query = format!(
             "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND direction = 'departure' AND departure_time > {from}"
@@ -303,11 +311,11 @@ impl Provider for Db {
         airport: &str,
         date: NaiveDate,
     ) -> std::result::Result<Vec<Flight>, DBError> {
-        let from = NaiveDateTime::new(date, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-        let from = from.and_utc().timestamp();
+        let from = NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| DBError)?;
+        let from = NaiveDateTime::new(date, from).and_utc().timestamp();
 
-        let to = NaiveDateTime::new(date, NaiveTime::from_hms_opt(23, 59, 59).unwrap());
-        let to = to.and_utc().timestamp();
+        let to = NaiveTime::from_hms_opt(23, 59, 59).ok_or_else(|| DBError)?;
+        let to = NaiveDateTime::new(date, to).and_utc().timestamp();
 
         let query = format!(
             "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND direction = 'arrival' AND arrival_time > {from} AND arrival_time < {to}"
@@ -462,13 +470,9 @@ impl Provider for Db {
     }
 
     fn get_flights_by_airport(&mut self, airport: &str) -> Result<Vec<Flight>, DBError> {
-        /* Nos gustaria trabajar con los vuelos de hoy para mostrar, pero por conveniencia vamos por la fecha 0 ahora.
         let today = Utc::now().date_naive();
-        let from = NaiveDateTime::new(today, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-        let from = from.and_utc().timestamp();
-        */
-
-        let from: i64 = 0;
+        let from = NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| DBError)?;
+        let from = NaiveDateTime::new(today, from).and_utc().timestamp();
 
         let query = format!(
             "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND departure_time > {from}"

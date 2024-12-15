@@ -4,6 +4,8 @@ use chrono::NaiveDateTime;
 
 use super::{airport::Airport, flight_status::FlightStatus, sim_error::SimError};
 
+/// Represents a flight in the simulator, including its status, route, position,
+/// and additional metadata for simulation.
 pub struct Flight {
     pub flight_number: String,
     pub status: FlightStatus,

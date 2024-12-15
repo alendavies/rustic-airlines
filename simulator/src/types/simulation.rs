@@ -14,6 +14,10 @@ use super::sim_error::SimError;
 use super::timer::Timer;
 use super::TICK_FREQUENCY_MILLIS;
 
+/// Manages the overall state of the flight simulation.
+///
+/// The `Simulation` struct contains flights, airports, a timer, and a thread pool for executing
+/// periodic tasks like updating flight data and syncing with a database.
 pub struct Simulation {
     pub flights: Arc<RwLock<HashMap<String, Arc<RwLock<Flight>>>>>, // Flights wrapped in Arc<RwLock>
     pub airports: Arc<RwLock<HashMap<String, Airport>>>,            // Airports
@@ -114,8 +118,7 @@ impl Simulation {
                                         flight_lock.status = flight.status;
                                         flight_lock.check_states_and_update_flight(current_time);
                                         if let Ok(mut db_lock) = db.lock() {
-                                            let result =
-                                                db_lock.update_flight_status(&flight_lock);
+                                            let result = db_lock.update_flight_status(&flight_lock);
                                             if let Err(e) = result {
                                                 eprintln!("Database update error: {:?}", e);
                                             }

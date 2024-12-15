@@ -2,6 +2,9 @@ use walkers::Position;
 
 use super::FlightInfo;
 
+/// Represents a flight in the simulator, including its status, route, position,
+/// and additional metadata for display.
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Flight {
     pub number: String,

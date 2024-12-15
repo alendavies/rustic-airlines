@@ -7,6 +7,10 @@ use egui::{self};
 use egui_extras::DatePickerButton;
 use walkers::Position;
 
+/// A widget for adding a new flight through a graphical interface.
+///
+/// This widget collects flight information such as flight number, departure and arrival details,
+/// fuel, height, speed, origin, and destination. It validates the input and submits it to the database.
 pub struct WidgetAddFlight {
     is_open: bool,
     flight_number: String,
@@ -25,6 +29,7 @@ pub struct WidgetAddFlight {
 }
 
 impl WidgetAddFlight {
+    /// Creates a new `WidgetAddFlight` instance with default values.
     pub fn new() -> Self {
         Self {
             is_open: true,
@@ -44,6 +49,7 @@ impl WidgetAddFlight {
         }
     }
 
+    /// Widget interface for adding new flights.
     pub fn show(&mut self, ctx: &egui::Context, db: &mut Db, airports: &[Airport]) -> bool {
         let mut is_open: bool = self.is_open;
         let mut should_close: bool = false;

@@ -147,7 +147,8 @@ impl View for WidgetFlightsTable {
                                     row.col(|ui| {
                                         if self.edit_mode {
                                             let current_state =
-                                                FlightStatus::from_str(&flight.status).unwrap();
+                                                FlightStatus::from_str(&flight.status)
+                                                    .unwrap_or(FlightStatus::Scheduled);
                                             let available_states =
                                                 WidgetFlightsTable::allowed_transitions(
                                                     &current_state,

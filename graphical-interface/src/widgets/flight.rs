@@ -13,7 +13,14 @@ pub struct WidgetFlight {
 
 impl WidgetFlight {
     pub fn new(selected_flight: Flight, db: &mut Db) -> Self {
-        let flight_data = db.get_flight_info(&selected_flight.number).unwrap();
+        let flight_data = match db.get_flight_info(&selected_flight.number) {
+            Ok(info) => info,
+            Err(_) => {
+                eprintln!("Error fetching flight info");
+                Default::default()
+            }
+        };
+
         Self {
             selected_flight,
             flight_data,

@@ -1,5 +1,6 @@
 use std::fmt;
 
+/// Represents errors that can occur in the flight simulator application.
 #[derive(Debug)]
 pub enum SimError {
     InvalidInput,
@@ -13,7 +14,7 @@ pub enum SimError {
     ClientError,           // If something went wrong with the client
 }
 
-// Implement the Display trait for user-friendly error messages
+/// Implement the Display trait for user-friendly error messages
 impl fmt::Display for SimError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

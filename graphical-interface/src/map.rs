@@ -1,4 +1,8 @@
-use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use egui::Context;
 use egui_extras::install_image_loaders;
@@ -17,6 +21,10 @@ const INITIAL_LAT: f64 = -34.608406;
 const INITIAL_LON: f64 = -58.372159;
 const UPDATE_TICK_MS: u64 = 1000;
 
+/// The main application struct that manages the state and UI of the flight simulator.
+///
+/// `MyApp` integrates various widgets, state management, and database interaction to provide
+/// a cohesive user interface for managing flights and airports.
 pub struct MyApp {
     tiles: Box<dyn Tiles>,
     map_memory: MapMemory,
@@ -31,6 +39,7 @@ pub struct MyApp {
 }
 
 impl MyApp {
+    /// Creates a new `MyApp` instance, initializing the map, widgets, and database connection.
     pub fn new(egui_ctx: Context, mut db: Db) -> Self {
         install_image_loaders(&egui_ctx);
         let mut initial_map_memory = MapMemory::default();
@@ -57,7 +66,6 @@ impl MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-
         let elapsed = self.last_update.elapsed();
         if elapsed >= Duration::from_millis(UPDATE_TICK_MS) {
             let map_bounds = calculate_map_bounds(&self.map_memory);
@@ -65,7 +73,8 @@ impl eframe::App for MyApp {
             self.view_state.update_airports(&mut self.db);
 
             if let Some(selected_airport) = &self.selection_state.borrow().airport {
-                self.view_state.update_flights(&mut self.db, selected_airport);
+                self.view_state
+                    .update_flights(&mut self.db, selected_airport);
             }
             self.last_update = Instant::now();
 

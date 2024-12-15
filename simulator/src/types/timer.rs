@@ -12,6 +12,10 @@ use crate::types::TICK_FREQUENCY_MILLIS;
 
 use super::sim_error::SimError;
 
+/// A timer for managing simulation time, with support for starting, pausing, and resuming.
+///
+/// The `Timer` tracks the current simulation time, advances it by a specified duration on each tick,
+/// and allows for custom callbacks to be executed on each tick.
 pub struct Timer {
     pub current_time: Mutex<NaiveDateTime>,
     pub tick_advance: RwLock<Duration>,

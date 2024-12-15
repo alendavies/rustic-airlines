@@ -2,12 +2,18 @@ use crate::{db::Db, types::Airport};
 
 use super::{flights_table::FlightType, View, WidgetFlightsTable};
 
+/// Represents the selectable tabs for displaying flight information in the airport widget.
+///
 #[derive(PartialEq)]
 enum Tabs {
     Departures,
     Arrivals,
 }
 
+/// A widget for displaying information about a specific airport.
+///
+/// This widget includes airport details (such as its IATA code and country) and
+/// provides functionality to view flights categorized into departures and arrivals.
 pub struct WidgetAirport {
     pub selected_airport: Airport,
     widget_departures: WidgetFlightsTable,
@@ -16,6 +22,7 @@ pub struct WidgetAirport {
 }
 
 impl WidgetAirport {
+    /// Creates a new `WidgetAirport` for a given airport.
     pub fn new(selected_airport: Airport) -> Self {
         let iata_code = selected_airport.iata.clone();
         Self {
@@ -28,20 +35,21 @@ impl WidgetAirport {
 }
 
 impl WidgetAirport {
+    /// This method shows a window with details about the selected airport,
+    /// including a selector for viewing either departure or arrival flights.
     pub fn show(&mut self, ctx: &egui::Context, db: &mut Db) -> bool {
-        let mut open = true; // Variable para manejar si la ventana sigue abierta
+        let mut open = true;
 
         egui::Window::new(format!("Aeropuerto {}", self.selected_airport.name))
             .resizable(false)
             .collapsible(true)
-            .open(&mut open) // Habilita la cruz para cerrar la ventana
+            .open(&mut open)
             .fixed_pos([20.0, 20.0])
             .show(ctx, |ui| {
-                ui.add_space(10.0); // Espacio superior
+                ui.add_space(10.0);
 
-                // Información del aeropuerto
-                ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE); // Forzar color de texto blanco
-                ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(30); // Fondo oscuro
+                ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE);
+                ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(30);
                 ui.vertical(|ui| {
                     ui.label(
                         egui::RichText::new(format!("Código IATA: {}", self.selected_airport.iata))
@@ -53,9 +61,8 @@ impl WidgetAirport {
                     );
                 });
 
-                ui.add_space(15.0); // Separador entre la información y el selector
+                ui.add_space(15.0);
 
-                // Selector y contenido de vuelos
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new("Información de vuelos en:")
@@ -73,9 +80,8 @@ impl WidgetAirport {
                         });
                 });
 
-                ui.add_space(10.0); // Espacio entre el selector y la tabla
+                ui.add_space(10.0);
 
-                // Mostrar tabla centrada
                 match self.open_tab {
                     Tabs::Departures => ui.vertical_centered(|ui| {
                         self.widget_departures.ui(ui, db);
@@ -86,7 +92,7 @@ impl WidgetAirport {
                 }
             });
 
-        open // Retorna si la ventana sigue abierta o no
+        open
     }
 
     // fn ui(self, ui: &mut egui::Ui) -> egui::Response {
