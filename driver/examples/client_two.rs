@@ -5,7 +5,7 @@ use std::{net::Ipv4Addr, str::FromStr, thread, time::Duration};
 /// This program demonstrates inserting a large number of rows into a Cassandra table.
 fn main() {
     // Reemplaza con la dirección IP y puerto correctos del servidor
-    let server_ip = "127.0.0.3";
+    let server_ip = "127.0.0.1";
     let ip = Ipv4Addr::from_str(&server_ip).unwrap();
 
     // Conectarse al servidor Cassandra
@@ -35,8 +35,8 @@ fn main() {
             i, i
         );
 
-        thread::sleep(Duration::from_secs(1));
-        match client.execute(&insert_query, "all") {
+        //thread::sleep(Duration::from_secs(1));
+        match client.execute(&insert_query, "quorum") {
             Ok(_) => {
                 println!("Se ineserto la query {:?}", i);
             }

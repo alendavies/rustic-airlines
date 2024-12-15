@@ -128,14 +128,6 @@ impl InternodeProtocolHandler {
                 Ok(())
             }
             InternodeMessageContent::Response(response) => {
-                log.info(
-                    &format!(
-                        "INTERNODE (Query: {}): I RECEIVED {:?} from {:?}",
-                        response.open_query_id, response.status, message.from
-                    ),
-                    Color::Blue,
-                    true,
-                )?;
                 self.handle_response_command(node, &response, message.from, connections)?;
 
                 Ok(())
@@ -953,6 +945,15 @@ impl InternodeProtocolHandler {
 
         match response.status {
             InternodeResponseStatus::Ok => {
+                logger.info(
+                    &format!(
+                        "INTERNODE (Query: {}): I RECEIVED OK RESPONSE {:?} from {:?}",
+                        response.open_query_id, response.status, from
+                    ),
+                    Color::Blue,
+                    true,
+                )?;
+
                 self.process_ok_response(
                     query_handler,
                     response,
@@ -967,6 +968,14 @@ impl InternodeProtocolHandler {
                 )?;
             }
             InternodeResponseStatus::Error => {
+                logger.info(
+                    &format!(
+                        "INTERNODE (Query: {}): I RECEIVED OK RESPONSE {:?} from {:?}",
+                        response.open_query_id, response.status, from
+                    ),
+                    Color::Red,
+                    true,
+                )?;
                 self.process_error_response(query_handler, response.open_query_id as i32)?;
             }
         }

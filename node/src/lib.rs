@@ -406,13 +406,19 @@ impl Node {
                                     connections,
                                 );
 
-                            if result.is_ok() {
-                                let _ =
-                                    logger
+                            match result {
+                                Ok(_) => {
+                                    let _ = logger.clone().info(
+                                        "END REDISTRIBUTION...",
+                                        Color::Cyan,
+                                        true,
+                                    );
+                                }
+                                Err(e) => {
+                                    let _ = logger
                                         .clone()
-                                        .info("END REDISTRIBUTION...", Color::Cyan, true);
-                            } else {
-                                let _ = logger.clone().error("REDISTRIBUTION FAILED!", true);
+                                        .error(&format!("REDISTRIBUTION FAILED! {:?}", e), true);
+                                }
                             }
                         });
                     }

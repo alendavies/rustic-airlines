@@ -4,6 +4,8 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     net::{Ipv4Addr, TcpStream},
     sync::{Arc, Mutex},
+    thread::{self},
+    time::Duration,
 };
 
 use gossip::structures::application_state::{KeyspaceSchema, TableSchema};
@@ -370,7 +372,7 @@ impl StorageEngine {
                 true,
             )
             .ok();
-
+        thread::sleep(Duration::from_millis(300));
         let result = connect_and_send_message(target_ip, INTERNODE_PORT, connections, message);
         // Manejar errores o resultados
         _ = result;

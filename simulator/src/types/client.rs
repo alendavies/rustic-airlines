@@ -11,7 +11,7 @@ use crate::types::flight_status::FlightStatus;
 
 pub struct Client {
     cassandra_client: CassandraClient,
-    ip: Ipv4Addr
+    ip: Ipv4Addr,
 }
 
 impl Client {
@@ -21,13 +21,16 @@ impl Client {
 
         cassandra_client.startup()?;
 
-        let mut client = Self { cassandra_client, ip };
+        let mut client = Self {
+            cassandra_client,
+            ip,
+        };
         client.setup_keyspace_and_tables()?;
 
         Ok(client)
     }
 
-    fn recreate_client(&mut self)-> Result<(), ClientError> {
+    fn recreate_client(&mut self) -> Result<(), ClientError> {
         let mut cassandra_client = CassandraClient::connect(self.ip)?;
 
         cassandra_client.startup()?;
@@ -63,7 +66,8 @@ impl Client {
                 PRIMARY KEY (airport, direction, departure_time, arrival_time, number)
             )
             "#;
-        self.cassandra_client.execute(create_flights_table, "quorum")?;
+        self.cassandra_client
+            .execute(create_flights_table, "quorum")?;
 
         let create_flight_info_table = r#"
             CREATE TABLE sky.flight_info (
@@ -102,7 +106,10 @@ impl Client {
             airport.iata_code, airport.country, airport.name, airport.latitude, airport.longitude
         );
 
-        if let Err(e) = self.cassandra_client.execute(&insert_airport_query, "quorum") {
+        if let Err(e) = self
+            .cassandra_client
+            .execute(&insert_airport_query, "quorum")
+        {
             println!("No se pudo agregar el aeropuerto, el error es {:?}", e);
             return Ok(());
         }
@@ -157,7 +164,10 @@ impl Client {
             return Ok(());
         }
 
-        if let Err(e) = self.cassandra_client.execute(&insert_arrival_query, "quorum") {
+        if let Err(e) = self
+            .cassandra_client
+            .execute(&insert_arrival_query, "quorum")
+        {
             println!("No se pudo agregar el aeropuerto, el error es {:?}", e);
             return Ok(());
         }
