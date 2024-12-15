@@ -163,7 +163,7 @@ impl Provider for Db {
         let query = "SELECT * FROM sky.airports WHERE country = 'ARG'".to_string();
 
         let result = self
-            .execute_query(query.as_str(), "all")
+            .execute_query(query.as_str(), "quorum")
             .map_err(|_| DBError)?;
 
         let mut airports: Vec<Airport> = Vec::new();
@@ -224,7 +224,7 @@ impl Provider for Db {
         );
 
         let result = self
-            .execute_query(query.as_str(), "all")
+            .execute_query(query.as_str(), "quorum")
             .map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
@@ -314,7 +314,7 @@ impl Provider for Db {
         );
 
         let result = self
-            .execute_query(query.as_str(), "all")
+            .execute_query(query.as_str(), "quorum")
             .map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
@@ -394,7 +394,7 @@ impl Provider for Db {
         );
 
         let result = self
-            .execute_query(query.as_str(), "quorum")
+            .execute_query(query.as_str(), "one")
             .map_err(|_| DBError)?;
 
         let mut flight_info = FlightInfo {
@@ -475,7 +475,7 @@ impl Provider for Db {
         );
 
         let result = self
-            .execute_query(query.as_str(), "quorum")
+            .execute_query(query.as_str(), "one")
             .map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
@@ -580,7 +580,7 @@ impl Provider for Db {
         );
 
         let result_check = self
-            .execute_query(query_check.as_str(), "all")
+            .execute_query(query_check.as_str(), "quorum")
             .map_err(|_| DBError)?;
 
         if let QueryResult::Result(result_::Result::Rows(res)) = result_check {
@@ -630,11 +630,11 @@ impl Provider for Db {
         );
 
         // Ejecución de las consultas en Cassandra
-        self.execute_query(insert_departure_query.as_str(), "all")
+        self.execute_query(insert_departure_query.as_str(), "quorum")
             .map_err(|_| DBError)?;
-        self.execute_query(insert_arrival_query.as_str(), "all")
+        self.execute_query(insert_arrival_query.as_str(), "quorum")
             .map_err(|_| DBError)?;
-        self.execute_query(insert_flight_info_query.as_str(), "all")
+        self.execute_query(insert_flight_info_query.as_str(), "quorum")
             .map_err(|_| DBError)?;
 
         Ok(())
@@ -659,7 +659,7 @@ impl Provider for Db {
             flight.number
         );
 
-        self.execute_query(&update_query_status_departure, "all")
+        self.execute_query(&update_query_status_departure, "quorum")
             .map_err(|_| DBError)?;
 
         let update_query_status_arrival = format!(
@@ -672,7 +672,7 @@ impl Provider for Db {
                 flight.number
             );
 
-        self.execute_query(&update_query_status_arrival, "all")
+        self.execute_query(&update_query_status_arrival, "quorum")
             .map_err(|_| DBError)?;
 
         Ok(())

@@ -46,7 +46,7 @@ impl Client {
             CREATE KEYSPACE sky
             WITH REPLICATION = {
                 'class': 'SimpleStrategy',
-                'replication_factor': 3
+                'replication_factor': 2
             };
         "#;
         self.cassandra_client

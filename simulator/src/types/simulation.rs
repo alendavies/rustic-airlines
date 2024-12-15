@@ -114,8 +114,7 @@ impl Simulation {
                                         flight_lock.status = flight.status;
                                         flight_lock.check_states_and_update_flight(current_time);
                                         if let Ok(mut db_lock) = db.lock() {
-                                            let result =
-                                                db_lock.update_flight_status(&flight_lock);
+                                            let result = db_lock.update_flight_status(&flight_lock);
                                             if let Err(e) = result {
                                                 eprintln!("Database update error: {:?}", e);
                                             }

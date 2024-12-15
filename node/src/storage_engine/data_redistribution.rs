@@ -215,16 +215,16 @@ impl StorageEngine {
                             .parse()
                             .map_err(|_| StorageEngineError::UnsupportedOperation)?;
 
-                        self.insert(
-                            &keyspace.get_name(),
-                            &table.get_name(),
-                            row.clone(),
-                            table.get_columns(),
-                            table.get_clustering_column_in_order(),
-                            true,
-                            false,
-                            timest,
-                        )?;
+                        // self.insert(
+                        //     &keyspace.get_name(),
+                        //     &table.get_name(),
+                        //     row.clone(),
+                        //     table.get_columns(),
+                        //     table.get_clustering_column_in_order(),
+                        //     true,
+                        //     false,
+                        //     timest,
+                        // )?;
                     }
                 } else {
                     // Reubicar la fila al nodo correspondiente
@@ -328,6 +328,7 @@ impl StorageEngine {
 
         fs::rename(&temp_file_path, file_path).map_err(|_| StorageEngineError::IoError)?;
 
+        println!("cerro archivo");
         Ok(())
     }
 
@@ -372,7 +373,7 @@ impl StorageEngine {
                 true,
             )
             .ok();
-        thread::sleep(Duration::from_millis(300));
+        //thread::sleep(Duration::from_millis(300));
         let result = connect_and_send_message(target_ip, INTERNODE_PORT, connections, message);
         // Manejar errores o resultados
         _ = result;
