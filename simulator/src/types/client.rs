@@ -17,7 +17,7 @@ pub struct Client {
 impl Client {
     /// Initializes the flight simulation by connecting to Cassandra and setting up the keyspace and tables.
     pub fn new(ip: Ipv4Addr) -> Result<Self, ClientError> {
-        let mut cassandra_client = CassandraClient::connect(ip)?;
+        let mut cassandra_client = CassandraClient::connect(ip, None)?;
 
         cassandra_client.startup()?;
 
@@ -30,14 +30,18 @@ impl Client {
         Ok(client)
     }
 
-    fn recreate_client(&mut self) -> Result<(), ClientError> {
-        let mut cassandra_client = CassandraClient::connect(self.ip)?;
+    pub fn recreate_client(&mut self) -> Result<Client, ClientError> {
+        let ip = self.ip.clone();
+        let mut cassandra_client = CassandraClient::connect(ip, Some(self.cassandra_client.config()))?;
 
         cassandra_client.startup()?;
 
-        self.cassandra_client = cassandra_client;
+        let client = Client {
+            cassandra_client,
+            ip,
+        };
 
-        Ok(())
+        Ok(client)
     }
 
     /// Sets up the keyspace and required tables in Cassandra
@@ -203,7 +207,7 @@ impl Client {
             .execute(&update_query_status_departure, "one")
         {
             println!("No se pudo actualizar el vuelo, el error es {:?}", e);
-            self.recreate_client()?;
+
             return Ok(());
         }
 
@@ -264,7 +268,7 @@ impl Client {
                 "No se pudo actualizar el estado del vuelo, el error es {:?} 1",
                 e
             );
-            self.recreate_client()?;
+
             return Ok(());
         }
 
@@ -306,15 +310,22 @@ impl Client {
         // Iterate through each airport in the HashMap
         for (airport_code, airport) in airports {
             let query = format!(
-                "SELECT number, status, lat, lon, angle, departure_time, arrival_time, direction FROM sky.flights WHERE airport = '{airport_code}' AND direction = 'departure' AND arrival_time > {from}"
+                "SELECT number, status, lat, lon, angle, departure_time, arrival_time, direction \
+                FROM sky.flights \
+                WHERE airport = '{airport_code}' AND direction = 'departure' AND arrival_time > {from}"
             );
-
-            let result = self.cassandra_client.execute(&query, "quorum")?;
-
-            if let QueryResult::Result(result_::Result::Rows(res)) = result {
-                for row in res.rows_content {
-                    let flight = Client::build_flight_from_row(self, &row, airport)?;
-                    flights.push(flight);
+        
+            match self.cassandra_client.execute(&query, "quorum") {
+                Ok(result) => {
+                    if let QueryResult::Result(result_::Result::Rows(res)) = result {
+                        for row in res.rows_content {
+                            let flight = Client::build_flight_from_row(self, &row, airport)?;
+                            flights.push(flight);
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("Query error for airport {}: {:?}", airport_code, e);
                 }
             }
         }
@@ -349,6 +360,7 @@ impl Client {
                 flight.flight_number = number.to_string();
             }
         } else {
+            println!("1: {:?}", row);
             return Err(ClientError);
         }
 
@@ -360,6 +372,7 @@ impl Client {
                 }
             }
         } else {
+            println!("2: {:?}", row);
             return Err(ClientError);
         }
 
@@ -372,6 +385,7 @@ impl Client {
                 }
             }
         } else {
+            println!("3: {:?}", row);
             return Err(ClientError);
         }
 
@@ -384,6 +398,7 @@ impl Client {
                 }
             }
         } else {
+            println!("4: {:?}", row);
             return Err(ClientError);
         }
 
@@ -392,6 +407,7 @@ impl Client {
                 flight.latitude = *lat;
             }
         } else {
+            println!("5: {:?}", row);
             return Err(ClientError);
         }
 
@@ -400,6 +416,7 @@ impl Client {
                 flight.longitude = *lon;
             }
         } else {
+            println!("6: {:?}", row);
             return Err(ClientError);
         }
 
@@ -408,6 +425,7 @@ impl Client {
                 flight.angle = *angle;
             }
         } else {
+            println!("7: {:?}", row);
             return Err(ClientError);
         }
 

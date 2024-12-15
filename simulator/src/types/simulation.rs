@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
+use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Arc, Mutex, RwLock, RwLockReadGuard};
 use std::time::Duration;
 use std::{io, thread};
@@ -15,72 +16,114 @@ use super::timer::Timer;
 use super::TICK_FREQUENCY_MILLIS;
 
 pub struct Simulation {
-    pub flights: Arc<RwLock<HashMap<String, Arc<RwLock<Flight>>>>>, // Flights wrapped in Arc<RwLock>
-    pub airports: Arc<RwLock<HashMap<String, Airport>>>,            // Airports
-    pub db: Arc<Mutex<Client>>,                                     // DB Client protected by Mutex
-    pub timer: Arc<Timer>,                                          // Timer
-    pub thread_pool: Arc<ThreadPool>,                               // ThreadPool
+    pub flights: Arc<RwLock<HashMap<String, Arc<RwLock<Flight>>>>>,
+    pub airports: Arc<RwLock<HashMap<String, Airport>>>,
+    pub db: Arc<Mutex<Client>>,
+    pub timer: Arc<Timer>,
+    pub thread_pool: Arc<ThreadPool>,
+    db_channel: Sender<DbUpdate>, // Sender for DB updates
+}
+
+// Define a struct for database updates
+struct DbUpdate {
+    update_type: UpdateType,
+    flight_data: Flight, // Or a subset of the flight data
+}
+
+enum UpdateType {
+    UpdateFlight,
+    UpdateFlightStatus,
 }
 
 impl Simulation {
-    /// Create a new simulation
-    pub fn new(db: Arc<Mutex<Client>>, timer: Arc<Timer>, thread_pool: Arc<ThreadPool>) -> Self {
+    pub fn new(
+        db: Arc<Mutex<Client>>,
+        timer: Arc<Timer>,
+        thread_pool: Arc<ThreadPool>,
+    ) -> Self {
+        let (db_sender, db_receiver) = mpsc::channel::<DbUpdate>();
+
+        let mut db_update;
+        {
+            let mut db_lock = db.lock().unwrap();
+            db_update = db_lock.recreate_client().unwrap();
+        }
+
+        thread::spawn(move || {
+            for update in db_receiver {
+                match update.update_type {
+                    UpdateType::UpdateFlightStatus => {
+                        if let Err(e) = db_update.update_flight_status(&update.flight_data) {
+                            eprintln!("Database update status error: {:?}", e);
+                        }
+                    }
+                    UpdateType::UpdateFlight => {
+                        if let Err(e) = db_update.update_flight(&update.flight_data) {
+                            eprintln!("Database update error: {:?}", e);
+                        }
+                    }
+                }
+            }
+        });
+
         Simulation {
             flights: Arc::new(RwLock::new(HashMap::new())),
             airports: Arc::new(RwLock::new(HashMap::new())),
             db,
             timer,
             thread_pool,
+            db_channel: db_sender,
         }
     }
 
-    /// Start the simulation
     pub fn start(&self) {
         let flights = Arc::clone(&self.flights);
-        let airports = Arc::clone(&self.airports);
+        let thread_pool = Arc::clone(&self.thread_pool);
+        let db_channel = self.db_channel.clone();
+        let timer = Arc::clone(&self.timer);
+        let airports = Arc::clone(&self.airports); // Clone the Arc pointer, not the data
         let db = Arc::clone(&self.db);
         let thread_pool = Arc::clone(&self.thread_pool);
-        let timer = Arc::clone(&self.timer);
+
 
         let _ = timer.start(move |current_time, tick_count| {
-            {
-                if let Ok(flights_lock) = flights.try_read() {
-                    for flight_arc in flights_lock.values() {
-                        let flight = Arc::clone(flight_arc);
-                        let db = Arc::clone(&db);
+            if let Ok(flights_lock) = flights.try_read() {
+                for flight_arc in flights_lock.values() {
+                    let flight = Arc::clone(flight_arc);
+                    let db_channel = db_channel.clone();
 
-                        if !should_update(&flight) {
-                            continue;
-                        }
-
-                        thread_pool.execute(move || {
-                            if let Ok(mut flight_lock) = flight.try_write() {
-                                let updated_state =
-                                    flight_lock.check_states_and_update_flight(current_time);
-
-                                // Update the database
-                                if let Ok(mut db_lock) = db.lock() {
-                                    let result = if updated_state {
-                                        db_lock.update_flight_status(&flight_lock)
-                                    } else {
-                                        db_lock.update_flight(&flight_lock)
-                                    };
-
-                                    if let Err(e) = result {
-                                        eprintln!("Database update error: {:?}", e);
-                                    }
-                                } else {
-                                    eprintln!("Failed to lock DB for updating flight.");
-                                }
-                            } else {
-                                eprintln!("Failed to lock flight for update. Skipping.");
-                            }
-                        });
+                    if !should_update(&flight) {
+                        continue;
                     }
-                } else {
-                    eprintln!("Failed to read flights. Skipping this cycle.");
+
+                    thread_pool.execute(move || {
+                        if let Ok(mut flight_lock) = flight.try_write() {
+                            let updated_state =
+                                flight_lock.check_states_and_update_flight(current_time);
+
+                            let update_type = if updated_state {
+                                UpdateType::UpdateFlightStatus
+                            } else {
+                                UpdateType::UpdateFlight
+                            };
+
+                            let update = DbUpdate {
+                                update_type,
+                                flight_data: flight_lock.clone(),
+                            };
+
+                            if let Err(e) = db_channel.send(update) {
+                                eprintln!("Failed to send DB update: {:?}", e);
+                            }
+                        } else {
+                            eprintln!("Failed to lock flight for update. Skipping.");
+                        }
+                    });
                 }
+            } else {
+                eprintln!("Failed to read flights. Skipping this cycle.");
             }
+            
 
             // Synchronize with the database every 5 ticks
             if tick_count % 5 == 0 {
