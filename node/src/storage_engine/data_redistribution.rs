@@ -4,8 +4,8 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     net::{Ipv4Addr, TcpStream},
     sync::{Arc, Mutex},
-    thread::{self},
-    time::Duration,
+    // thread::{self},
+    // time::Duration,
 };
 
 use gossip::structures::application_state::{KeyspaceSchema, TableSchema};

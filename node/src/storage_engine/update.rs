@@ -158,12 +158,12 @@ impl StorageEngine {
             .map_err(|_| StorageEngineError::FileWriteFailed)?;
         current_byte_offset += header_line.len() as u64; // Contar el tamaño del encabezado
 
-        let mut found_match = false;
+        let mut _found_match = false;
 
         // Iterar sobre las líneas del archivo original y aplicar la actualización
         for line in reader.lines() {
             let line = line?;
-            found_match |= self.update_or_write_line(
+            _found_match |= self.update_or_write_line(
                 &table,
                 &update_query,
                 &line,

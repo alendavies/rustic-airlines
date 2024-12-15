@@ -15,7 +15,7 @@ members = [
     "gossip",
      "logger",
       "repl", 
-      "simulator"]
+      "flight-sim"]
 
 [dev-dependencies]
 driver = { path = "driver" }  # Solo para los tests de integración
