@@ -114,7 +114,8 @@ impl Simulation {
                                         flight_lock.status = flight.status;
                                         flight_lock.check_states_and_update_flight(current_time);
                                         if let Ok(mut db_lock) = db.lock() {
-                                            let result = db_lock.update_flight_status(&flight_lock);
+                                            let result =
+                                                db_lock.update_flight_status(&flight_lock);
                                             if let Err(e) = result {
                                                 eprintln!("Database update error: {:?}", e);
                                             }
@@ -279,6 +280,14 @@ impl Simulation {
         self.airports
             .read()
             .map_err(|_| SimError::AirportNotFound("Could not read airports".to_string()))
+    }
+
+    pub fn pause_simulation(&mut self) {
+        self.timer.pause();
+    }
+
+    pub fn resume_simulation(&mut self) {
+        self.timer.resume();
     }
 }
 

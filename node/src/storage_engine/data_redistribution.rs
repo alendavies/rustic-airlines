@@ -215,16 +215,16 @@ impl StorageEngine {
                             .parse()
                             .map_err(|_| StorageEngineError::UnsupportedOperation)?;
 
-                        // self.insert(
-                        //     &keyspace.get_name(),
-                        //     &table.get_name(),
-                        //     row.clone(),
-                        //     table.get_columns(),
-                        //     table.get_clustering_column_in_order(),
-                        //     true,
-                        //     false,
-                        //     timest,
-                        // )?;
+                        self.insert(
+                            &keyspace.get_name(),
+                            &table.get_name(),
+                            row.clone(),
+                            table.get_columns(),
+                            table.get_clustering_column_in_order(),
+                            true,
+                            false,
+                            timest,
+                        )?;
                     }
                 } else {
                     // Reubicar la fila al nodo correspondiente

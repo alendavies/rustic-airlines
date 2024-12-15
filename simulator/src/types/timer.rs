@@ -16,6 +16,7 @@ pub struct Timer {
     pub current_time: Mutex<NaiveDateTime>,
     pub tick_advance: RwLock<Duration>,
     pub running: AtomicBool, // Flag to indicate if the timer is running
+    pub paused: AtomicBool,  // Flag to indicate if the timer is paused
 }
 
 impl Timer {
@@ -25,6 +26,7 @@ impl Timer {
             current_time: Mutex::new(start_time),
             tick_advance: RwLock::new(Duration::minutes(tick_advance_minutes)),
             running: AtomicBool::new(true),
+            paused: AtomicBool::new(false),
         })
     }
 
@@ -48,6 +50,16 @@ impl Timer {
         self.running.store(false, Ordering::SeqCst);
     }
 
+    /// Pauses the timer indefinitely
+    pub fn pause(&self) {
+        self.paused.store(true, Ordering::SeqCst);
+    }
+
+    /// Resumes the timer
+    pub fn resume(&self) {
+        self.paused.store(false, Ordering::SeqCst);
+    }
+
     /// Starts timer and executes the callback function on each tick.
     pub fn start(
         self: Arc<Self>,
@@ -58,6 +70,11 @@ impl Timer {
             .spawn(move || {
                 let mut tick_count = 0;
                 while self.running.load(Ordering::SeqCst) {
+                    // Check if the timer is paused
+                    while self.paused.load(Ordering::SeqCst) {
+                        thread::sleep(StdDuration::from_millis(100)); // Polling interval during pause
+                    }
+
                     let now = Instant::now();
 
                     let current_time;

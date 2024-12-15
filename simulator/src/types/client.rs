@@ -31,7 +31,7 @@ impl Client {
     }
 
     fn recreate_client(&mut self) -> Result<(), ClientError> {
-        let mut cassandra_client = CassandraClient::connect(self.ip)?;
+        let mut cassandra_client = CassandraClient::connect_with_config(self.ip, self.cassandra_client.config())?;
 
         cassandra_client.startup()?;
 

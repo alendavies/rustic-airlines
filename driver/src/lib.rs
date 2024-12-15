@@ -18,11 +18,12 @@ use native_protocol::{
     types::Bytes,
     Serializable,
 };
-use rustls::{ClientConnection, StreamOwned};
+use rustls::{ClientConfig, ClientConnection, StreamOwned};
 use tls::configure_client;
 
 pub struct CassandraClient {
     stream: StreamOwned<ClientConnection, TcpStream>,
+    config: ClientConfig
 }
 
 const NATIVE_PORT: u16 = 0x4645;
@@ -41,10 +42,10 @@ impl CassandraClient {
     pub fn connect(ip: Ipv4Addr) -> Result<Self, ClientError> {
         // Configurar TLS sin verificación de certificados
         let config = configure_client();
-        let config = Arc::new(config);
+        let config_arc = Arc::new(config.clone());
 
         let server_name = rustls::pki_types::ServerName::try_from("databaseserver").unwrap();
-        let conn = ClientConnection::new(config, server_name).unwrap();
+        let conn = ClientConnection::new(config_arc, server_name).unwrap();
 
         let addr = if let Ok(var) = env::var("NODE_ADDR") {
             var.parse().map_err(|_| ClientError)?
@@ -59,7 +60,33 @@ impl CassandraClient {
             .map_err(|_| ClientError)?;
         let tls = StreamOwned::new(conn, sock);
 
-        Ok(Self { stream: tls })
+        Ok(Self { stream: tls, config: config })
+    }
+
+    pub fn connect_with_config(ip: Ipv4Addr, config: ClientConfig) -> Result<Self, ClientError> {
+        let config_arc = Arc::new(config.clone());
+        // Configurar TLS sin verificación de certificados
+        let server_name = rustls::pki_types::ServerName::try_from("databaseserver").unwrap();
+        let conn = ClientConnection::new(config_arc, server_name).unwrap();
+
+        let addr = if let Ok(var) = env::var("NODE_ADDR") {
+            var.parse().map_err(|_| ClientError)?
+        } else {
+            SocketAddr::new(IpAddr::V4(ip), NATIVE_PORT)
+        };
+
+        let sock = TcpStream::connect(addr).unwrap();
+        sock.set_read_timeout(Some(std::time::Duration::from_secs(3)))
+            .map_err(|_| ClientError)?;
+        sock.set_write_timeout(Some(std::time::Duration::from_secs(3)))
+            .map_err(|_| ClientError)?;
+        let tls = StreamOwned::new(conn, sock);
+
+        Ok(Self { stream: tls, config: config })
+    }
+
+    pub fn config(&self) -> ClientConfig{
+        self.config.clone()
     }
 
     /// Execute a query.

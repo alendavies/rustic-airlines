@@ -142,6 +142,16 @@ fn main() -> Result<(), SimError> {
                 }
             }
 
+            "pause" => {
+                sim.pause_simulation();
+                println!("Simulation paused");
+            }
+
+            "resume" => {
+                sim.resume_simulation();
+                println!("Simulation resumed");
+            }
+
             "-h" | "help" => print_help(),
 
             "exit" => break,
@@ -177,6 +187,10 @@ fn print_help() {
     println!("    Show the current airports.");
     println!("  time-rate");
     println!("    Changes the simulation's elapsed time per tick.");
+    println!("  pause");
+    println!("    Pauses the simulation.");
+    println!("  resume");
+    println!("    Resumes the simulation.");
     println!("  test-data");
     println!("    Adds four airports and four flights to the simulation.");
     println!("  exit");
