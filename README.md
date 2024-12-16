@@ -50,3 +50,5 @@ La IP nodo semilla utilizado por un nodo también puede configurarse seteando la
 Se pueden agregar y quitar nodos configurando correctamente las direcciones IP en `compose.yml`.
 
 Para correr el perfil `initial-nodes` de Compose, correr `sudo docker compose --profile initial-nodes up`. De este modo se levantan los nodos incluidos en dicho perfile. Luego se puede correr un nuevo nodo, para simular la unión al cluster, con `sudo docker compose --profile new-node up`. Se pueden agregar más perfiles con nodos para simular la unión de más nodos.
+
+Además se puede tirar un nodo corriendo `sudo docker stop nodeX && sudo docker rm nodeX`, reemplazando `nodeX` con el nombre del nodo a tirar. Para saber el nombre del nodo, fijarse la sección "container_name" de `compose.yml` del servicio (nodo) correspondiente.
