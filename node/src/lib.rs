@@ -395,27 +395,29 @@ impl Node {
                         let logger = logger.clone();
                         let connections = connections.clone();
                         let keyspaces: Vec<KeyspaceSchema> = keyspaces.values().cloned().collect();
-                        let _ = storage_engine::StorageEngine::new(storage_path, self_ip)
-                            .redistribute_data(
-                                keyspaces,
-                                &partitioner,
-                                logger.clone(),
-                                connections,
-                            );
-                        // // Lanzar la redistribución en un nuevo hilo
-                        // std::thread::spawn(move || match result {
-                        //     Ok(_) => {
-                        //         let _ =
-                        //             logger
-                        //                 .clone()
-                        //                 .info("END REDISTRIBUTION...", Color::Cyan, true);
-                        //     }
-                        //     Err(e) => {
-                        //         let _ = logger
-                        //             .clone()
-                        //             .error(&format!("REDISTRIBUTION FAILED! {:?}", e), true);
-                        //     }
-                        // });
+
+                        let redistribution_result =
+                            storage_engine::StorageEngine::new(storage_path, self_ip)
+                                .redistribute_data(
+                                    keyspaces,
+                                    &partitioner,
+                                    logger.clone(),
+                                    connections,
+                                );
+
+                        match redistribution_result {
+                            Ok(_) => {
+                                let _ =
+                                    logger
+                                        .clone()
+                                        .info("END REDISTRIBUTION...", Color::Cyan, true);
+                            }
+                            Err(e) => {
+                                let _ = logger
+                                    .clone()
+                                    .error(&format!("REDISTRIBUTION FAILED! {:?}", e), true);
+                            }
+                        }
                     }
                 }
                 let gossip_logger = log.clone();
