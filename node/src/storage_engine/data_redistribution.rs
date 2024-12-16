@@ -328,7 +328,6 @@ impl StorageEngine {
 
         fs::rename(&temp_file_path, file_path).map_err(|_| StorageEngineError::IoError)?;
 
-        println!("cerro archivo");
         Ok(())
     }
 

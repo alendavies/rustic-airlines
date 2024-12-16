@@ -77,8 +77,6 @@ impl eframe::App for MyApp {
                     .update_flights(&mut self.db, selected_airport);
             }
             self.last_update = Instant::now();
-
-            println!("Update! {:?}", self.last_update);
         }
 
         ctx.request_repaint();

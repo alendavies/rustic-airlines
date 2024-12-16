@@ -1,27 +1,79 @@
-[INFO] [2024-12-16 00:56:37]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:38]: NEW NODE 127.0.0.2 .. New Ring: 127.0.0.1 -> 127.0.0.2 -> 127.0.0.3
-[INFO] [2024-12-16 00:56:38]: START REDISTRIBUTION...
-[INFO] [2024-12-16 00:56:38]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:39]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:40]: NEW NODE 127.0.0.4 .. New Ring: 127.0.0.1 -> 127.0.0.2 -> 127.0.0.3 -> 127.0.0.4
-[INFO] [2024-12-16 00:56:40]: START REDISTRIBUTION...
-[INFO] [2024-12-16 00:56:40]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:41]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:42]: NEW NODE 127.0.0.5 .. New Ring: 127.0.0.1 -> 127.0.0.2 -> 127.0.0.5 -> 127.0.0.3 -> 127.0.0.4
-[INFO] [2024-12-16 00:56:42]: START REDISTRIBUTION...
-[INFO] [2024-12-16 00:56:42]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:43]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:44]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:45]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:46]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:47]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:48]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:49]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:50]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:51]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:52]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:53]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:54]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:55]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:56]: GOSSIP: New Gossip Round
-[INFO] [2024-12-16 00:56:57]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:11]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:12]: NEW NODE 127.0.0.2 .. New Ring: 127.0.0.1 -> 127.0.0.2 -> 127.0.0.3
+[INFO] [2024-12-16 03:04:12]: START REDISTRIBUTION...
+[INFO] [2024-12-16 03:04:12]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:13]: NEW NODE 127.0.0.5 .. New Ring: 127.0.0.1 -> 127.0.0.2 -> 127.0.0.5 -> 127.0.0.3
+[INFO] [2024-12-16 03:04:13]: NEW NODE 127.0.0.4 .. New Ring: 127.0.0.1 -> 127.0.0.2 -> 127.0.0.5 -> 127.0.0.3 -> 127.0.0.4
+[INFO] [2024-12-16 03:04:13]: START REDISTRIBUTION...
+[INFO] [2024-12-16 03:04:13]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:14]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:15]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:16]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:17]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:18]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:19]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:20]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:21]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:22]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:23]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:24]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:25]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:26]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:27]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:28]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:29]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:30]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:31]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:32]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:33]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:34]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:35]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:36]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:37]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:38]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:39]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:40]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:41]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:42]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:43]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:44]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:45]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:46]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:47]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:48]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:49]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:50]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:51]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:52]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:53]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:54]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:55]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:56]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:57]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:58]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:04:59]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:00]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:01]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:02]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:03]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:04]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:05]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:06]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:07]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:08]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:09]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:10]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:11]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:12]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:13]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:14]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:15]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:16]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:17]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:18]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:19]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:20]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:21]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:22]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:23]: GOSSIP: New Gossip Round
+[INFO] [2024-12-16 03:05:24]: GOSSIP: New Gossip Round

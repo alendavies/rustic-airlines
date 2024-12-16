@@ -242,7 +242,6 @@ pub fn check_table(
 
             // Si no se encuentra el keyspace, retornar un error
             if keyspace.is_none() {
-                println!("Se necesita una tabla, pero no se tiene un keyspace.");
                 return Err(NodeError::CQLError(CQLError::InvalidSyntax)); // Keyspace no encontrado
             }
 
