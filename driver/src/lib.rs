@@ -23,13 +23,23 @@ use tls::configure_client;
 
 pub struct CassandraClient {
     stream: StreamOwned<ClientConnection, TcpStream>,
-    config: ClientConfig
+    config: ClientConfig,
 }
 
 const NATIVE_PORT: u16 = 0x4645;
 
 #[derive(Debug)]
-pub struct ClientError;
+pub enum ClientError {
+    ServerError,
+    ConnectionError,
+    AddrError,
+    TimeoutError,
+    ConsistencyError,
+    InvalidFrame,
+    IOError,
+    SerializationError,
+    DeserializationError,
+}
 
 #[derive(Debug)]
 pub enum QueryResult {
@@ -44,48 +54,58 @@ impl CassandraClient {
         let config = configure_client();
         let config_arc = Arc::new(config.clone());
 
-        let server_name = rustls::pki_types::ServerName::try_from("databaseserver").unwrap();
-        let conn = ClientConnection::new(config_arc, server_name).unwrap();
+        let server_name = rustls::pki_types::ServerName::try_from("databaseserver")
+            .map_err(|_| ClientError::ServerError)?;
+        let conn = ClientConnection::new(config_arc, server_name)
+            .map_err(|_| ClientError::ConnectionError)?;
 
         let addr = if let Ok(var) = env::var("NODE_ADDR") {
-            var.parse().map_err(|_| ClientError)?
+            var.parse().map_err(|_| ClientError::AddrError)?
         } else {
             SocketAddr::new(IpAddr::V4(ip), NATIVE_PORT)
         };
 
-        let sock = TcpStream::connect(addr).unwrap();
+        let sock = TcpStream::connect(addr).map_err(|_| ClientError::ConnectionError)?;
         sock.set_read_timeout(Some(std::time::Duration::from_secs(3)))
-            .map_err(|_| ClientError)?;
+            .map_err(|_| ClientError::TimeoutError)?;
         sock.set_write_timeout(Some(std::time::Duration::from_secs(3)))
-            .map_err(|_| ClientError)?;
+            .map_err(|_| ClientError::TimeoutError)?;
         let tls = StreamOwned::new(conn, sock);
 
-        Ok(Self { stream: tls, config: config })
+        Ok(Self {
+            stream: tls,
+            config: config,
+        })
     }
 
     pub fn connect_with_config(ip: Ipv4Addr, config: ClientConfig) -> Result<Self, ClientError> {
         let config_arc = Arc::new(config.clone());
         // Configurar TLS sin verificación de certificados
-        let server_name = rustls::pki_types::ServerName::try_from("databaseserver").unwrap();
-        let conn = ClientConnection::new(config_arc, server_name).unwrap();
+        let server_name = rustls::pki_types::ServerName::try_from("databaseserver")
+            .map_err(|_| ClientError::ServerError)?;
+        let conn = ClientConnection::new(config_arc, server_name)
+            .map_err(|_| ClientError::ConnectionError)?;
 
         let addr = if let Ok(var) = env::var("NODE_ADDR") {
-            var.parse().map_err(|_| ClientError)?
+            var.parse().map_err(|_| ClientError::AddrError)?
         } else {
             SocketAddr::new(IpAddr::V4(ip), NATIVE_PORT)
         };
 
-        let sock = TcpStream::connect(addr).unwrap();
+        let sock = TcpStream::connect(addr).map_err(|_| ClientError::ConnectionError)?;
         sock.set_read_timeout(Some(std::time::Duration::from_secs(3)))
-            .map_err(|_| ClientError)?;
+            .map_err(|_| ClientError::TimeoutError)?;
         sock.set_write_timeout(Some(std::time::Duration::from_secs(3)))
-            .map_err(|_| ClientError)?;
+            .map_err(|_| ClientError::TimeoutError)?;
         let tls = StreamOwned::new(conn, sock);
 
-        Ok(Self { stream: tls, config: config })
+        Ok(Self {
+            stream: tls,
+            config: config,
+        })
     }
 
-    pub fn config(&self) -> ClientConfig{
+    pub fn config(&self) -> ClientConfig {
         self.config.clone()
     }
 
@@ -95,12 +115,13 @@ impl CassandraClient {
         query: &str,
         consistency_str: &str,
     ) -> Result<QueryResult, ClientError> {
-        let consistency = Consistency::from_string(consistency_str).map_err(|_| ClientError)?;
+        let consistency =
+            Consistency::from_string(consistency_str).map_err(|_| ClientError::ConsistencyError)?;
         let result = self.send_query(query, consistency)?;
         match result {
             Frame::Result(res) => Ok(QueryResult::Result(res)),
             Frame::Error(err) => Ok(QueryResult::Error(err)),
-            _ => Err(ClientError),
+            _ => Err(ClientError::InvalidFrame),
         }
     }
 
@@ -108,13 +129,20 @@ impl CassandraClient {
         let startup = Frame::Startup;
 
         self.stream
-            .write_all(&startup.to_bytes().map_err(|_| ClientError)?)
-            .map_err(|_| ClientError)?;
+            .write_all(
+                &startup
+                    .to_bytes()
+                    .map_err(|_| ClientError::SerializationError)?,
+            )
+            .map_err(|_| ClientError::IOError)?;
 
         let mut result = [0u8; 2048];
-        let _ = self.stream.read(&mut result).map_err(|_| ClientError)?;
+        let _ = self
+            .stream
+            .read(&mut result)
+            .map_err(|_| ClientError::IOError)?;
 
-        let response = Frame::from_bytes(&result).map_err(|_| ClientError)?;
+        let response = Frame::from_bytes(&result).map_err(|_| ClientError::DeserializationError)?;
 
         match response {
             Frame::Authenticate(_) => {
@@ -123,22 +151,30 @@ impl CassandraClient {
                 )));
 
                 self.stream
-                    .write_all(&auth_response.to_bytes().map_err(|_| ClientError)?)
-                    .map_err(|_| ClientError)?;
+                    .write_all(
+                        &auth_response
+                            .to_bytes()
+                            .map_err(|_| ClientError::SerializationError)?,
+                    )
+                    .map_err(|_| ClientError::IOError)?;
 
                 let mut result = [0u8; 2048];
 
-                let _ = self.stream.read(&mut result).map_err(|_| ClientError)?;
+                let _ = self
+                    .stream
+                    .read(&mut result)
+                    .map_err(|_| ClientError::IOError)?;
 
-                let response = Frame::from_bytes(&result).map_err(|_| ClientError)?;
+                let response =
+                    Frame::from_bytes(&result).map_err(|_| ClientError::DeserializationError)?;
 
                 match response {
                     Frame::AuthSuccess(_) => return Ok(()),
-                    _ => return Err(ClientError),
+                    _ => return Err(ClientError::InvalidFrame),
                 }
             }
             Frame::Ready => return Ok(()),
-            _ => return Err(ClientError),
+            _ => return Err(ClientError::InvalidFrame),
         }
     }
 
@@ -153,15 +189,22 @@ impl CassandraClient {
 
         // Escribir la consulta en el stream
         self.stream
-            .write_all(query.to_bytes().map_err(|_| ClientError)?.as_slice())
-            .map_err(|_| ClientError)?;
+            .write_all(
+                query
+                    .to_bytes()
+                    .map_err(|_| ClientError::SerializationError)?
+                    .as_slice(),
+            )
+            .map_err(|_| ClientError::IOError)?;
 
         let mut result = [0u8; 850000];
 
-        self.stream.read(&mut result).map_err(|_| ClientError)?;
+        self.stream
+            .read(&mut result)
+            .map_err(|_| ClientError::IOError)?;
 
         // Decodificar la respuesta
-        let result = Frame::from_bytes(&result).map_err(|_| ClientError)?;
+        let result = Frame::from_bytes(&result).map_err(|_| ClientError::DeserializationError)?;
         Ok(result)
     }
 }
