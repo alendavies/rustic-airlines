@@ -38,8 +38,8 @@ impl WidgetFlight {
             .open(&mut open)
             .fixed_pos([screen_width - 385., 20.])
             .show(ctx, |ui| {
-                ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE); // Forzar color de texto blanco
-                ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(30); // Fondo oscuro
+                ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE); 
+                ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(30); 
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.label(
                         RichText::new(format!("Flight: {}", self.selected_flight.number))
