@@ -1,18 +1,3 @@
-/// Returns true if the token can be converted to an i32 value.
-///
-/// # Examples
-///
-/// ```
-/// let token = "123";
-/// let result = utils::is_number(token);
-/// assert_eq!(result, true);
-///
-/// let token = "hola"
-/// let result = utils::is_number(token);
-/// assert_eq!(result, false);
-/// ```
-///
-
 /// Returns true if the token is equal to "AND".
 pub fn is_and(token: &str) -> bool {
     token == "AND"

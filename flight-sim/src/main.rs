@@ -743,7 +743,7 @@ fn add_test_dynamic_data(sim: &mut Simulation) -> Result<(), SimError> {
     let mut flight_data = Vec::new();
 
     for (origin, _, _, _, _) in &airports {
-        let flight_count = rng.gen_range(5..=10); // Generar entre 5 y 10 vuelos por aeropuerto
+        let flight_count = rng.gen_range(3..=6); // Generar entre 5 y 10 vuelos por aeropuerto
         for _ in 0..flight_count {
             let destination_index = rng.gen_range(0..airports.len());
             let destination = airports[destination_index].0;

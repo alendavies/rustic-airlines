@@ -164,3 +164,43 @@ impl From<std::io::Error> for LoggerError {
         LoggerError::IoError(err)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    #[test]
+    fn test_logger_creation_and_logging() {
+        // Usar un directorio temporal en /tmp
+        let log_dir = Path::new("/tmp/test_logs");
+        fs::create_dir_all(log_dir).expect("Failed to create test directory");
+
+        let ip = "127.0.0.1";
+        let logger = Logger::new(log_dir, ip).expect("Failed to create logger");
+
+        let message = "Test log message.";
+        logger
+            .info(message, Color::Green, false)
+            .expect("Failed to log message");
+
+        let log_file_path = log_dir.join(format!("node_{}.log", ip.replace(":", "_")));
+        let log_contents = fs::read_to_string(&log_file_path).expect("Failed to read log file");
+
+        assert!(log_contents.contains("[INFO]"), "INFO level missing in log");
+        assert!(log_contents.contains(message), "Logged message missing");
+
+        // Limpieza
+        fs::remove_dir_all(log_dir).expect("Failed to remove test directory");
+    }
+
+    #[test]
+    fn test_invalid_path() {
+        let invalid_path = Path::new("/invalid/path");
+        let ip = "127.0.0.1";
+
+        let result = Logger::new(invalid_path, ip);
+        assert!(result.is_err(), "Logger should fail with an invalid path");
+    }
+}
