@@ -35,7 +35,7 @@ pub struct MyApp {
     add_flight_widget: Option<WidgetAddFlight>,
     db: Db,
     last_update: Instant,
-    country_tracker: CountryTracker,
+    _country_tracker: CountryTracker,
 }
 
 impl MyApp {
@@ -59,7 +59,7 @@ impl MyApp {
             add_flight_widget: None,
             db,
             last_update: Instant::now(),
-            country_tracker: CountryTracker::new(),
+            _country_tracker: CountryTracker::new(),
         }
     }
 }
@@ -68,8 +68,8 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let elapsed = self.last_update.elapsed();
         if elapsed >= Duration::from_millis(UPDATE_TICK_MS) {
-            let map_bounds = calculate_map_bounds(&self.map_memory);
-            self.country_tracker.update_visible_countries(&map_bounds);
+            // let map_bounds = calculate_map_bounds(&self.map_memory);
+            // self.country_tracker.update_visible_countries(&map_bounds);
             self.view_state.update_airports(&mut self.db);
 
             if let Some(selected_airport) = &self.selection_state.borrow().airport {
@@ -79,7 +79,7 @@ impl eframe::App for MyApp {
             self.last_update = Instant::now();
         }
 
-        ctx.request_repaint();
+        ctx.request_repaint_after(Duration::from_millis(UPDATE_TICK_MS));
 
         let rimless = egui::Frame {
             fill: ctx.style().visuals.panel_fill,
@@ -175,7 +175,7 @@ impl eframe::App for MyApp {
     }
 }
 
-fn calculate_map_bounds(map_memory: &MapMemory) -> MapBounds {
+fn _calculate_map_bounds(map_memory: &MapMemory) -> MapBounds {
     let center_pos = match map_memory.detached() {
         Some(pos) => pos,
         None => Position::from_lat_lon(INITIAL_LAT, INITIAL_LON), // Fallback to initial position
