@@ -32,7 +32,7 @@ Para compilar y ejecutar el programa existen las siguientes opciones:
 
 ## Correr con Docker
 
-Correr el clúster de nodos definido en `compose.yml` con: `sudo docker compose up --build`.
+Para correr el clúster de nodos definido en `compose.yml` con: `sudo docker compose --profile "*" up --build`.
 
 El driver intenta utilizar la variable de entorno `NODE_ADDR` para conectarse con el cluster. Por ejemplo, corriendo `export NODE_ADDR="127.0.0.1:10000" && cargo run` en `graphical-interface`, la interfaz gŕafica se conecta al cluster por el puerto 10000 mapeado a un nodo del cluster seún lo definido en `compose.yml`.
 
@@ -43,3 +43,5 @@ El driver intenta utilizar la variable de entorno `NODE_ADDR` para conectarse co
 La IP nodo semilla utilizado por un nodo también puede configurarse seteando la variable de entorno `SEED`.
 
 Se pueden agregar y quitar nodos configurando correctamente las direcciones IP en `compose.yml`.
+
+Para correr el perfil `initial-nodes` de Compose, correr `sudo docker compose --profile initial-nodes up`. De este modo se levantan los nodos incluidos en dicho perfile. Luego se puede correr un nuevo nodo, para simular la unión al cluster, con `sudo docker compose --profile new-node up`. Se pueden agregar más perfiles con nodos para simular la unión de más nodos.
