@@ -463,8 +463,7 @@ fn teardown_table_queries(client: &mut CassandraClient) {
 }
 
 #[test]
-fn _test_integration_with_multiple_nodes() {
-    return;
+fn test_integration_with_multiple_nodes() {
     let timeout_duration = Duration::from_secs(60);
     let start_time = Instant::now();
     let is_completed = Arc::new(Mutex::new(false));
@@ -494,6 +493,11 @@ fn _test_integration_with_multiple_nodes() {
         println!("Node with IP {} started", ip);
     }
     thread::sleep(Duration::from_secs(5));
+
+    println!(
+        "Current working directory: {:?}",
+        std::env::current_dir().unwrap()
+    );
 
     let server_ip = "127.0.0.1";
     let ip = Ipv4Addr::from_str(&server_ip).unwrap();

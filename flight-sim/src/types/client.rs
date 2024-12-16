@@ -358,18 +358,18 @@ impl Client {
                 flight.flight_number = number.to_string();
             }
         } else {
-            return Err(ClientError);
+            return Err(ClientError::ServerError);
         }
 
         if let Some(status) = row.get("status") {
             if let rows::ColumnValue::Ascii(status) = status {
                 match FlightStatus::from_str(status) {
                     Ok(status) => flight.status = status,
-                    Err(_) => return Err(ClientError),
+                    Err(_) => return Err(ClientError::ServerError),
                 }
             }
         } else {
-            return Err(ClientError);
+            return Err(ClientError::ServerError);
         }
 
         if let Some(departure_time) = row.get("departure_time") {
@@ -377,11 +377,11 @@ impl Client {
                 if let Some(datetime) = DateTime::from_timestamp(*departure_time, 0) {
                     flight.departure_time = datetime.naive_utc()
                 } else {
-                    return Err(ClientError);
+                    return Err(ClientError::ServerError);
                 }
             }
         } else {
-            return Err(ClientError);
+            return Err(ClientError::ServerError);
         }
 
         if let Some(arrival_time) = row.get("arrival_time") {
@@ -389,11 +389,11 @@ impl Client {
                 if let Some(datetime) = DateTime::from_timestamp(*arrival_time, 0) {
                     flight.arrival_time = datetime.naive_utc()
                 } else {
-                    return Err(ClientError);
+                    return Err(ClientError::ServerError);
                 }
             }
         } else {
-            return Err(ClientError);
+            return Err(ClientError::ServerError);
         }
 
         if let Some(lat) = row.get("lat") {
@@ -401,7 +401,7 @@ impl Client {
                 flight.latitude = *lat;
             }
         } else {
-            return Err(ClientError);
+            return Err(ClientError::ServerError);
         }
 
         if let Some(lon) = row.get("lon") {
@@ -409,7 +409,7 @@ impl Client {
                 flight.longitude = *lon;
             }
         } else {
-            return Err(ClientError);
+            return Err(ClientError::ServerError);
         }
 
         if let Some(angle) = row.get("angle") {
@@ -417,7 +417,7 @@ impl Client {
                 flight.angle = *angle;
             }
         } else {
-            return Err(ClientError);
+            return Err(ClientError::ServerError);
         }
 
         Ok(flight)
@@ -443,7 +443,7 @@ impl Client {
                         flight.fuel_level = *fuel;
                     }
                 } else {
-                    return Err(ClientError);
+                    return Err(ClientError::ServerError);
                 }
 
                 if let Some(height) = row.get("height") {
@@ -451,7 +451,7 @@ impl Client {
                         flight.altitude = *height;
                     }
                 } else {
-                    return Err(ClientError);
+                    return Err(ClientError::ServerError);
                 }
 
                 if let Some(speed) = row.get("speed") {
@@ -459,7 +459,7 @@ impl Client {
                         flight.average_speed = *speed;
                     }
                 } else {
-                    return Err(ClientError);
+                    return Err(ClientError::ServerError);
                 }
 
                 if let Some(destination) = row.get("destination") {
@@ -467,11 +467,11 @@ impl Client {
                         if let Some(airport) = airports.get(destination) {
                             flight.destination = airport.clone();
                         } else {
-                            return Err(ClientError);
+                            return Err(ClientError::ServerError);
                         }
                     }
                 } else {
-                    return Err(ClientError);
+                    return Err(ClientError::ServerError);
                 }
             }
         }

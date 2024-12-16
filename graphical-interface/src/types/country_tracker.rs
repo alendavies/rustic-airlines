@@ -2,43 +2,43 @@ use std::collections::HashMap;
 
 use walkers::Position;
 
-use super::MapBounds;
+use super::_MapBounds;
 
 /// Tracks countries and determines their visibility within the current map view.
 ///
 /// This struct maintains a set of predefined country centers and updates the
 /// visible countries based on the current map bounds.
 pub struct CountryTracker {
-    country_centers: HashMap<String, Position>,
-    visible_countries: Vec<String>,
+    _country_centers: HashMap<String, Position>,
+    _visible_countries: Vec<String>,
 }
 
 impl CountryTracker {
     /// Creates a new `CountryTracker` instance with predefined country centers
     /// for South America.
     pub fn new() -> Self {
-        let country_centers = get_south_american_centers();
+        let _country_centers = get_south_american_centers();
 
         Self {
-            country_centers,
-            visible_countries: Vec::new(),
+            _country_centers,
+            _visible_countries: Vec::new(),
         }
     }
 
     // Update visible countries based on current map view
-    pub fn update_visible_countries(&mut self, map_bounds: &MapBounds) {
-        self.visible_countries.clear();
+    pub fn _update_visible_countries(&mut self, map_bounds: &_MapBounds) {
+        self._visible_countries.clear();
 
-        for (country, pos) in &self.country_centers {
-            if map_bounds.is_within_bounds(pos) {
-                self.visible_countries.push(country.clone());
+        for (country, pos) in &self._country_centers {
+            if map_bounds._is_within_bounds(pos) {
+                self._visible_countries.push(country.clone());
             }
         }
     }
 
     // Getter for visible countries
     pub fn _get_visible_countries(&self) -> &Vec<String> {
-        &self.visible_countries
+        &self._visible_countries
     }
 }
 
