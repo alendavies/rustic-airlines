@@ -70,7 +70,6 @@ fn main() -> Result<(), String> {
     } else {
         env::current_dir().map_err(|_| "Failed to determine the current directory".to_string())?
     };
-
     // Read seed node IPs from the seed_nodes.txt file
     let seed_ips = read_seed_ips("seed_nodes.txt")?;
 

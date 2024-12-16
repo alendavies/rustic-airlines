@@ -13,7 +13,14 @@ pub struct WidgetFlight {
 
 impl WidgetFlight {
     pub fn new(selected_flight: Flight, db: &mut Db) -> Self {
-        let flight_data = db.get_flight_info(&selected_flight.number).unwrap();
+        let flight_data = match db.get_flight_info(&selected_flight.number) {
+            Ok(info) => info,
+            Err(_) => {
+                eprintln!("Error fetching flight info");
+                Default::default()
+            }
+        };
+
         Self {
             selected_flight,
             flight_data,
@@ -31,8 +38,8 @@ impl WidgetFlight {
             .open(&mut open)
             .fixed_pos([screen_width - 385., 20.])
             .show(ctx, |ui| {
-                ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE); // Forzar color de texto blanco
-                ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(30); // Fondo oscuro
+                ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE); 
+                ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(30); 
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.label(
                         RichText::new(format!("Flight: {}", self.selected_flight.number))

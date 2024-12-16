@@ -161,6 +161,7 @@ impl StorageEngine {
 
                 writeln!(temp_file, "{};{}", line_content, row_timestamp)
                     .map_err(|_| StorageEngineError::IoError)?;
+
                 current_byte_offset += line_length + 1;
                 Self::update_index_map(
                     &row,

@@ -74,7 +74,7 @@ impl QueryExecution {
                 .join("");
             let node_to_query = node.partitioner.get_ip(value_to_hash.clone())?;
             let self_ip = node.get_ip().clone();
-
+            let logger = node.get_logger();
             // Forward the SELECT if this is not an internode operation and the target node differs
             if !internode && node_to_query != self_ip {
                 let serialized_query = select_query.serialize();
@@ -86,6 +86,7 @@ impl QueryExecution {
                     client_id,
                     &client_keyspace.get_name(),
                     0,
+                    node.get_logger(),
                 )?;
                 do_in_this_node = false;
             }
@@ -101,6 +102,7 @@ impl QueryExecution {
                     client_id,
                     &client_keyspace.get_name(),
                     0,
+                    logger.clone(),
                 )?;
             }
 

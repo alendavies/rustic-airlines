@@ -11,11 +11,11 @@ mod utils;
 use std::collections::HashMap;
 use std::io::{BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
-use std::{thread, vec};
+use std::{env, thread, vec};
 
 // External libraries
 use chrono::Utc;
@@ -30,6 +30,7 @@ use internode_protocol::response::{
 use internode_protocol::InternodeSerializable;
 use internode_protocol_handler::InternodeProtocolHandler;
 // use keyspace::Keyspace;
+use logger::{Color, Logger};
 use native_protocol::frame::Frame;
 use native_protocol::messages::auth::{AuthSuccess, Authenticate};
 use native_protocol::messages::error;
@@ -40,14 +41,14 @@ use query_creator::clauses::keyspace::create_keyspace_cql::CreateKeyspace;
 use query_creator::clauses::table::create_table_cql::CreateTable;
 use query_creator::clauses::types::column::Column;
 use query_creator::errors::CQLError;
-use query_creator::{GetTableName, GetUsedKeyspace, Query};
+use query_creator::{GetTableName, GetUsedKeyspace, NeedsKeyspace, NeedsTable, Query};
 use query_creator::{NeededResponses, QueryCreator};
 use query_execution::QueryExecution;
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use storage_engine::StorageEngine;
-use utils::connect_and_send_message;
+use utils::{check_keyspace, check_table, connect_and_send_message};
 
 const CLIENT_NODE_PORT: u16 = 0x4645; // Hexadecimal of "FE" (FERRUM) = 17989
 const INTERNODE_PORT: u16 = 0x554D; // Hexadecimal of "UM" (FERRUM) = 21837
@@ -63,6 +64,7 @@ pub struct Node {
     last_client_id: i32,
     gossiper: Gossiper,
     storage_path: PathBuf,
+    logger: Logger,
     /// Represents the latest known schema of the cluster.
     schema: Schema,
 }
@@ -148,10 +150,11 @@ impl Node {
             open_query_handler: OpenQueryHandler::new(),
             clients_keyspace: HashMap::new(),
             last_client_id: 0,
-            storage_path,
+            storage_path: storage_path.clone(),
             gossiper: Gossiper::new()
                 .with_endpoint_state(ip)
                 .with_seeds(seeds_nodes),
+            logger: Logger::new(&storage_path, &ip.to_string())?,
             schema: Schema::new(),
         })
     }
@@ -238,6 +241,7 @@ impl Node {
     ) -> Result<(), NodeError> {
         let _ = thread::spawn(move || {
             let initial_gossip = Instant::now();
+            let mut log;
             loop {
                 {
                     {
@@ -247,7 +251,8 @@ impl Node {
                         };
 
                         let ip = node_guard.ip;
-                        if initial_gossip.elapsed().as_millis() > 1500 {
+                        log = node_guard.get_logger();
+                        if initial_gossip.elapsed().as_millis() > 3000 {
                             node_guard
                                 .gossiper
                                 .change_status(ip, NodeStatus::Normal)
@@ -321,7 +326,7 @@ impl Node {
                 // After each gossip round, update the partitioner
                 {
                     // Bloqueo del mutex solo para extraer lo necesario
-                    let (storage_path, self_ip, keyspaces) = {
+                    let (storage_path, self_ip, keyspaces, logger) = {
                         let node_guard = match node.lock() {
                             Ok(guard) => guard,
                             Err(_) => return NodeError::LockError,
@@ -330,7 +335,8 @@ impl Node {
                         (
                             node_guard.storage_path.clone(), // Clonar el path de almacenamiento
                             node_guard.get_ip().to_string(), // Clonar el IP
-                            node_guard.schema.keyspaces.clone(), // Clonar los keyspaces desde el guard     // Referencia mutable al particionador
+                            node_guard.schema.keyspaces.clone(),
+                            node_guard.get_logger(), // Clonar los keyspaces desde el guard     // Referencia mutable al particionador
                         )
                     };
                     let mut node_guard = match node.lock() {
@@ -354,29 +360,69 @@ impl Node {
 
                         if state.application_state.status.is_dead() {
                             if is_in_partitioner {
-                                println!("se acaba de morir un nodo, redistribuyo");
                                 needs_to_redistribute = true;
                                 partitioner.remove_node(*ip).ok();
+                                let _ = log.info(
+                                    &format!(
+                                        "NODE {:?} IS DEAD .. New Ring: {:?}",
+                                        ip, partitioner
+                                    ),
+                                    Color::Red,
+                                    true,
+                                );
                             }
                         } else {
                             if !is_in_partitioner {
-                                println!("se acaba de unir un nodo, redistribuyo");
+                                //println!("se acaba de unir un nodo, redistribuyo");
                                 needs_to_redistribute = true;
                                 partitioner.add_node(*ip).ok();
+                                let _ = log.info(
+                                    &format!("NEW NODE {:?} .. New Ring: {:?}", ip, partitioner),
+                                    Color::Green,
+                                    true,
+                                );
                             }
                         }
                     }
 
                     if needs_to_redistribute {
-                        let keyspaces: Vec<KeyspaceSchema> = keyspaces.values().cloned().collect();
+                        let _ = logger.info("START REDISTRIBUTION...", Color::Cyan, true);
 
-                        storage_engine::StorageEngine::new(storage_path.clone(), self_ip.clone())
-                            .redistribute_data(keyspaces, partitioner, connections.clone())
-                            .ok();
+                        // Clonar las variables necesarias para el nuevo hilo
+                        let storage_path = storage_path.clone();
+                        let self_ip = self_ip.clone();
+                        let partitioner = partitioner.clone();
+                        let logger = logger.clone();
+                        let connections = connections.clone();
+                        let keyspaces: Vec<KeyspaceSchema> = keyspaces.values().cloned().collect();
+                        let _ = storage_engine::StorageEngine::new(storage_path, self_ip)
+                            .redistribute_data(
+                                keyspaces,
+                                &partitioner,
+                                logger.clone(),
+                                connections,
+                            );
+                        // // Lanzar la redistribución en un nuevo hilo
+                        // std::thread::spawn(move || match result {
+                        //     Ok(_) => {
+                        //         let _ =
+                        //             logger
+                        //                 .clone()
+                        //                 .info("END REDISTRIBUTION...", Color::Cyan, true);
+                        //     }
+                        //     Err(e) => {
+                        //         let _ = logger
+                        //             .clone()
+                        //             .error(&format!("REDISTRIBUTION FAILED! {:?}", e), true);
+                        //     }
+                        // });
                     }
                 }
-
-                thread::sleep(std::time::Duration::from_millis(1200));
+                let gossip_logger = log.clone();
+                let _ = gossip_logger
+                    .clone()
+                    .info("GOSSIP: New Gossip Round", Color::White, true);
+                thread::sleep(std::time::Duration::from_millis(1000));
             }
         });
         Ok(())
@@ -484,6 +530,9 @@ impl Node {
         self.ip
     }
 
+    pub fn get_logger(&self) -> Logger {
+        self.logger.clone()
+    }
     fn get_ip_string(&self) -> String {
         self.ip.to_string()
     }
@@ -849,41 +898,52 @@ impl Node {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
         let self_ip;
+        let log;
         {
             let node_guard = node.lock()?;
             self_ip = node_guard.get_ip();
+            log = node_guard.get_logger().clone();
         }
 
-        // Creates a thread to handle node connections
-        let node_connections_node = Arc::clone(&node);
-        let node_connections = Arc::clone(&connections);
-        let self_ip_node = self_ip.clone();
-        let handle_node_thread = thread::spawn(move || {
-            Self::handle_node_connections(node_connections_node, node_connections, self_ip_node)
-                .unwrap_or_else(|err| {
-                    eprintln!("Error in internode connections: {:?}", err); // Or handle the error as needed
-                });
-        });
-
+        let log_gossip = log.clone();
         // Creates a thread to handle gossip
         let gossip_connections = Arc::clone(&connections);
         let node_gossip = Arc::clone(&node);
         Self::start_gossip(node_gossip, gossip_connections).unwrap_or_else(|err| {
-            eprintln!("Error in gossip: {:?}", err); // Or handle the error as needed
+            let message = format!("ERROR in GOSSIP: {:?}", err);
+            log_gossip.clone().error(&message, true).ok(); // Or handle the error as needed
         });
 
+        //thread::sleep(Duration::from_secs(2));
         // Creates a thread to handle client connections
         let client_connections_node = Arc::clone(&node);
         let client_connections = Arc::clone(&connections);
         let self_ip_client = self_ip;
 
+        let log_client = log.clone();
         let handle_client_thread = thread::spawn(move || {
             Self::handle_client_connections(
                 client_connections_node,
                 client_connections,
                 self_ip_client,
             )
-            .unwrap_or_else(|e| eprintln!("Error in client connections: {:?}", e));
+            .unwrap_or_else(|e| {
+                let message = format!("ERROR in CLIENT CONNECTIONS: {:?}", e);
+                log_client.clone().error(&message, true).ok();
+            });
+        });
+
+        // Creates a thread to handle node connections
+        let node_connections_node = Arc::clone(&node);
+        let node_connections = Arc::clone(&connections);
+        let self_ip_node = self_ip.clone();
+        let log_internode = log.clone();
+        let handle_node_thread = thread::spawn(move || {
+            Self::handle_node_connections(node_connections_node, node_connections, self_ip_node)
+                .unwrap_or_else(|err| {
+                    let message = format!("ERROR in INTERNODE CONNECTIONS: {:?}", err);
+                    log_internode.error(&message, true).ok(); // Or handle the error as needed
+                });
         });
 
         handle_node_thread
@@ -935,11 +995,18 @@ impl Node {
         self_ip: std::net::Ipv4Addr,
     ) -> Result<(), NodeError> {
         // Cargar configuración TLS
-        let certs = CertificateDer::pem_file_iter("certs/cert.crt")
+        let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+        let path_certs = Path::new(&project_dir)
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("certs");
+
+        // Cargar configuración TLS
+        let certs = CertificateDer::pem_file_iter(path_certs.join("cert.crt"))
             .unwrap()
             .map(|cert| cert.unwrap())
             .collect();
-        let private_key = PrivateKeyDer::from_pem_file("certs/cert.key").unwrap();
+        let private_key = PrivateKeyDer::from_pem_file(path_certs.join("cert.key")).unwrap();
 
         match rustls::crypto::aws_lc_rs::default_provider().install_default() {
             Ok(_) => {}
@@ -990,7 +1057,14 @@ impl Node {
     ) -> Result<(), NodeError> {
         // Clone the stream under Mutex protection and create the reader
 
-        let client_id = { node.lock()?.generate_client_id() };
+        let client_id;
+        let log;
+
+        {
+            let mut guard_node = node.lock()?;
+            client_id = guard_node.generate_client_id();
+            log = guard_node.get_logger();
+        };
 
         let mut is_authenticated = false;
 
@@ -1040,6 +1114,15 @@ impl Node {
                             // Handle the query
                             let query_str = query.get_query();
                             let query_consistency_level: &str = &query.get_consistency();
+                            log.info(
+                                &format!(
+                                    "NATIVE: I RECEIVED {} whit CL: {} from CLIENT",
+                                    query_str.replace("\n", ""),
+                                    query_consistency_level,
+                                ),
+                                Color::Yellow,
+                                true,
+                            )?;
 
                             let (tx_reply, rx_reply) = mpsc::channel();
 
@@ -1164,9 +1247,20 @@ impl Node {
             .handle_query(query_str.to_string())
             .map_err(NodeError::CQLError)?;
 
+        if query.needs_keyspace() {
+            //println!("esta query: {:?} necesita un keyspace", query_str);
+            check_keyspace(node, &query, client_id, 6)?;
+        }
+
+        if query.needs_table() {
+            //println!("esta query: {:?} necesita una tabla", query_str);
+            check_table(node, &query, client_id, 6)?;
+        }
+
         let open_query_id;
         let self_ip: Ipv4Addr;
         let storage_path;
+        let logger;
         {
             let mut guard_node = node.lock()?;
             let keyspace;
@@ -1194,6 +1288,7 @@ impl Node {
             )?;
             self_ip = guard_node.get_ip();
             storage_path = guard_node.storage_path.clone();
+            logger = guard_node.get_logger();
         }
         let timestamp = Self::current_timestamp();
 
@@ -1265,8 +1360,8 @@ impl Node {
                     self_ip,
                     connections.clone(),
                     partitioner.clone(),
-                    storage_path.clone()
-
+                    storage_path.clone(),
+                    logger.clone(),
                 )?;
             }
             for _ in 0..failed_nodes {

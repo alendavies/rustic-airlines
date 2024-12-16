@@ -10,6 +10,7 @@ query-creator = { path = "../query-creator" }     # Ejemplo de cómo referenciar
 driver = { path = "../driver" }
 native_protocol = { path = "../native_protocol" }
 gossip = { path = "../gossip" }
+logger = { path = "../logger" }
 chrono = "0.4"
 rustls = "0.23.19"
 

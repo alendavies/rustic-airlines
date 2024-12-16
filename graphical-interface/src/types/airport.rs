@@ -1,5 +1,7 @@
 use walkers::Position;
 
+/// Represents an airport with its name, IATA code, geographical position, and country.
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Airport {
     pub name: String,

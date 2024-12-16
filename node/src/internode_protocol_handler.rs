@@ -4,11 +4,12 @@ use crate::internode_protocol::message::{InternodeMessage, InternodeMessageConte
 use crate::internode_protocol::query::InternodeQuery;
 use crate::internode_protocol::response::{InternodeResponse, InternodeResponseStatus};
 use crate::open_query_handler::OpenQueryHandler;
-use crate::utils::connect_and_send_message;
+use crate::utils::{check_keyspace, check_table, connect_and_send_message};
 use crate::{storage_engine, Node, NodeError, Query, QueryExecution, INTERNODE_PORT};
 use chrono::Utc;
 use gossip::messages::GossipMessage;
 use gossip::structures::application_state::TableSchema;
+use logger::{Color, Logger};
 use native_protocol::frame::Frame;
 use native_protocol::messages::error;
 use partitioner::Partitioner;
@@ -24,7 +25,7 @@ use query_creator::clauses::use_cql::Use;
 use query_creator::clauses::{
     delete_cql::Delete, insert_cql::Insert, select_cql::Select, update_cql::Update,
 };
-use query_creator::CreateClientResponse;
+use query_creator::{CreateClientResponse, NeedsKeyspace, NeedsTable, QueryCreator};
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, TcpStream};
 use std::path::PathBuf;
@@ -107,13 +108,27 @@ impl InternodeProtocolHandler {
         message: InternodeMessage,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), NodeError> {
+        let log = { node.lock()?.get_logger() };
         match message.clone().content {
             InternodeMessageContent::Query(query) => {
+                let (open_query_id_str, color) = if query.open_query_id == 0 {
+                    ("REDISTRIBUTION".to_string(), Color::Cyan)
+                } else {
+                    (format!("Query: {:?}", query.open_query_id), Color::Blue)
+                };
+                log.info(
+                    &format!(
+                        "INTERNODE ({}): I RECEIVED {:?} from {:?}",
+                        open_query_id_str, query.query_string, message.from
+                    ),
+                    color,
+                    true,
+                )?;
                 self.handle_query_command(node, query, connections, message.clone().from)?;
                 Ok(())
             }
             InternodeMessageContent::Response(response) => {
-                let _ = self.handle_response_command(node, &response, message.from, connections);
+                self.handle_response_command(node, &response, message.from, connections)?;
 
                 Ok(())
             }
@@ -203,6 +218,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         partitioner: Partitioner,
         storage_path: PathBuf,
+        logger: Logger,
     ) -> Result<(), NodeError> {
         if let Some(open_query) =
             query_handler.add_ok_response_and_get_if_closed(open_query_id, response.clone(), from)
@@ -241,10 +257,11 @@ impl InternodeProtocolHandler {
                     .get_query()
                     .create_client_response(columns, keyspace_name, rows)?;
 
-            println!(
-                "Returning response to client de la query: {:?}",
-                open_query_id
-            );
+            logger.info(
+                &format!("NATIVE: I sent FRAME RESPONSE to client",),
+                Color::Yellow,
+                true,
+            )?;
 
             connection.send(frame).map_err(|_| NodeError::OtherError)?;
             Ok(())
@@ -727,6 +744,16 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         node_ip: Ipv4Addr,
     ) -> Result<(), NodeError> {
+        if query.needs_keyspace() {
+            let q = QueryCreator::new().handle_query(query.query_string.clone())?;
+            check_keyspace(node, &q, query.client_id as i32, 6)?;
+        }
+
+        if query.needs_table() {
+            let q = QueryCreator::new().handle_query(query.query_string.clone())?;
+            check_table(node, &q, query.client_id as i32, 6)?;
+        }
+
         if query.keyspace_name != "None" {
             {
                 let mut guard_node = node.lock()?;
@@ -739,9 +766,11 @@ impl InternodeProtocolHandler {
         }
 
         let self_ip;
+        let logger;
         {
             let guard_node = node.lock()?;
             self_ip = guard_node.get_ip();
+            logger = guard_node.get_logger();
         };
         let query_split: Vec<&str> = query.query_string.split_whitespace().collect();
         let result: Result<Option<((i32, i32), InternodeResponse)>, NodeError> =
@@ -859,6 +888,15 @@ impl InternodeProtocolHandler {
             let (_, value): ((i32, i32), InternodeResponse) = responses.clone();
 
             if query.open_query_id != 0 {
+                logger.info(
+                    &format!(
+                        "INTERNODE (Query: {:?}): I SENT OK to coordinator node: {:?}",
+                        query.open_query_id, node_ip
+                    ),
+                    Color::Green,
+                    true,
+                )?;
+
                 connect_and_send_message(
                     node_ip,
                     INTERNODE_PORT,
@@ -885,11 +923,13 @@ impl InternodeProtocolHandler {
         let self_ip;
         let partitioner;
         let storage_path;
+        let logger;
         {
             let guard_node = node.lock()?;
             self_ip = guard_node.get_ip();
             partitioner = guard_node.get_partitioner();
             storage_path = guard_node.storage_path.clone();
+            logger = guard_node.get_logger();
         }
         let mut guard_node = node.lock()?;
 
@@ -905,6 +945,15 @@ impl InternodeProtocolHandler {
 
         match response.status {
             InternodeResponseStatus::Ok => {
+                logger.info(
+                    &format!(
+                        "INTERNODE (Query: {}): I RECEIVED OK RESPONSE {:?} from {:?}",
+                        response.open_query_id, response.status, from
+                    ),
+                    Color::Blue,
+                    true,
+                )?;
+
                 self.process_ok_response(
                     query_handler,
                     response,
@@ -915,9 +964,18 @@ impl InternodeProtocolHandler {
                     connections,
                     partitioner,
                     storage_path.clone(),
+                    logger,
                 )?;
             }
             InternodeResponseStatus::Error => {
+                logger.info(
+                    &format!(
+                        "INTERNODE (Query: {}): I RECEIVED OK RESPONSE {:?} from {:?}",
+                        response.open_query_id, response.status, from
+                    ),
+                    Color::Red,
+                    true,
+                )?;
                 self.process_error_response(query_handler, response.open_query_id as i32)?;
             }
         }
@@ -973,7 +1031,7 @@ impl InternodeProtocolHandler {
                 );
 
                 if result.is_err() {
-                    println!("Node is dead: {:?}", gossip_message.from);
+                    //println!("Node is dead: {:?}", gossip_message.from);
                     guard_node.gossiper.kill(gossip_message.from).ok();
                 }
             }
@@ -998,6 +1056,7 @@ impl InternodeProtocolHandler {
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
         partitioner: Partitioner,
         storage_path: PathBuf,
+        logger: Logger,
     ) -> Result<(), NodeError> {
         // Obtener la consulta abierta
 
@@ -1029,6 +1088,7 @@ impl InternodeProtocolHandler {
             connections,
             partitioner,
             storage_path,
+            logger,
         )?;
 
         Ok(())

@@ -1,14 +1,11 @@
-use crate::types::airport::Airport;
-use crate::types::flight_status::FlightStatus;
+use std::{collections::HashMap, f64::consts::PI, sync::RwLockReadGuard};
+
 use chrono::NaiveDateTime;
-use std::collections::HashMap;
-use std::f64::consts::PI;
 
-use super::sim_error::SimError;
+use super::{airport::Airport, flight_status::FlightStatus, sim_error::SimError};
 
-const EARTH_RADIUS_KM: f64 = 6371.0;
-
-#[derive(Debug, Clone)]
+/// Represents a flight in the simulator, including its status, route, position,
+/// and additional metadata for simulation.
 pub struct Flight {
     pub flight_number: String,
     pub status: FlightStatus,
@@ -26,9 +23,12 @@ pub struct Flight {
     pub average_speed: i32,
 }
 
+const EARTH_RADIUS_KM: f64 = 6371.0;
+
 impl Flight {
+    /// Creates a new flight from the information given from the console interface.
     pub fn new_from_console(
-        airports: &HashMap<String, Airport>,
+        airports: RwLockReadGuard<HashMap<String, Airport>>,
         flight_number: &str,
         origin_code: &str,
         destination_code: &str,
@@ -102,65 +102,92 @@ impl Flight {
         (bearing - 90.0 + 360.0) % 360.0
     }
 
-    // Calculate current latitude and longitude according to distance traveled (using radians)
-    fn update_position_with_direction(&mut self, distance_traveled_km: f64) {
-        let progress_ratio = (distance_traveled_km / self.total_distance).min(1.0);
+    fn calculate_position(&mut self, current_time: NaiveDateTime) {
+        let elapsed_hours = current_time
+            .signed_duration_since(self.departure_time)
+            .num_seconds() as f64
+            / 3600.0;
+
+        // Calculate traveled distance and update position
+        self.distance_traveled =
+            (self.average_speed as f64 * elapsed_hours).min(self.total_distance);
+        let progress_ratio = self.distance_traveled / self.total_distance;
         self.latitude = self.origin.latitude
             + progress_ratio * (self.destination.latitude - self.origin.latitude);
         self.longitude = self.origin.longitude
             + progress_ratio * (self.destination.longitude - self.origin.longitude);
-        self.angle = self.calculate_bearing() as f32;
+        self.fuel_level = (100.0 - elapsed_hours * 5.0).max(0.0); // Burn fuel over time
+
+        // Update altitude when approaching the destination
+        self.altitude = if self.distance_traveled >= self.total_distance * 0.95 {
+            let altitude = self.altitude - 500;
+            if altitude < 0 {
+                0
+            } else {
+                altitude
+            }
+        } else {
+            self.altitude
+        };
     }
 
     /// Update the position of the flight and its fuel level based on the current time
-    pub fn update_position(&mut self, current_time: NaiveDateTime) {
-        if self.status == FlightStatus::Scheduled && current_time >= self.departure_time {
-            if self.altitude == 0 {
-                self.altitude = 10000
-            }; // Default plane altitude in case it wasn't specified.
-            self.status = FlightStatus::OnTime;
-        }
+    pub fn check_states_and_update_flight(&mut self, current_time: NaiveDateTime) -> bool {
+        let mut new_status: bool = false;
 
-        if self.status == FlightStatus::OnTime {
-            let elapsed_hours = current_time
-                .signed_duration_since(self.departure_time)
-                .num_seconds() as f64
-                / 3600.0;
-
-            // Calculate traveled distance and update position
-            let distance_traveled = self.average_speed as f64 * elapsed_hours;
-            self.distance_traveled = distance_traveled.min(self.total_distance);
-            self.update_position_with_direction(distance_traveled);
-            self.fuel_level = (100.0 - elapsed_hours * 5.0).max(0.0); // Burn fuel over time
-
-            // Update altitude when approaching the destination
-            self.altitude = if self.distance_traveled >= self.total_distance * 0.95 {
-                let altitude = self.altitude - 500;
-                if altitude < 0 {
-                    0
-                } else {
-                    altitude
+        match self.status {
+            FlightStatus::Scheduled => {
+                if current_time >= self.departure_time {
+                    if self.altitude == 0 {
+                        self.altitude = 10000
+                    }; // Default plane altitude in case it wasn't specified.
+                    self.status = FlightStatus::OnTime;
+                    new_status = true;
                 }
-            } else {
-                self.altitude
-            };
-
-            // Check for arrival or delay
-            if self.distance_traveled >= self.total_distance
-                || self.status == FlightStatus::Finished
-            {
-                self.land();
-            } else if current_time >= self.arrival_time {
-                self.status = FlightStatus::Delayed;
+            }
+            FlightStatus::OnTime => {
+                self.calculate_position(current_time);
+                if current_time >= self.arrival_time {
+                    self.status = FlightStatus::Delayed;
+                    new_status = true;
+                }
+                if self.distance_traveled >= self.total_distance {
+                    self.land();
+                    self.status = FlightStatus::Finished;
+                    new_status = true;
+                }
+            }
+            FlightStatus::Delayed => {
+                self.calculate_position(current_time);
+                if self.distance_traveled >= self.total_distance {
+                    self.land();
+                    self.status = FlightStatus::Finished;
+                    new_status = true;
+                }
+            }
+            FlightStatus::Canceled => {
+                if self.altitude != 0 {
+                    self.land();
+                    self.latitude = self.origin.latitude;
+                    self.longitude = self.origin.longitude;
+                }
+            }
+            FlightStatus::Finished => {
+                if self.altitude > 0 {
+                    self.land();
+                    self.latitude = self.destination.latitude;
+                    self.longitude = self.destination.longitude;
+                }
             }
         }
+
+        new_status
     }
 
     // Land the flight
     fn land(&mut self) {
         self.fuel_level = 0.0;
         self.altitude = 0;
-        self.status = FlightStatus::Finished;
     }
 }
 

@@ -1,25 +1,21 @@
-mod client;
 mod types;
 
 use crate::types::airport::Airport;
 use crate::types::flight::Flight;
-use crate::types::sim_state::SimState;
-use chrono::Utc;
-use client::Client;
+use chrono::{NaiveDateTime, Utc};
 use std::{
     io::{self, Write},
-    sync::{Arc, RwLock},
-    thread,
-    time::Duration,
+    sync::{Arc, Mutex},
 };
-use types::sim_error::SimError;
+use threadpool::ThreadPool;
+use types::{client::Client, sim_error::SimError, simulation::Simulation, timer::Timer};
 
 fn clean_scr() {
     print!("\x1B[2J\x1B[1;1H");
     io::stdout().flush().unwrap();
 }
 
-fn add_flight(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> {
+fn add_flight(sim: &mut Simulation) -> Result<(), SimError> {
     clean_scr();
     let flight_number = prompt_input("Enter the flight number: ");
     let origin = prompt_input("Enter the origin IATA code: ");
@@ -33,13 +29,8 @@ fn add_flight(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> {
         Err(_) => return Err(SimError::InvalidInput),
     };
 
-    // Acceder a los datos de los aeropuertos usando el RwLock para lectura
-    let mut sim_state = sim_state
-        .write()
-        .map_err(|_| SimError::Other("Unable to lock SimState for reading.".to_string()))?;
-
     let flight = Flight::new_from_console(
-        sim_state.airports(),
+        sim.get_airports()?,
         &flight_number,
         &origin,
         &destination,
@@ -49,12 +40,12 @@ fn add_flight(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> {
     )
     .map_err(|_| SimError::InvalidFlight("Flight details are incorrect.".to_string()))?;
 
-    sim_state.add_flight(flight, false)?;
+    sim.add_flight(flight)?;
 
     Ok(())
 }
 
-fn add_airport(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> {
+fn add_airport(sim: &mut Simulation) -> Result<(), SimError> {
     clean_scr();
     let iata_code = prompt_input("Enter the IATA code: ");
     let country = prompt_input("Enter the country: ");
@@ -73,49 +64,36 @@ fn add_airport(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> {
 
     let airport = Airport::new(iata_code, country, name, latitude, longitude);
 
-    // Acceder a SimState y escribir usando el RwLock
-    let mut sim_state = sim_state
-        .write()
-        .map_err(|_| SimError::Other("Unable to lock SimState for writing.".to_string()))?;
-    sim_state.add_airport(airport)?;
+    sim.add_airport(airport)?;
     Ok(())
 }
 
-fn set_time_rate(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> {
+fn set_time_rate(sim: &mut Simulation) -> Result<(), SimError> {
     let minutes_input = prompt_input("Enter the time rate (in minutes): ");
-    let minutes: u64 = match minutes_input.parse() {
+    let minutes: i64 = match minutes_input.parse() {
         Ok(m) => m,
         Err(_) => return Err(SimError::InvalidInput),
     };
 
-    // Escribir en SimState usando el RwLock
-    let sim_state = sim_state
-        .write()
-        .map_err(|_| SimError::Other("Unable to lock SimState for writing.".to_string()))?;
-    sim_state.set_time_rate(minutes);
+    sim.set_time_rate(minutes)?;
     Ok(())
 }
 
-fn start_flight_check_thread(sim_state: Arc<RwLock<SimState>>) {
-    thread::spawn(move || loop {
-        let sim_state = sim_state.write().map_err(|_| {
-            eprintln!("Unable to lock SimState for writing.");
-        });
-
-        match sim_state {
-            Ok(mut sim_state) => if sim_state.check_for_new_flights().is_err() {},
-            Err(_) => eprintln!("Error acquiring write lock for SimState."),
-        }
-
-        thread::sleep(Duration::from_secs(5));
-    });
-}
 fn main() -> Result<(), SimError> {
     let ip = "127.0.0.1".parse().expect("Invalid IP format");
-    let client = Client::new(ip).map_err(|_| SimError::ClientError)?;
-    let mut sim_state = Arc::new(RwLock::new(SimState::new(client)?));
 
-    start_flight_check_thread(sim_state.clone());
+    let db_client = Arc::new(Mutex::new(
+        Client::new(ip).map_err(|_| SimError::ClientError)?,
+    ));
+    let now: NaiveDateTime = Utc::now().naive_local();
+
+    let timer = Timer::new(now, 1);
+
+    let thread_pool = Arc::new(ThreadPool::new(4));
+
+    let mut sim = Simulation::new(db_client, timer, thread_pool);
+
+    sim.start();
 
     loop {
         println!("Enter command (type '-h' or '--help' for options): ");
@@ -131,43 +109,47 @@ fn main() -> Result<(), SimError> {
 
         match args[0] {
             "add-flight" => {
-                if add_flight(&mut sim_state).is_err() {
+                if add_flight(&mut sim).is_err() {
                     println!("{}", SimError::InvalidInput);
                 }
             }
 
             "add-airport" => {
-                if add_airport(&mut sim_state).is_err() {
+                if add_airport(&mut sim).is_err() {
                     println!("{}", SimError::InvalidInput);
                 }
             }
 
             "list-flights" => {
-                let sim_state = sim_state.read().map_err(|_| {
-                    SimError::Other("Unable to lock SimState for reading.".to_string())
-                })?;
-                sim_state.list_flights();
+                sim.display_flights();
             }
 
             "list-airports" => {
-                let sim_state = sim_state.read().map_err(|_| {
-                    SimError::Other("Unable to lock SimState for reading.".to_string())
-                })?;
-                sim_state.list_airports();
+                sim.list_airports();
             }
 
             "time-rate" => {
                 clean_scr();
-                if set_time_rate(&mut sim_state).is_err() {
+                if set_time_rate(&mut sim).is_err() {
                     println!("{}", SimError::InvalidInput);
                 }
             }
 
             "test-data" => {
                 clean_scr();
-                if add_test_data(&mut sim_state).is_err() {
+                if add_test_dynamic_data(&mut sim).is_err() {
                     println!("{}", SimError::InvalidInput);
                 }
+            }
+
+            "pause" => {
+                sim.pause_simulation();
+                println!("Simulation paused");
+            }
+
+            "resume" => {
+                sim.resume_simulation();
+                println!("Simulation resumed");
             }
 
             "-h" | "help" => print_help(),
@@ -178,10 +160,7 @@ fn main() -> Result<(), SimError> {
         }
     }
 
-    let sim_state = sim_state
-        .write()
-        .map_err(|_| SimError::Other("Unable to lock SimState for writing.".to_string()))?;
-    sim_state.close_pool();
+    sim.stop();
     Ok(())
 }
 
@@ -208,13 +187,17 @@ fn print_help() {
     println!("    Show the current airports.");
     println!("  time-rate");
     println!("    Changes the simulation's elapsed time per tick.");
+    println!("  pause");
+    println!("    Pauses the simulation.");
+    println!("  resume");
+    println!("    Resumes the simulation.");
     println!("  test-data");
     println!("    Adds four airports and four flights to the simulation.");
     println!("  exit");
     println!("    Closes this application.");
 }
 
-fn add_test_data(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> {
+fn _add_test_static_data(sim: &mut Simulation) -> Result<(), SimError> {
     // List of airports in Argentina
     let airports = vec![
         ("AEP", "ARG", "Aeroparque Jorge Newbery", -34.553, -58.413),
@@ -347,10 +330,6 @@ fn add_test_data(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> 
         ),
     ];
 
-    let mut sim_state = sim_state
-        .write()
-        .map_err(|_| SimError::Other("Unable to lock SimState for writing.".to_string()))?;
-
     // Add airports
     for airport in airports {
         let (iata_code, country, name, latitude, longitude) = airport;
@@ -361,7 +340,7 @@ fn add_test_data(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> 
             latitude,
             longitude,
         );
-        sim_state.add_airport(airport)?;
+        sim.add_airport(airport)?;
     }
     // Add flights
     let today = Utc::now().naive_utc();
@@ -584,7 +563,7 @@ fn add_test_data(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> 
         let departure_str = departure_time.format("%d-%m-%Y %H:%M:%S").to_string();
         let arrival_str = arrival_time.format("%d-%m-%Y %H:%M:%S").to_string();
         let flight = Flight::new_from_console(
-            sim_state.airports(),
+            sim.get_airports()?,
             flight_number,
             origin,
             destination,
@@ -594,7 +573,221 @@ fn add_test_data(sim_state: &mut Arc<RwLock<SimState>>) -> Result<(), SimError> 
         )
         .map_err(|_| SimError::Other("Error".to_string()))?;
 
-        sim_state.add_flight(flight, false)?;
+        sim.add_flight(flight)?;
+    }
+
+    println!("Test data added successfully!");
+    Ok(())
+}
+
+fn add_test_dynamic_data(sim: &mut Simulation) -> Result<(), SimError> {
+    use rand::Rng; // Asegúrate de usar `rand::Rng` para generación de números aleatorios.
+
+    // List of airports in Latin America with 20 airports per country
+    let airports = vec![
+        // Argentina
+        ("AEP", "ARG", "Aeroparque Jorge Newbery", -34.553, -58.413),
+        (
+            "EZE",
+            "ARG",
+            "Aeropuerto Internacional Ministro Pistarini",
+            -34.822,
+            -58.535,
+        ),
+        (
+            "COR",
+            "ARG",
+            "Aeropuerto Internacional Ingeniero Aeronáutico Ambrosio Taravella",
+            -31.321,
+            -64.213,
+        ),
+        (
+            "ROS",
+            "ARG",
+            "Aeropuerto Internacional Rosario",
+            -32.948,
+            -60.787,
+        ),
+        (
+            "MDZ",
+            "ARG",
+            "Aeropuerto Internacional El Plumerillo",
+            -32.883,
+            -68.845,
+        ),
+        (
+            "BRC",
+            "ARG",
+            "Aeropuerto Internacional Teniente Luis Candelaria",
+            -41.151,
+            -71.158,
+        ),
+        (
+            "USH",
+            "ARG",
+            "Aeropuerto Internacional Malvinas Argentinas",
+            -54.843,
+            -68.295,
+        ),
+        (
+            "FTE",
+            "ARG",
+            "Aeropuerto Internacional Comandante Armando Tola",
+            -50.280,
+            -72.053,
+        ),
+        (
+            "REL",
+            "ARG",
+            "Aeropuerto Internacional Almirante Marcos A. Zar",
+            -43.211,
+            -65.270,
+        ),
+        (
+            "CRD",
+            "ARG",
+            "Aeropuerto Internacional General Enrique Mosconi",
+            -45.785,
+            -67.465,
+        ),
+        (
+            "NQN",
+            "ARG",
+            "Aeropuerto Presidente Perón",
+            -38.949,
+            -68.156,
+        ),
+        (
+            "SLA",
+            "ARG",
+            "Aeropuerto Internacional Martín Miguel de Güemes",
+            -24.854,
+            -65.486,
+        ),
+        (
+            "JUJ",
+            "ARG",
+            "Aeropuerto Internacional Gobernador Horacio Guzmán",
+            -24.392,
+            -65.097,
+        ),
+        (
+            "TUC",
+            "ARG",
+            "Aeropuerto Internacional Teniente Benjamín Matienzo",
+            -26.842,
+            -65.104,
+        ),
+        (
+            "CNQ",
+            "ARG",
+            "Aeropuerto Internacional Doctor Fernando Piragine Niveyro",
+            -27.445,
+            -58.762,
+        ),
+        (
+            "RES",
+            "ARG",
+            "Aeropuerto Internacional Resistencia",
+            -27.450,
+            -59.056,
+        ),
+        (
+            "PSS",
+            "ARG",
+            "Aeropuerto Internacional Libertador General José de San Martín",
+            -27.385,
+            -55.970,
+        ),
+        (
+            "RGL",
+            "ARG",
+            "Aeropuerto Internacional Piloto Civil Norberto Fernández",
+            -51.609,
+            -69.312,
+        ),
+        (
+            "CTC",
+            "ARG",
+            "Aeropuerto Coronel Felipe Varela",
+            -28.448,
+            -65.780,
+        ),
+        (
+            "VDM",
+            "ARG",
+            "Aeropuerto Gobernador Castello",
+            -40.868,
+            -63.000,
+        ),
+    ];
+
+    // Agregar aeropuertos
+    for (iata_code, country, name, latitude, longitude) in &airports {
+        let airport = Airport::new(
+            iata_code.to_string(),
+            country.to_string(),
+            name.to_string(),
+            *latitude,
+            *longitude,
+        );
+        sim.add_airport(airport)?;
+    }
+
+    // Generar datos de vuelos
+    let today = Utc::now().naive_utc();
+    // let yesterday = today - chrono::Duration::days(1);
+    // let tomorrow = today + chrono::Duration::days(1);
+
+    let mut rng = rand::thread_rng(); // Crear un generador de números aleatorios
+    let mut flight_data = Vec::new();
+
+    for (origin, _, _, _, _) in &airports {
+        let flight_count = rng.gen_range(1..=2); // Generar entre 2 y 5 vuelos por aeropuerto
+        for _ in 0..flight_count {
+            let destination_index = rng.gen_range(0..airports.len());
+            let destination = airports[destination_index].0;
+
+            // Evitar vuelos con el mismo origen y destino
+            if origin != &destination {
+                let departure_time = today;
+
+                let duration_hours = rng.gen_range(1..=6); // Duración de vuelo entre 1 y 6 horas
+                let arrival_time = departure_time + chrono::Duration::hours(duration_hours as i64);
+
+                let flight_number = format!("{}{:04}", origin, rng.gen_range(1000..9999));
+                let avg_speed = rng.gen_range(400..=600); // Velocidad promedio entre 400 y 600 km/h
+
+                flight_data.push((
+                    flight_number,
+                    origin.to_string(),
+                    destination.to_string(),
+                    departure_time,
+                    arrival_time,
+                    avg_speed,
+                ));
+            }
+        }
+    }
+
+    // Agregar vuelos al estado de simulación
+    for (flight_number, origin, destination, departure_time, arrival_time, avg_speed) in flight_data
+    {
+        let departure_str = departure_time.format("%d-%m-%Y %H:%M:%S").to_string();
+        let arrival_str = arrival_time.format("%d-%m-%Y %H:%M:%S").to_string();
+
+        let flight = Flight::new_from_console(
+            sim.get_airports()?,
+            &flight_number,
+            &origin,
+            &destination,
+            &departure_str,
+            &arrival_str,
+            avg_speed,
+        )
+        .map_err(|_| SimError::Other("Error al crear el vuelo".to_string()))?;
+
+        sim.add_flight(flight)?;
     }
 
     println!("Test data added successfully!");

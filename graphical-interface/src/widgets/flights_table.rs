@@ -32,14 +32,26 @@ impl WidgetFlightsTable {
     }
 
     fn fetch_flights(&mut self, db: &mut Db) {
-        self.flights = Some(match self.flight_type {
-            FlightType::Arrival => db
-                .get_arrival_flights(&self.airport, self.selected_date)
-                .unwrap(),
-            FlightType::Departure => db
-                .get_departure_flights(&self.airport, self.selected_date)
-                .unwrap(),
-        });
+        self.flights = match self.flight_type {
+            FlightType::Arrival => {
+                match db.get_arrival_flights(&self.airport, self.selected_date) {
+                    Ok(flights) => Some(flights),
+                    Err(_) => {
+                        eprintln!("Error fetching arrival flights");
+                        None
+                    }
+                }
+            }
+            FlightType::Departure => {
+                match db.get_departure_flights(&self.airport, self.selected_date) {
+                    Ok(flights) => Some(flights),
+                    Err(_) => {
+                        eprintln!("Error fetching departure flights");
+                        None
+                    }
+                }
+            }
+        };
     }
 
     fn allowed_transitions(current_status: &FlightStatus) -> Vec<FlightStatus> {
@@ -135,7 +147,8 @@ impl View for WidgetFlightsTable {
                                     row.col(|ui| {
                                         if self.edit_mode {
                                             let current_state =
-                                                FlightStatus::from_str(&flight.status).unwrap();
+                                                FlightStatus::from_str(&flight.status)
+                                                    .unwrap_or(FlightStatus::Scheduled);
                                             let available_states =
                                                 WidgetFlightsTable::allowed_transitions(
                                                     &current_state,

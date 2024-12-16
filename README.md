@@ -28,8 +28,13 @@ Para compilar y ejecutar el programa existen las siguientes opciones:
 -   Para crear tablas y keyspaces y cargar datos de vuelos y aeropuertos para la interfaz gráfica correr `cargo run --example airports` en `graphical-interface`.
 -   Para ejecutar la interfaz gráfica, en base a los datos previamente cargados al cluster, ejecutar `cargo run` en `graphical-interface`.
 
-## Como testear
+## Cómo testear
 
+Para probar el programa, puedes utilizar el siguiente comando:  
+- **Probar módulos individuales**: Ejecutar `cargo test` dentro de cada módulo.  
+- **Probar todos los módulos a la vez**: Ejecutar `cargo test --all` desde la raíz del proyecto.
+
+---
 ## Correr con Docker
 
 Para correr el clúster de nodos definido en `compose.yml` con: `sudo docker compose --profile "*" up --build`.

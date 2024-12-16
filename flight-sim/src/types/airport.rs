@@ -1,3 +1,5 @@
+/// Represents an airport with its name, IATA code, geographical position, and country.
+
 #[derive(Clone, Debug)]
 pub struct Airport {
     pub iata_code: String,

@@ -1,5 +1,7 @@
 use walkers::Position;
 
+/// Represents the geographical boundaries of a map view, defined by minimum
+/// and maximum latitude and longitude.
 pub struct MapBounds {
     pub min_lat: f64,
     pub max_lat: f64,
@@ -8,6 +10,7 @@ pub struct MapBounds {
 }
 
 impl MapBounds {
+    /// Checks whether a given position is within the map bounds.
     pub fn is_within_bounds(&self, pos: &Position) -> bool {
         pos.lat() >= self.min_lat
             && pos.lat() <= self.max_lat

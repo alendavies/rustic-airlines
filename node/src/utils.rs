@@ -1,10 +1,17 @@
+use gossip::structures::application_state::{KeyspaceSchema, TableSchema};
+use query_creator::errors::CQLError;
+use query_creator::{GetTableName, GetUsedKeyspace, Query};
+
 use crate::errors::NodeError;
 use crate::internode_protocol::message::InternodeMessage;
 use crate::internode_protocol::InternodeSerializable;
+use crate::Node;
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 /// Attempts to connect to a peer and send a message over the `TcpStream`.
 ///
@@ -119,4 +126,149 @@ pub fn connect_and_send_message(
         })?;
     }
     Ok(())
+}
+
+/// Checks if a keyspace exists for the given query and client ID.
+///
+/// This function attempts to retrieve a keyspace associated with a query.
+/// If the query specifies a keyspace name, it retrieves it directly; otherwise,
+/// it uses the client ID to fetch the associated keyspace. The function retries
+/// a specified number of times before returning an error if the keyspace is not found.
+///
+/// # Arguments
+///
+/// * `node` - A shared reference to the node, protected by a mutex.
+/// * `query` - The query containing the keyspace or table information.
+/// * `client_id` - The ID of the client for keyspace lookup.
+/// * `max_retries` - Maximum number of retries to check for the keyspace.
+///
+/// # Returns
+///
+/// * `Ok(Some(KeyspaceSchema))` if the keyspace is found.
+/// * `Ok(None)` if the keyspace is not found (though it shouldn't occur with retries).
+/// * `Err(NodeError)` if the keyspace cannot be retrieved after retries.
+///
+/// # Errors
+///
+/// Returns an error of type `NodeError::CQLError` with `InvalidSyntax` if the keyspace is not found
+/// after the maximum number of retries.
+///
+pub fn check_keyspace(
+    node: &Arc<Mutex<Node>>,
+    query: &Query,
+    client_id: i32,
+    max_retries: usize,
+) -> Result<Option<KeyspaceSchema>, NodeError> {
+    let mut attempts = 0;
+
+    while attempts < max_retries {
+        if attempts != 0 {
+            thread::sleep(Duration::from_millis(3000));
+        }
+
+        // Bloquear el nodo temporalmente para obtener el keyspace
+        let keyspace = {
+            let guard_node = node.lock()?;
+
+            if let Some(keyspace_name) = query.get_used_keyspace() {
+                guard_node.get_keyspace(&keyspace_name)?
+            } else {
+                guard_node.get_client_keyspace(client_id)?
+            }
+        };
+
+        // Si se encuentra el keyspace, retornar
+        if keyspace.is_some() {
+            return Ok(keyspace);
+        }
+
+        // Incrementar el contador de intentos
+        attempts += 1;
+    }
+
+    // Si no se encuentra el keyspace después de los intentos, retornar error
+    Err(NodeError::CQLError(CQLError::InvalidSyntax))
+}
+
+/// Checks if a table exists in the keyspace for the given query and client ID.
+///
+/// This function attempts to retrieve a table associated with a query. It first ensures
+/// that a valid keyspace is available. If the keyspace exists, it then attempts to find
+/// the table specified in the query. The function retries a specified number of times
+/// before returning an error if the table is not found.
+///
+/// # Arguments
+///
+/// * `node` - A shared reference to the node, protected by a mutex.
+/// * `query` - The query containing the keyspace and table information.
+/// * `client_id` - The ID of the client for keyspace lookup.
+/// * `max_retries` - Maximum number of retries to check for the table.
+///
+/// # Returns
+///
+/// * `Ok(Some(TableSchema))` if the table is found.
+/// * `Ok(None)` if the table is not found (though it shouldn't occur with retries).
+/// * `Err(NodeError)` if the table cannot be retrieved after retries.
+///
+/// # Errors
+///
+/// Returns an error of type `NodeError::CQLError` with `InvalidSyntax` if the table is not found
+/// after the maximum number of retries, or if no keyspace is available.
+///
+pub fn check_table(
+    node: &Arc<Mutex<Node>>,
+    query: &Query,
+    client_id: i32,
+    max_retries: usize,
+) -> Result<Option<TableSchema>, NodeError> {
+    let mut attempts = 0;
+
+    while attempts < max_retries {
+        if attempts != 0 {
+            thread::sleep(Duration::from_millis(3000));
+        }
+
+        // Variables locales para almacenar resultados
+        let (_, table): (Option<KeyspaceSchema>, Option<TableSchema>) = {
+            // Bloquear el nodo temporalmente
+            let guard_node = node.lock()?;
+
+            // Intentar obtener el keyspace
+            let keyspace = if let Some(keyspace_name) = query.get_used_keyspace() {
+                guard_node.get_keyspace(&keyspace_name)?
+            } else {
+                guard_node.get_client_keyspace(client_id)?
+            };
+
+            // Si no se encuentra el keyspace, retornar un error
+            if keyspace.is_none() {
+                return Err(NodeError::CQLError(CQLError::InvalidSyntax)); // Keyspace no encontrado
+            }
+
+            // Si se obtiene el keyspace, intentar obtener la tabla
+            let table = if let Some(ref k) = keyspace {
+                if let Some(table_name) = query.get_table_name() {
+                    guard_node.get_table(table_name, k.clone()).ok()
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // Devolver keyspace y tabla para su uso posterior
+            (keyspace, table)
+        };
+
+        // Si se encuentra la tabla, retornar
+        if table.is_some() {
+            return Ok(table);
+        }
+
+        // Incrementar el contador de intentos
+        attempts += 1;
+    }
+
+    // Si no se encuentra la tabla después de los intentos, retornar error
+    Err(NodeError::CQLError(CQLError::InvalidSyntax)) // Tabla no encontrada
 }

@@ -8,7 +8,7 @@
 use std::io::{Cursor, Read};
 
 use super::{message::InternodeMessageError, InternodeSerializable};
-
+use query_creator::{NeedsKeyspace, NeedsTable, QueryCreator};
 /// A query sent by a coordinator node to other nodes in the cluster.
 ///
 /// ### Fields
@@ -33,6 +33,38 @@ pub struct InternodeQuery {
     pub keyspace_name: String,
     /// The timestamp when the coordinator node received the query.
     pub timestamp: i64,
+}
+
+impl NeedsKeyspace for InternodeQuery {
+    fn needs_keyspace(&self) -> bool {
+        // Crear una instancia de QueryCreator con el query_string de InternodeQuery
+        let query_creator = QueryCreator::new();
+
+        // Manejar el resultado de handle_query (Result<Query, Error>)
+        match query_creator.handle_query(self.query_string.clone()) {
+            Ok(query) => query.needs_keyspace(), // Llamar al trait NeedsKeyspace implementado para Query
+            Err(_) => {
+                // En caso de error, se puede asumir que no se necesita keyspace o manejarlo de otro modo
+                false
+            }
+        }
+    }
+}
+
+impl NeedsTable for InternodeQuery {
+    fn needs_table(&self) -> bool {
+        // Crear una instancia de QueryCreator con el query_string de InternodeQuery
+        let query_creator = QueryCreator::new();
+
+        // Manejar el resultado de handle_query (Result<Query, Error>)
+        match query_creator.handle_query(self.query_string.clone()) {
+            Ok(query) => query.needs_table(), // Llamar al trait NeedsKeyspace implementado para Query
+            Err(_) => {
+                // En caso de error, se puede asumir que no se necesita keyspace o manejarlo de otro modo
+                false
+            }
+        }
+    }
 }
 
 impl InternodeSerializable for InternodeQuery {
