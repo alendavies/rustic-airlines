@@ -8,4 +8,6 @@ members = [
     "partitioner",
     "query-creator",
     "rustic-airlines",
+    "gossip",
+    "storage_engine",
 ]
