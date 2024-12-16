@@ -12,7 +12,7 @@ use crate::{
     db::{Db, Provider},
     plugins,
     state::{SelectionState, ViewState},
-    types::{CountryTracker, MapBounds},
+    types::{CountryTracker, _MapBounds},
     widgets::{WidgetAddFlight, WidgetAirport, WidgetFlight},
     windows,
 };
@@ -175,7 +175,7 @@ impl eframe::App for MyApp {
     }
 }
 
-fn _calculate_map_bounds(map_memory: &MapMemory) -> MapBounds {
+fn _calculate_map_bounds(map_memory: &MapMemory) -> _MapBounds {
     let center_pos = match map_memory.detached() {
         Some(pos) => pos,
         None => Position::from_lat_lon(INITIAL_LAT, INITIAL_LON), // Fallback to initial position
@@ -188,7 +188,7 @@ fn _calculate_map_bounds(map_memory: &MapMemory) -> MapBounds {
     let lat_span = 180.0 * (0.4 / zoom);
     let lon_span = 300.0 * (0.4 / zoom);
 
-    MapBounds {
+    _MapBounds {
         min_lat: center_pos.lat() - (lat_span / 2.0),
         max_lat: center_pos.lat() + (lat_span / 2.0),
         min_lon: center_pos.lon() - (lon_span / 2.0),

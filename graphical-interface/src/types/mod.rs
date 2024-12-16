@@ -11,7 +11,7 @@ mod flight_info;
 pub use flight_info::FlightInfo;
 
 mod map_bounds;
-pub use map_bounds::MapBounds;
+pub use map_bounds::_MapBounds;
 
 mod country_tracker;
 pub use country_tracker::CountryTracker;
