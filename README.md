@@ -1,6 +1,6 @@
 # Taller de Programacion - Grupo "Ferrum"
 
-![GUI](https://github.com/user-attachments/assets/7e9b9e5e-4c07-437f-9e3b-480523320984)
+![image](https://github.com/user-attachments/assets/34cde573-acef-44c8-a5fb-16f3334902ce)
 
 ## Integrantes
 
