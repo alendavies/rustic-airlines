@@ -95,7 +95,7 @@ impl Where {
         &self,
         partitioner_keys: &Vec<String>,
         clustering_columns: &Vec<String>,
-        delete_or_select: bool,
+        _delete_or_select: bool,
         update: bool,
     ) -> Result<(), CQLError> {
         let mut partitioner_key_count = 0;
@@ -110,7 +110,7 @@ impl Where {
             &mut partitioner_key_count,
             &mut partitioner_keys_verified,
             &mut clustering_key_count,
-            delete_or_select,
+            _delete_or_select,
             update,
         )?;
 
@@ -355,13 +355,13 @@ impl Where {
             Condition::Complex { left, right, .. } => {
                 // Recorremos la condición izquierda
                 if let Some(left_condition) = left.as_ref() {
-                    self.collect_clustering_column_values(
+                    Self::collect_clustering_column_values(
                         left_condition,
                         &clustering_columns,
                         &mut result,
                     );
                 }
-                self.collect_clustering_column_values(right, &clustering_columns, &mut result);
+                Self::collect_clustering_column_values(right, &clustering_columns, &mut result);
             }
         }
 
@@ -370,7 +370,6 @@ impl Where {
 
     #[allow(clippy::only_used_in_recursion)]
     fn collect_clustering_column_values(
-        &self,
         condition: &Condition,
         clustering_columns: &[String],
         result: &mut Vec<Option<String>>,
@@ -391,13 +390,13 @@ impl Where {
             Condition::Complex { left, right, .. } => {
                 // Recursivamente verificamos las condiciones izquierda y derecha
                 if let Some(left_condition) = left.as_ref() {
-                    self.collect_clustering_column_values(
+                    Self::collect_clustering_column_values(
                         left_condition,
                         clustering_columns,
                         result,
                     );
                 }
-                self.collect_clustering_column_values(right, clustering_columns, result);
+                Self::collect_clustering_column_values(right, clustering_columns, result);
             }
         }
     }

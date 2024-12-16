@@ -9,9 +9,14 @@ use crate::types::airport::Airport;
 use crate::types::flight::Flight;
 use crate::types::flight_status::FlightStatus;
 
-type FlightData = (Vec<Flight>, Vec<(String, FlightStatus)>);
+/// A client for interacting with a Cassandra database, specifically for
+/// managing flight simulation data.
+///
+/// The `Client` handles creating keyspaces and tables, inserting and updating
+/// data, and fetching information from the database.
 pub struct Client {
     cassandra_client: CassandraClient,
+    ip: Ipv4Addr,
 }
 
 impl Client {
@@ -21,10 +26,24 @@ impl Client {
 
         cassandra_client.startup()?;
 
-        let mut client = Self { cassandra_client };
+        let mut client = Self {
+            cassandra_client,
+            ip,
+        };
         client.setup_keyspace_and_tables()?;
 
         Ok(client)
+    }
+
+    fn recreate_client(&mut self) -> Result<(), ClientError> {
+        let mut cassandra_client =
+            CassandraClient::connect_with_config(self.ip, self.cassandra_client.config())?;
+
+        cassandra_client.startup()?;
+
+        self.cassandra_client = cassandra_client;
+
+        Ok(())
     }
 
     /// Sets up the keyspace and required tables in Cassandra
@@ -37,7 +56,7 @@ impl Client {
             };
         "#;
         self.cassandra_client
-            .execute(create_keyspace_query, "all")?;
+            .execute(create_keyspace_query, "quorum")?;
 
         let create_flights_table = r#"
             CREATE TABLE sky.flights (
@@ -53,7 +72,8 @@ impl Client {
                 PRIMARY KEY (airport, direction, departure_time, arrival_time, number)
             )
             "#;
-        self.cassandra_client.execute(create_flights_table, "all")?;
+        self.cassandra_client
+            .execute(create_flights_table, "quorum")?;
 
         let create_flight_info_table = r#"
             CREATE TABLE sky.flight_info (
@@ -67,7 +87,7 @@ impl Client {
             )
         "#;
         self.cassandra_client
-            .execute(create_flight_info_table, "all")?;
+            .execute(create_flight_info_table, "quorum")?;
 
         let create_airports_table = r#"
             CREATE TABLE sky.airports (
@@ -80,20 +100,24 @@ impl Client {
             )
         "#;
         self.cassandra_client
-            .execute(create_airports_table, "all")?;
+            .execute(create_airports_table, "quorum")?;
 
         println!("Keyspace and tables created successfully.");
         Ok(())
     }
 
+    /// Inserts an airport into the Cassandra database.
     pub fn insert_airport(&mut self, airport: &Airport) -> Result<(), ClientError> {
         let insert_airport_query = format!(
             "INSERT INTO sky.airports (iata, country, name, lat, lon) VALUES ('{}', '{}', '{}', {}, {});",
             airport.iata_code, airport.country, airport.name, airport.latitude, airport.longitude
         );
 
-        if let Err(e) = self.cassandra_client.execute(&insert_airport_query, "all") {
-            println!("No se pudo agregar el aeropuerto, el error es {:?}", e);
+        if let Err(e) = self
+            .cassandra_client
+            .execute(&insert_airport_query, "quorum")
+        {
+            eprintln!("Failed to add the airport. Error: {:?}", e);
             return Ok(());
         }
 
@@ -101,8 +125,8 @@ impl Client {
         Ok(())
     }
 
+    /// Inserts a flight into the Cassandra database.
     pub fn insert_flight(&mut self, flight: &Flight) -> Result<(), ClientError> {
-        // Inserción en la tabla flights para el origen (DEPARTURE)
         let insert_departure_query = format!(
             "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, {}, {}, {}, '{}', 'departure');",
             flight.flight_number,
@@ -115,7 +139,6 @@ impl Client {
             flight.origin.iata_code,
         );
 
-        // Inserción en la tabla flights para el destino (ARRIVAL)
         let insert_arrival_query = format!(
             "INSERT INTO sky.flights (number, status, lat, lon, angle, departure_time, arrival_time, airport, direction) VALUES ('{}', '{}', {}, {}, {}, {}, {}, '{}', 'arrival');",
             flight.flight_number,
@@ -128,7 +151,6 @@ impl Client {
             flight.destination.iata_code
         );
 
-        // Inserción en la tabla flight_info con la información del vuelo
         let insert_flight_info_query = format!(
             "INSERT INTO sky.flight_info (number, fuel, height, speed, origin, destination) VALUES ('{}', {}, {}, {}, '{}', '{}');",
             flight.flight_number,
@@ -141,22 +163,25 @@ impl Client {
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&insert_departure_query, "all")
+            .execute(&insert_departure_query, "quorum")
         {
-            println!("No se pudo agregar el vuelo, el error es {:?}", e);
-            return Ok(());
-        }
-
-        if let Err(e) = self.cassandra_client.execute(&insert_arrival_query, "all") {
-            println!("No se pudo agregar el aeropuerto, el error es {:?}", e);
+            eprintln!("Failed to add the flight. Error: {:?}", e);
             return Ok(());
         }
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&insert_flight_info_query, "quorum")
+            .execute(&insert_arrival_query, "quorum")
         {
-            println!("No se pudo agregar el aeropuerto, el error es {:?}", e);
+            eprintln!("Failed to add the flight (arrival). Error: {:?}", e);
+            return Ok(());
+        }
+
+        if let Err(e) = self
+            .cassandra_client
+            .execute(&insert_flight_info_query, "one")
+        {
+            eprintln!("Failed to add the flight info. Error: {:?}", e);
             return Ok(());
         }
 
@@ -165,44 +190,46 @@ impl Client {
         Ok(())
     }
 
+    /// Updates flight details in the Cassandra database.
     pub fn update_flight(&mut self, flight: &Flight) -> Result<(), ClientError> {
         let update_query_status_departure = format!(
-                "UPDATE sky.flights SET lat = {}, lon = {}, angle = {} WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
-                flight.latitude,
-                flight.longitude,
-                flight.angle,
-                flight.origin.iata_code,
-                "departure",
-                flight.departure_time.and_utc().timestamp(),
-                flight.arrival_time.and_utc().timestamp(),
-                flight.flight_number
-            );
+            "UPDATE sky.flights SET lat = {}, lon = {}, angle = {} WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
+            flight.latitude,
+            flight.longitude,
+            flight.angle,
+            flight.origin.iata_code,
+            "departure",
+            flight.departure_time.and_utc().timestamp(),
+            flight.arrival_time.and_utc().timestamp(),
+            flight.flight_number
+        );
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&update_query_status_departure, "quorum")
+            .execute(&update_query_status_departure, "one")
         {
-            println!("No se pudo actualizas el vuelo, el error es {:?}", e);
+            eprintln!("Failed to update the flight (departure). Error: {:?}", e);
+            self.recreate_client()?;
             return Ok(());
         }
 
         let update_query_status_arrival = format!(
-                "UPDATE sky.flights SET lat = {}, lon = {}, angle = {} WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
-                flight.latitude,
-                flight.longitude,
-                flight.angle,
-                flight.destination.iata_code,
-                "arrival",
-                flight.departure_time.and_utc().timestamp(),
-                flight.arrival_time.and_utc().timestamp(),
-                flight.flight_number
-            );
+            "UPDATE sky.flights SET lat = {}, lon = {}, angle = {} WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
+            flight.latitude,
+            flight.longitude,
+            flight.angle,
+            flight.destination.iata_code,
+            "arrival",
+            flight.departure_time.and_utc().timestamp(),
+            flight.arrival_time.and_utc().timestamp(),
+            flight.flight_number
+        );
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&update_query_status_arrival, "quorum")
+            .execute(&update_query_status_arrival, "one")
         {
-            println!("No se pudo actualizar el vuelo, el error es {:?}", e);
+            eprintln!("Failed to update the flight (arrival). Error: {:?}", e);
             return Ok(());
         }
 
@@ -213,52 +240,59 @@ impl Client {
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&update_query_flight_info, "quorum")
+            .execute(&update_query_flight_info, "one")
         {
-            println!("No se pudo actualizar el vuelo, el error es {:?}", e);
+            eprintln!("Failed to update the flight info. Error: {:?}", e);
             return Ok(());
         }
 
         Ok(())
     }
 
+    /// Updates flight status and some details in the Cassandra database.
     pub fn update_flight_status(&mut self, flight: &Flight) -> Result<(), ClientError> {
         let update_query_status_departure = format!(
-                "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
-                flight.status.as_str(),
-                flight.origin.iata_code,
-                "departure",
-                flight.departure_time.and_utc().timestamp(),
-                flight.arrival_time.and_utc().timestamp(),
-                flight.flight_number
-            );
+            "UPDATE sky.flights SET status = '{}', lat = {}, lon = {}, WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
+            flight.status.as_str(),
+            flight.latitude,
+            flight.longitude,
+            flight.origin.iata_code,
+            "departure",
+            flight.departure_time.and_utc().timestamp(),
+            flight.arrival_time.and_utc().timestamp(),
+            flight.flight_number
+        );
 
         if let Err(e) = self
             .cassandra_client
-            .execute(&update_query_status_departure, "all")
+            .execute(&update_query_status_departure, "quorum")
         {
-            println!(
-                "No se pudo actualizar el estado del vuelo, el error es {:?}",
+            eprintln!(
+                "Failed to update the flight status (departure). Error: {:?}",
                 e
             );
+            self.recreate_client()?;
             return Ok(());
         }
 
         let update_query_status_arrival = format!(
-                "UPDATE sky.flights SET status = '{}' WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
-                flight.status.as_str(),
-                flight.destination.iata_code,
-                "arrival",
-                flight.departure_time.and_utc().timestamp(),
-                flight.arrival_time.and_utc().timestamp(),
-                flight.flight_number
-            );
+            "UPDATE sky.flights SET status = '{}', lat = {}, lon = {}, WHERE airport = '{}' AND direction = '{}' AND departure_time = {} AND arrival_time = {} AND number = {};",
+            flight.status.as_str(),
+            flight.latitude,
+            flight.longitude,
+            flight.destination.iata_code,
+            "arrival",
+            flight.departure_time.and_utc().timestamp(),
+            flight.arrival_time.and_utc().timestamp(),
+            flight.flight_number
+        );
+
         if let Err(e) = self
             .cassandra_client
-            .execute(&update_query_status_arrival, "all")
+            .execute(&update_query_status_arrival, "quorum")
         {
-            println!(
-                "No se pudo actualizar el estado del vuelo, el error es {:?}",
+            eprintln!(
+                "Failed to update the flight status (arrival). Error: {:?}",
                 e
             );
             return Ok(());
@@ -267,17 +301,16 @@ impl Client {
         Ok(())
     }
 
-    pub fn get_all_new_flights(
+    /// Fetches flights from the database for the given date and list of airports.
+    pub fn fetch_flights(
         &mut self,
         date: NaiveDateTime,
-        current_flight_states: &HashMap<String, FlightStatus>,
         airports: &HashMap<String, Airport>,
-    ) -> Result<FlightData, ClientError> {
+    ) -> Result<Vec<Flight>, ClientError> {
         let from = NaiveDateTime::new(date.date(), NaiveTime::from_hms_opt(0, 0, 0).unwrap());
         let from = from.and_utc().timestamp();
 
-        let mut new_flights: Vec<Flight> = Vec::new();
-        let mut flights_to_update: Vec<(String, FlightStatus)> = Vec::new();
+        let mut flights: Vec<Flight> = Vec::new();
 
         // Iterate through each airport in the HashMap
         for (airport_code, airport) in airports {
@@ -285,53 +318,23 @@ impl Client {
                 "SELECT number, status, lat, lon, angle, departure_time, arrival_time, direction FROM sky.flights WHERE airport = '{airport_code}' AND direction = 'departure' AND arrival_time > {from}"
             );
 
-            let result = self.cassandra_client.execute(&query, "all")?;
+            let result = self.cassandra_client.execute(&query, "quorum")?;
 
             if let QueryResult::Result(result_::Result::Rows(res)) = result {
                 for row in res.rows_content {
-                    let flight_number = match row.get("number") {
-                        Some(rows::ColumnValue::Ascii(number)) => number.to_string(),
-                        _ => continue,
-                    };
-
-                    match current_flight_states.get(&flight_number) {
-                        Some(existing_state) => {
-                            if let Some(status) = row.get("status") {
-                                if let rows::ColumnValue::Ascii(status) = status {
-                                    match FlightStatus::from_str(status) {
-                                        Ok(status) => {
-                                            if *existing_state != status {
-                                                flights_to_update.push((flight_number, status));
-                                                continue;
-                                            } else {
-                                                continue;
-                                            }
-                                        }
-                                        Err(_) => return Err(ClientError),
-                                    }
-                                }
-                            } else {
-                                return Err(ClientError);
-                            }
-                        }
-                        None => {
-                            let flight =
-                                Client::build_flight_from_row(self, &row, airport, airports)?;
-                            new_flights.push(flight);
-                        }
-                    }
+                    let flight = Client::build_flight_from_row(self, &row, airport)?;
+                    flights.push(flight);
                 }
             }
         }
 
-        Ok((new_flights, flights_to_update))
+        Ok(flights)
     }
 
     fn build_flight_from_row(
         &mut self,
         row: &BTreeMap<String, ColumnValue>,
         selected_airport: &Airport,
-        airports: &HashMap<String, Airport>,
     ) -> Result<Flight, ClientError> {
         let mut flight = Flight {
             flight_number: "XXXX".to_string(),
@@ -417,12 +420,10 @@ impl Client {
             return Err(ClientError);
         }
 
-        self.get_additional_flight_info(&mut flight, airports)?;
-
         Ok(flight)
     }
 
-    fn get_additional_flight_info(
+    pub fn fetch_flight_info(
         &mut self,
         flight: &mut Flight,
         airports: &HashMap<String, Airport>,
@@ -433,7 +434,7 @@ impl Client {
             "SELECT fuel, height, speed, destination FROM sky.flight_info WHERE number = '{number}'"
         );
 
-        let result = self.cassandra_client.execute(&query, "quorum")?;
+        let result = self.cassandra_client.execute(&query, "one")?;
 
         if let QueryResult::Result(result_::Result::Rows(res)) = result {
             for row in res.rows_content {

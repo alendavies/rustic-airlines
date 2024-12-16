@@ -1,6 +1,6 @@
 use std::{net::Ipv4Addr, str::FromStr};
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use driver::{self, CassandraClient, QueryResult};
 use native_protocol::messages::result::{result_, rows};
 use walkers::Position;
@@ -12,6 +12,9 @@ pub struct DBError;
 
 const IP: &str = "127.0.0.1";
 
+/// A trait that defines the required methods for a provider to manage flight
+/// and airport data. This trait is implemented by any structure that interacts
+/// with the underlying database to fetch and manipulate flight and airport information.
 pub trait Provider {
     fn get_airports_by_country(&mut self, country: &str) -> Result<Vec<Airport>, DBError>;
 
@@ -132,6 +135,10 @@ impl Provider for MockProvider {
     }
 } */
 
+/// A structure representing the database connection for managing flight and airport data.
+///
+/// The `Db` struct is responsible for connecting to a Cassandra database and
+/// executing queries required by the graphical interface of the flight simulator.
 pub struct Db {
     driver: CassandraClient,
 }
@@ -143,6 +150,7 @@ impl Default for Db {
 }
 
 impl Db {
+    /// Creates a new instance of the `Db` struct, establishing a connection to the database.
     pub fn new() -> Self {
         let mut driver = CassandraClient::connect(Ipv4Addr::from_str(IP).unwrap()).unwrap();
         driver.startup().unwrap();
@@ -163,7 +171,7 @@ impl Provider for Db {
         let query = "SELECT * FROM sky.airports WHERE country = 'ARG'".to_string();
 
         let result = self
-            .execute_query(query.as_str(), "all")
+            .execute_query(query.as_str(), "quorum")
             .map_err(|_| DBError)?;
 
         let mut airports: Vec<Airport> = Vec::new();
@@ -216,15 +224,15 @@ impl Provider for Db {
         airport: &str,
         date: NaiveDate,
     ) -> std::result::Result<Vec<Flight>, DBError> {
-        let from = NaiveDateTime::new(date, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-        let from = from.and_utc().timestamp();
+        let from = NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| DBError)?;
+        let from = NaiveDateTime::new(date, from).and_utc().timestamp();
 
         let query = format!(
             "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND direction = 'departure' AND departure_time > {from}"
         );
 
         let result = self
-            .execute_query(query.as_str(), "all")
+            .execute_query(query.as_str(), "quorum")
             .map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
@@ -303,18 +311,18 @@ impl Provider for Db {
         airport: &str,
         date: NaiveDate,
     ) -> std::result::Result<Vec<Flight>, DBError> {
-        let from = NaiveDateTime::new(date, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-        let from = from.and_utc().timestamp();
+        let from = NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| DBError)?;
+        let from = NaiveDateTime::new(date, from).and_utc().timestamp();
 
-        let to = NaiveDateTime::new(date, NaiveTime::from_hms_opt(23, 59, 59).unwrap());
-        let to = to.and_utc().timestamp();
+        let to = NaiveTime::from_hms_opt(23, 59, 59).ok_or_else(|| DBError)?;
+        let to = NaiveDateTime::new(date, to).and_utc().timestamp();
 
         let query = format!(
             "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND direction = 'arrival' AND arrival_time > {from} AND arrival_time < {to}"
         );
 
         let result = self
-            .execute_query(query.as_str(), "all")
+            .execute_query(query.as_str(), "quorum")
             .map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
@@ -394,7 +402,7 @@ impl Provider for Db {
         );
 
         let result = self
-            .execute_query(query.as_str(), "quorum")
+            .execute_query(query.as_str(), "one")
             .map_err(|_| DBError)?;
 
         let mut flight_info = FlightInfo {
@@ -462,20 +470,16 @@ impl Provider for Db {
     }
 
     fn get_flights_by_airport(&mut self, airport: &str) -> Result<Vec<Flight>, DBError> {
-        /* Nos gustaria trabajar con los vuelos de hoy para mostrar, pero por conveniencia vamos por la fecha 0 ahora.
         let today = Utc::now().date_naive();
-        let from = NaiveDateTime::new(today, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-        let from = from.and_utc().timestamp();
-        */
-
-        let from: i64 = 0;
+        let from = NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| DBError)?;
+        let from = NaiveDateTime::new(today, from).and_utc().timestamp();
 
         let query = format!(
             "SELECT number, status, lat, lon, angle, departure_time, arrival_time, airport, direction FROM sky.flights WHERE airport = '{airport}' AND departure_time > {from}"
         );
 
         let result = self
-            .execute_query(query.as_str(), "quorum")
+            .execute_query(query.as_str(), "one")
             .map_err(|_| DBError)?;
 
         let mut flights: Vec<Flight> = Vec::new();
@@ -580,7 +584,7 @@ impl Provider for Db {
         );
 
         let result_check = self
-            .execute_query(query_check.as_str(), "all")
+            .execute_query(query_check.as_str(), "quorum")
             .map_err(|_| DBError)?;
 
         if let QueryResult::Result(result_::Result::Rows(res)) = result_check {
@@ -630,11 +634,11 @@ impl Provider for Db {
         );
 
         // Ejecución de las consultas en Cassandra
-        self.execute_query(insert_departure_query.as_str(), "all")
+        self.execute_query(insert_departure_query.as_str(), "quorum")
             .map_err(|_| DBError)?;
-        self.execute_query(insert_arrival_query.as_str(), "all")
+        self.execute_query(insert_arrival_query.as_str(), "quorum")
             .map_err(|_| DBError)?;
-        self.execute_query(insert_flight_info_query.as_str(), "all")
+        self.execute_query(insert_flight_info_query.as_str(), "quorum")
             .map_err(|_| DBError)?;
 
         Ok(())
@@ -659,7 +663,7 @@ impl Provider for Db {
             flight.number
         );
 
-        self.execute_query(&update_query_status_departure, "all")
+        self.execute_query(&update_query_status_departure, "quorum")
             .map_err(|_| DBError)?;
 
         let update_query_status_arrival = format!(
@@ -672,7 +676,7 @@ impl Provider for Db {
                 flight.number
             );
 
-        self.execute_query(&update_query_status_arrival, "all")
+        self.execute_query(&update_query_status_arrival, "quorum")
             .map_err(|_| DBError)?;
 
         Ok(())

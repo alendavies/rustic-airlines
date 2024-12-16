@@ -4,12 +4,12 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     net::{Ipv4Addr, TcpStream},
     sync::{Arc, Mutex},
-    thread,
+    // thread::{self},
+    // time::Duration,
 };
 
-use std::time::Duration;
-
 use gossip::structures::application_state::{KeyspaceSchema, TableSchema};
+use logger::{Color, Logger};
 use partitioner::Partitioner;
 
 use crate::{
@@ -24,10 +24,36 @@ use crate::{
 use super::{errors::StorageEngineError, StorageEngine};
 
 impl StorageEngine {
+    /// Redistributes data across nodes for the specified keyspaces.
+    ///
+    /// This function processes the data files associated with the given keyspaces
+    /// and redistributes them across the cluster based on the partitioner. It ensures
+    /// that each node holds the appropriate data based on the partitioning logic,
+    /// and handles both normal and replication data files.
+    ///
+    /// # Arguments
+    ///
+    /// * `keyspaces` - A vector of keyspace schemas to process and redistribute.
+    /// * `partitioner` - The partitioner responsible for determining the ownership of data.
+    /// * `logger` - The logger instance for recording progress and errors.
+    /// * `connections` - A shared map of connections to other nodes in the cluster.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the redistribution completes successfully.
+    /// * `Err(StorageEngineError)` if any error occurs during redistribution.
+    ///
+    /// # Errors
+    ///
+    /// This function can return `StorageEngineError` for various reasons, such as:
+    /// * IO errors while reading or writing data files.
+    /// * Errors in parsing or serializing data.
+    /// * Issues with internode communication or connection handling.
     pub fn redistribute_data(
         &self,
         keyspaces: Vec<KeyspaceSchema>,
         partitioner: &Partitioner,
+        logger: Logger,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>,
     ) -> Result<(), StorageEngineError> {
         for keyspace in keyspaces {
@@ -46,6 +72,7 @@ impl StorageEngine {
                     self.process_file(
                         &normal_file_path,
                         &partitioner,
+                        logger.clone(),
                         keyspace.clone(),
                         table.clone(),
                         false,
@@ -59,6 +86,7 @@ impl StorageEngine {
                     self.process_file(
                         &replication_file_path,
                         &partitioner,
+                        logger.clone(),
                         keyspace.clone(),
                         table.clone(),
                         true,
@@ -76,6 +104,7 @@ impl StorageEngine {
         &self,
         file_path: &std::path::Path,
         partitioner: &Partitioner,
+        logger: Logger,
         keyspace: KeyspaceSchema,
         table: TableSchema,
         is_replication: bool,
@@ -185,13 +214,14 @@ impl StorageEngine {
                         let timest: i64 = timestamp
                             .parse()
                             .map_err(|_| StorageEngineError::UnsupportedOperation)?;
+
                         self.insert(
                             &keyspace.get_name(),
                             &table.get_name(),
                             row.clone(),
                             table.get_columns(),
                             table.get_clustering_column_in_order(),
-                            false,
+                            true,
                             false,
                             timest,
                         )?;
@@ -217,6 +247,7 @@ impl StorageEngine {
                         timestamp_n,
                         false,
                         connections.clone(),
+                        logger.clone(),
                     );
                 }
 
@@ -273,6 +304,7 @@ impl StorageEngine {
                             timestamp_n,
                             true,
                             connections.clone(),
+                            logger.clone(),
                         );
                     }
                 }
@@ -307,6 +339,7 @@ impl StorageEngine {
         timestamp: i64,
         is_replication: bool,
         connections: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>, // Ajusta el tipo si es necesario
+        logger: Logger,
     ) {
         // Crear el mensaje de internodo
         let message = InternodeMessage::new(
@@ -320,11 +353,26 @@ impl StorageEngine {
                 timestamp,
             }),
         );
-
         // Enviar el mensaje al nodo objetivo
+        let rep = if is_replication {
+            "AS REPLICATION "
+        } else {
+            ""
+        };
 
-        let duration = Duration::from_millis(500);
-        thread::sleep(duration);
+        logger
+            .info(
+                &format!(
+                    "INTERNODE (REDISTRIBUTION): I SENT {:?}{:?} to {:?}",
+                    rep,
+                    serialized_message.to_string(),
+                    target_ip
+                ),
+                Color::Cyan,
+                true,
+            )
+            .ok();
+        //thread::sleep(Duration::from_millis(300));
         let result = connect_and_send_message(target_ip, INTERNODE_PORT, connections, message);
         // Manejar errores o resultados
         _ = result;

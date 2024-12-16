@@ -1,3 +1,5 @@
+/// Represents the various statuses a flight can have.
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum FlightStatus {
     Scheduled,
@@ -8,6 +10,7 @@ pub enum FlightStatus {
 }
 
 impl FlightStatus {
+    /// Converts the `FlightStatus` variant to its corresponding string representation.
     pub fn as_str(&self) -> &str {
         match self {
             FlightStatus::Scheduled => "scheduled",
@@ -17,7 +20,7 @@ impl FlightStatus {
             FlightStatus::Canceled => "canceled",
         }
     }
-
+    /// Creates a `FlightStatus` variant from a string slice.
     pub fn from_str(status: &str) -> Result<FlightStatus, Box<dyn std::error::Error>> {
         match status.to_lowercase().as_str() {
             "scheduled" => Ok(FlightStatus::Scheduled),

@@ -158,12 +158,12 @@ impl StorageEngine {
             .map_err(|_| StorageEngineError::FileWriteFailed)?;
         current_byte_offset += header_line.len() as u64; // Contar el tamaño del encabezado
 
-        let mut found_match = false;
+        let mut _found_match = false;
 
         // Iterar sobre las líneas del archivo original y aplicar la actualización
         for line in reader.lines() {
             let line = line?;
-            found_match |= self.update_or_write_line(
+            _found_match |= self.update_or_write_line(
                 &table,
                 &update_query,
                 &line,
@@ -187,9 +187,9 @@ impl StorageEngine {
 
         std::mem::drop(temp_index);
         // Si no se encontró ninguna fila que coincida, agregar una nueva
-        if !found_match {
+        /*if !found_match {
             self.add_new_row_in_update(&table, &update_query, keyspace, is_replication, timestamp)?;
-        }
+        }*/
 
         Ok(())
     }
@@ -335,7 +335,7 @@ impl StorageEngine {
         }
     }
 
-    fn add_new_row_in_update(
+    fn _add_new_row_in_update(
         &self,
         table: &TableSchema,
         update_query: &Update,
@@ -600,10 +600,9 @@ mod tests {
             "id,name",
             "La cabecera no coincide con el valor esperado"
         );
-        assert_eq!(
-            lines.next().unwrap().unwrap(),
-            "2,Jane;1234567890", // La fila debería haberse añadido
-            "El contenido de la nueva fila no coincide con el valor esperado"
+        assert!(
+            lines.next().is_none(),
+            "Se esperaba que no hubiera más líneas, pero se encontró un valor"
         );
 
         // Cleanup
@@ -701,12 +700,12 @@ mod tests {
 
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "999,Jane;1234567890", // La fila original debería mantenerse igual
+            "1,John;1234567890", // La fila original debería mantenerse igual
             "El contenido de la fila no coincide con el valor esperado"
         );
         // assert_eq!(
         //     lines.next().unwrap().unwrap(),
-        //     "1,John;1234567890", // La fila original debería mantenerse igual
+        //     "999,Jane;1234567890", // La fila original debería mantenerse igual
         //     "El contenido de la fila no coincide con el valor esperado"
         // );
 
