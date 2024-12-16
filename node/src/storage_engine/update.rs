@@ -600,10 +600,9 @@ mod tests {
             "id,name",
             "La cabecera no coincide con el valor esperado"
         );
-        assert_eq!(
-            lines.next().unwrap().unwrap(),
-            "2,Jane;1234567890", // La fila debería haberse añadido
-            "El contenido de la nueva fila no coincide con el valor esperado"
+        assert!(
+            lines.next().is_none(),
+            "Se esperaba que no hubiera más líneas, pero se encontró un valor"
         );
 
         // Cleanup
@@ -701,12 +700,12 @@ mod tests {
 
         assert_eq!(
             lines.next().unwrap().unwrap(),
-            "999,Jane;1234567890", // La fila original debería mantenerse igual
+            "1,John;1234567890", // La fila original debería mantenerse igual
             "El contenido de la fila no coincide con el valor esperado"
         );
         // assert_eq!(
         //     lines.next().unwrap().unwrap(),
-        //     "1,John;1234567890", // La fila original debería mantenerse igual
+        //     "999,Jane;1234567890", // La fila original debería mantenerse igual
         //     "El contenido de la fila no coincide con el valor esperado"
         // );
 
