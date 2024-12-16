@@ -237,7 +237,7 @@ fn execute_insert_queries(client: &mut CassandraClient) {
     // 9. Inserción con `IF NOT EXISTS` cuando la fila no existe
     let query =
         "INSERT INTO test_keyspace.test_table (id, name, last_name) VALUES (3, 'Charlie', 'Cox') IF NOT EXISTS";
-    assert!(dynami
+    assert!(
         execute_and_verify(client, query, QueryResult::Result(Result::Void)),
         "Insert with IF NOT EXISTS failed (when row does not exist)"
     );
