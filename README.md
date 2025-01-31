@@ -1,5 +1,7 @@
 # Taller de Programacion - Grupo "Ferrum"
 
+https://taller-1-fiuba-rust.github.io/proyecto/24C2/proyecto.html
+
 ![image](https://github.com/user-attachments/assets/34cde573-acef-44c8-a5fb-16f3334902ce)
 
 ## Integrantes
